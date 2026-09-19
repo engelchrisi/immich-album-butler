@@ -168,9 +168,14 @@ role   = "viewer"
 
 Two things the butler deliberately does **not** do:
 
-- **It never takes access away.** Removing a name from `share_with` leaves that
-  account's access alone, because an edited config file is a poor reason for
-  somebody to lose sight of an album. Unshare in the Immich UI.
+- **It never takes access away.** Removing a name from `share_with` or from a
+  `[[shares]]` list leaves that account's access alone, because an edited config
+  file is a poor reason for somebody to lose sight of an album.
+
+  So un-sharing is **two steps, in this order**: revoke in the Immich UI first
+  (open the album, remove the account from the people it is shared with), *then*
+  take the name out of the config. Done the other way round, the name is still
+  listed when the next run comes along and the access goes straight back.
 - **It cannot share people.** Immich has no per-person sharing; a person belongs
   to one account. What it does have is a *cluster group*, which makes faces
   recognised across the accounts in it — a one-time invitation in Immich's

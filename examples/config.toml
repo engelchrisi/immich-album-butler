@@ -51,6 +51,12 @@ design_idle_minutes = 30
 # names or e-mail addresses. Needs "user.read" and "albumUser.create" on the
 # key; without them the albums still fill and the run says what is missing.
 #
+# TAKING A NAME OUT OF THIS LIST DOES NOT UNSHARE THE ALBUM. Removing a name
+# only stops the album being shared AGAIN; the access it already has must be
+# revoked in Immich, by opening the album and removing that account from the
+# people it is shared with. Do that FIRST, then take the name out here -- the
+# other way round, the next run hands the access straight back.
+#
 # Immich has no way to share a *person*: a person belongs to one account. Its
 # cluster group makes faces recognised across accounts, and that is a one-time
 # invitation in Immich's own sharing settings, not something this tool does.
