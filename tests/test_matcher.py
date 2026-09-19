@@ -146,6 +146,23 @@ class MatchAgainstStubTests(unittest.TestCase):
             with self.assertRaises(MatchError):
                 match(self.client(stub), rule, PEOPLE)
 
+    def test_names_are_resolved_against_the_server_when_none_are_supplied(self):
+        """The normal path: thousands of face clusters, resolved by name."""
+        api_people = [{"id": ALEX, "name": "Alex"}, {"id": SAM, "name": "Sam"}]
+        rule = MatchRule(people=("Alex",))
+        with StubImmich(self.assets, people=api_people, unnamed_people=5000,
+                        page_size=100) as stub:
+            found = match(self.client(stub), rule)
+            listed = sum(1 for _, path in stub.requests if path == "/api/people")
+        self.assertEqual(set(found.ids), {fake_id(1), fake_id(2), fake_id(4)})
+        self.assertEqual(listed, 0)      # asked by name, never listed everyone
+
+    def test_an_unknown_name_is_an_error_on_that_path_too(self):
+        api_people = [{"id": ALEX, "name": "Alex"}]
+        with StubImmich(self.assets, people=api_people) as stub:
+            with self.assertRaises(MatchError):
+                match(self.client(stub), MatchRule(people=("Nobody",)))
+
 
 if __name__ == "__main__":
     unittest.main()

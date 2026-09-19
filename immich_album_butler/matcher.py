@@ -51,15 +51,29 @@ def resolve_people(names: list[str], people: list[Person]) -> list[str]:
     ids: list[str] = []
     for name in names:
         matches = by_name.get(name.casefold(), [])
-        if not matches:
-            known = ", ".join(sorted({p.name for p in people})[:8]) or "none"
-            raise MatchError(f"no person named {name!r} in Immich "
-                             f"(known names include: {known})")
-        if len(matches) > 1:
-            raise MatchError(f"{len(matches)} people in Immich are named {name!r}; "
-                             f"rename them so the album is unambiguous")
-        ids.append(matches[0].id)
+        ids.append(_one(name, matches, {p.name for p in people}))
     return ids
+
+
+def resolve_people_via(client: ImmichClient, names: list[str]) -> list[str]:
+    """Resolve names by asking Immich for each one.
+
+    A library has one person per face cluster -- tens of thousands of them,
+    nearly all unnamed -- so asking by name beats fetching the list.
+    """
+    return [_one(name, client.find_people(name)) for name in names]
+
+
+def _one(name: str, matches: list[Person], known: set[str] | None = None) -> str:
+    if not matches:
+        hint = ""
+        if known:
+            hint = f" (known names include: {', '.join(sorted(known)[:8])})"
+        raise MatchError(f"no person named {name!r} in Immich{hint}")
+    if len(matches) > 1:
+        raise MatchError(f"{len(matches)} people in Immich are named {name!r}; "
+                         f"rename them so the album is unambiguous")
+    return matches[0].id
 
 
 def place_matches(asset: Asset, rule: MatchRule) -> bool:
@@ -88,7 +102,8 @@ def match(client: ImmichClient, rule: MatchRule,
 
     person_ids: list[str] = []
     if rule.people:
-        person_ids = resolve_people(list(rule.people), people or client.people())
+        person_ids = (resolve_people(list(rule.people), people) if people
+                      else resolve_people_via(client, list(rule.people)))
 
     if rule.people_mode == "all" and len(person_ids) > 1:
         assets = _assets_for_all(client, rule, person_ids)

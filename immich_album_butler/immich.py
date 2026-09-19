@@ -144,32 +144,64 @@ class ImmichClient:
         data = self.request("GET", "server/version") or {}
         return ".".join(str(data.get(k, 0)) for k in ("major", "minor", "patch"))
 
-    def people(self, include_hidden: bool = False) -> list[Person]:
-        """Named people, most-photographed first (Immich's own order)."""
+    def people(self, include_hidden: bool = False,
+               max_pages: int = 50) -> list[Person]:
+        """Every *named* person, most-photographed first.
+
+        Two things to know about this endpoint. It reports more pages with
+        `hasNextPage`, not the `nextPage` that search/metadata uses. And a
+        library can hold tens of thousands of unnamed people (one per face
+        cluster) against a handful of named ones -- Immich returns the named
+        ones first, so we stop at the first page that has none rather than
+        paging through all of them for nothing.
+        """
         found: list[Person] = []
-        page = 1
-        while True:
+        for page in range(1, max_pages + 1):
             data = self.request("GET", "people", params={
-                "page": page, "size": 500, "withHidden": str(include_hidden).lower()})
-            items = (data or {}).get("people", [])
-            found.extend(Person.from_api(p) for p in items)
-            next_page = (data or {}).get("nextPage")
-            if not next_page or not items:
+                "page": page, "size": 500,
+                "withHidden": str(include_hidden).lower()}) or {}
+            items = data.get("people", [])
+            named = [Person.from_api(p) for p in items if p.get("name")]
+            found.extend(named)
+            if not named or not data.get("hasNextPage"):
                 break
-            page = int(next_page)
-        return [p for p in found if p.name]
+        return found
+
+    def find_people(self, name: str) -> list[Person]:
+        """People whose name matches exactly, ignoring case.
+
+        Used instead of paging the whole list: resolving three names should be
+        three small requests, not a walk through every face cluster.
+        """
+        data = self.request("GET", "search/person",
+                            params={"name": name, "withHidden": "false"}) or []
+        folded = name.casefold()
+        return [Person.from_api(p) for p in data
+                if (p.get("name") or "").casefold() == folded]
 
     def albums(self) -> list[AlbumInfo]:
         data = self.request("GET", "albums") or []
         return [AlbumInfo.from_api(a) for a in data]
 
     def album_asset_ids(self, album_id: str) -> set[str]:
-        data = self.request("GET", f"albums/{album_id}") or {}
-        return {a["id"] for a in data.get("assets", [])}
+        """Which assets are in an album.
+
+        Not from `GET /api/albums/{id}`: that returns the album's metadata with
+        no asset list at all, so reading it would make every run think the
+        album was empty and re-send everything. Searching by album id is the
+        way that actually enumerates them.
+
+        Note the album's own `assetCount` is a *display* count and can be lower
+        than this -- it collapses stacked assets and live-photo pairs -- so it
+        must not be used to decide whether anything is missing.
+        """
+        return {asset.id for asset in self.search_metadata(album_ids=[album_id],
+                                                           with_exif=False)}
 
     def search_metadata(self, *, taken_after: dt.date | None = None,
                         taken_before: dt.date | None = None,
                         person_ids: list[str] | None = None,
+                        album_ids: list[str] | None = None,
                         country: str | None = None,
                         state: str | None = None,
                         city: str | None = None,
@@ -186,6 +218,8 @@ class ImmichClient:
             body["takenBefore"] = _end_of_day(taken_before)
         if person_ids:
             body["personIds"] = person_ids
+        if album_ids:
+            body["albumIds"] = album_ids
         if country:
             body["country"] = country
         if state:

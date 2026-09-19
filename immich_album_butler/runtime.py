@@ -118,13 +118,14 @@ class Butler:
         return None
 
     def plan(self, album: Album) -> Plan:
-        people = self.people() if album.match.people else []
+        # Names are resolved one by one against Immich (see resolve_people_via),
+        # so the whole people list is not fetched here.
         expanded, problems = self.config.expand_people(album.match.people)
         rule = album.match
         if expanded != list(rule.people):
             rule = _with_people(rule, tuple(expanded))
 
-        result = match(self.client, rule, people)
+        result = match(self.client, rule)
         matched = result.ids
 
         info = self.find_album(album)

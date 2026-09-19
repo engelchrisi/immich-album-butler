@@ -90,6 +90,47 @@ class ClientTests(unittest.TestCase):
             ImmichClient("http://immich.example.lan:2283", "")
 
 
+class PeopleTests(unittest.TestCase):
+    """A real library has one person per face cluster: thousands, mostly unnamed."""
+
+    PEOPLE = [{"id": "person-alex", "name": "Alex"},
+              {"id": "person-sam", "name": "Sam"}]
+
+    def test_only_named_people_come_back(self):
+        with StubImmich([], people=self.PEOPLE, unnamed_people=5) as stub:
+            found = ImmichClient(stub.url, API_KEY).people()
+        self.assertEqual([p.name for p in found], ["Alex", "Sam"])
+
+    def test_paging_uses_has_next_page_not_next_page(self):
+        """The people endpoint pages differently from search/metadata."""
+        many = [{"id": f"person-{n}", "name": f"Name {n}"} for n in range(1200)]
+        with StubImmich([], people=many) as stub:
+            found = ImmichClient(stub.url, API_KEY).people()
+        self.assertEqual(len(found), 1200)
+
+    def test_it_stops_once_the_named_people_run_out(self):
+        with StubImmich([], people=self.PEOPLE, unnamed_people=5000) as stub:
+            found = ImmichClient(stub.url, API_KEY).people()
+            calls = sum(1 for _, path in stub.requests if path == "/api/people")
+        self.assertEqual(len(found), 2)
+        # Page 1 holds the two named ones; page 2 has none, so it stops there
+        # instead of walking all eleven pages of face clusters.
+        self.assertEqual(calls, 2)
+
+    def test_a_name_can_be_looked_up_directly(self):
+        with StubImmich([], people=self.PEOPLE, unnamed_people=5000) as stub:
+            found = ImmichClient(stub.url, API_KEY).find_people("alex")
+        self.assertEqual([p.id for p in found], ["person-alex"])
+
+    def test_a_partial_name_is_not_an_exact_match(self):
+        with StubImmich([], people=self.PEOPLE) as stub:
+            self.assertEqual(ImmichClient(stub.url, API_KEY).find_people("Ale"), [])
+
+    def test_an_unknown_name_finds_nobody(self):
+        with StubImmich([], people=self.PEOPLE) as stub:
+            self.assertEqual(ImmichClient(stub.url, API_KEY).find_people("Nobody"), [])
+
+
 class AlbumWriteTests(unittest.TestCase):
     def test_creating_an_album_returns_its_id_and_name(self):
         with StubImmich([]) as stub:
@@ -122,8 +163,41 @@ class AlbumWriteTests(unittest.TestCase):
         puts = [p for method, p in stub.requests if method == "PUT"]
         self.assertEqual(len(puts), 3)
 
+    def test_album_contents_are_enumerated_not_read_from_the_album_object(self):
+        """The album endpoint returns no asset list, so this must search."""
+        library = [make_asset(1, when=day(2019, 7, 1)),
+                   make_asset(2, when=day(2019, 7, 2)),
+                   make_asset(3, when=day(2019, 7, 3))]
+        with StubImmich(library, page_size=2) as stub:
+            client = ImmichClient(stub.url, API_KEY)
+            album = client.create_album("Italy 2019",
+                                        asset_ids=[fake_id(1), fake_id(2)])
+            found = client.album_asset_ids(album.id)
+        self.assertEqual(found, {fake_id(1), fake_id(2)})
+
+    def test_an_empty_album_reports_no_assets(self):
+        with StubImmich([make_asset(1, when=day(2019, 7, 1))]) as stub:
+            client = ImmichClient(stub.url, API_KEY)
+            album = client.create_album("Empty")
+            self.assertEqual(client.album_asset_ids(album.id), set())
+
+    def test_the_album_display_count_is_not_used_to_decide_what_is_missing(self):
+        """Immich's assetCount collapses stacked pairs and under-reports."""
+        library = [make_asset(n, when=day(2019, 7, n)) for n in range(1, 4)]
+        ids = [fake_id(n) for n in range(1, 4)]
+        with StubImmich(library, page_size=2, stacked_pairs=1) as stub:
+            client = ImmichClient(stub.url, API_KEY)
+            album = client.create_album("Italy 2019", asset_ids=ids)
+            listed = client.album_asset_ids(album.id)
+            reported = next(a.asset_count for a in client.albums()
+                            if a.id == album.id)
+        self.assertEqual(len(listed), 3)
+        self.assertEqual(reported, 2)       # lower, and rightly ignored
+
     def test_removing_assets_leaves_the_rest_in_place(self):
-        with StubImmich([]) as stub:
+        library = [make_asset(1, when=day(2019, 7, 1)),
+                   make_asset(2, when=day(2019, 7, 2))]
+        with StubImmich(library, page_size=100) as stub:
             client = ImmichClient(stub.url, API_KEY)
             album = client.create_album("Italy 2019",
                                         asset_ids=[fake_id(1), fake_id(2)])

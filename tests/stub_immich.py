@@ -14,6 +14,7 @@ import json
 import threading
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs
 
 API_KEY = "test-key"
 
@@ -48,9 +49,15 @@ class StubImmich:
                  people: list[dict] | None = None,
                  albums: list[dict] | None = None,
                  page_size: int = 2,
+                 unnamed_people: int = 0,
+                 stacked_pairs: int = 0,
                  missing_permissions: set[str] | None = None) -> None:
+        self.stacked_pairs = stacked_pairs
         self.assets = assets or []
         self.people = people or []
+        # Face clusters nobody has named. A real library has thousands.
+        self.unnamed_people = [{"id": f"cluster-{n}", "name": ""}
+                               for n in range(unnamed_people)]
         self.albums = {a["id"]: a for a in (albums or [])}
         self.page_size = page_size
         self.missing_permissions = missing_permissions or set()
@@ -96,9 +103,19 @@ class StubImmich:
                 return album
         return None
 
+    def display_count(self, album: dict) -> int:
+        """Immich's own count, which under-reports: one stacked pair shows as one."""
+        return max(0, len(album["assets"]) - self.stacked_pairs)
+
     def search(self, body: dict) -> dict:
         items = list(self.assets)
 
+        if album_ids := body.get("albumIds"):
+            in_albums = set()
+            for album_id in album_ids:
+                album = self.albums.get(album_id)
+                in_albums |= {a["id"] for a in (album or {}).get("assets", [])}
+            items = [a for a in items if a["id"] in in_albums]
         if after := body.get("takenAfter"):
             items = [a for a in items if a["localDateTime"] >= _norm(after)]
         if before := body.get("takenBefore"):
@@ -172,14 +189,34 @@ def _make_handler(stub: StubImmich):
             if path == "/api/people":
                 if not self._authorized("person.read"):
                     return
-                return self._send(200, {"people": stub.people, "nextPage": None})
+                # Mirrors the real endpoint: it reports more pages with
+                # `hasNextPage` (search/metadata uses `nextPage` instead), and
+                # a real library holds tens of thousands of unnamed people
+                # against a handful of named ones, named ones first.
+                params = parse_qs(query)
+                page = int((params.get("page") or ["1"])[0])
+                size = int((params.get("size") or ["500"])[0])
+                everyone = stub.people + stub.unnamed_people
+                start = (page - 1) * size
+                chunk = everyone[start:start + size]
+                return self._send(200, {
+                    "people": chunk, "total": len(everyone),
+                    "hidden": 0, "hasNextPage": start + size < len(everyone)})
+
+            if path == "/api/search/person":
+                if not self._authorized("person.read"):
+                    return
+                wanted = (parse_qs(query).get("name") or [""])[0].casefold()
+                return self._send(200, [p for p in stub.people
+                                        if wanted in (p.get("name") or "").casefold()])
 
             if path == "/api/albums":
                 if not self._authorized("album.read"):
                     return
                 return self._send(200, [
                     {"id": a["id"], "albumName": a["albumName"],
-                     "assetCount": len(a["assets"])} for a in stub.albums.values()])
+                     "assetCount": stub.display_count(a)}
+                    for a in stub.albums.values()])
 
             if path.startswith("/api/albums/"):
                 if not self._authorized("album.read"):
@@ -187,7 +224,12 @@ def _make_handler(stub: StubImmich):
                 album = stub.albums.get(path.rsplit("/", 1)[-1])
                 if album is None:
                     return self._send(404, {"message": "Not found"})
-                return self._send(200, album)
+                # Like the real endpoint: metadata only, no asset list, and an
+                # assetCount that collapses stacked/live-photo pairs, so it is
+                # lower than the number of assets actually in the album.
+                return self._send(200, {
+                    "id": album["id"], "albumName": album["albumName"],
+                    "description": "", "assetCount": stub.display_count(album)})
 
             if path == "/api/search/suggestions":
                 if not self._authorized():
