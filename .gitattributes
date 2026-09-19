@@ -1,0 +1,13 @@
+# What ships is a `git archive` of a commit, and it is unpacked on Linux.
+# Without this, a checkout on Windows turns every shell script and unit file
+# into CRLF, and the archive carries that along -- systemd and /bin/sh both
+# refuse the result. Text stays LF everywhere it matters.
+
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
