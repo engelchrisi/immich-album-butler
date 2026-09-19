@@ -138,11 +138,23 @@ def _run(args) -> int:
         elif report.created:
             print(f"  +  {prefix}create {report.name!r} "
                   f"with {report.added} asset(s)")
-        elif report.added or report.removed:
-            print(f"  ~  {report.name}: {prefix}add {report.added}, "
-                  f"remove {report.removed}")
         else:
-            print(f"  =  {report.name}: up to date")
+            # An album can change without gaining or losing a single asset --
+            # a rename or a new cover -- so "up to date" is only for an album
+            # where nothing at all happened.
+            done = []
+            if report.added or report.removed:
+                done.append(f"add {report.added}, remove {report.removed}")
+            if report.renamed:
+                done.append("rename")
+            if report.cover_set:
+                done.append("set the cover")
+            if done:
+                print(f"  ~  {report.name}: {prefix}" + ", ".join(done))
+            else:
+                print(f"  =  {report.name}: up to date")
+        for warning in report.warnings:
+            print(f"     {warning}")
     return 1 if failed else 0
 
 
