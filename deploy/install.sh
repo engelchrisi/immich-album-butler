@@ -33,13 +33,12 @@ cp -r "$source_dir/immich_album_butler" "$PREFIX/"
 find "$PREFIX" -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
 
 install -d -m 750 -o root -g "$USER_NAME" "$CONFIG_DIR"
-install -d -m 750 -o root -g "$USER_NAME" "$CONFIG_DIR/albums.d"
 install -d -m 750 -o "$USER_NAME" -g "$USER_NAME" "$STATE_DIR"
 
 if [ ! -f "$CONFIG_DIR/config.toml" ]; then
     install -m 640 -o root -g "$USER_NAME" \
         "$source_dir/examples/config.toml" "$CONFIG_DIR/config.toml"
-    echo "installed a starter config.toml -- set 'server' before starting"
+    echo "installed a starter config.toml -- the whole configuration lives there"
 fi
 
 if [ ! -f "$CONFIG_DIR/immich-album-butler.env" ]; then
@@ -57,7 +56,7 @@ systemctl daemon-reload
 cat <<EOF
 
 Installed. Next:
-  1. edit $CONFIG_DIR/config.toml         (set 'server')
+  1. edit $CONFIG_DIR/config.toml         (set 'server'; albums go here too)
   2. edit $CONFIG_DIR/immich-album-butler.env   (set IMMICH_KEY), and add a
      design-mode login with:  immich-album-butler passwd <name>
   3. sudo -u $USER_NAME env IMMICH_KEY=... python3 -m immich_album_butler \\

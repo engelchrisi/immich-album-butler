@@ -29,7 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config-dir", type=Path,
                         default=Path(os.environ.get("BUTLER_CONFIG_DIR",
                                                     DEFAULT_CONFIG_DIR)),
-                        help="directory holding config.toml and albums.d/")
+                        help="directory holding config.toml")
     parser.add_argument("--state-dir", type=Path,
                         default=Path(os.environ.get("BUTLER_STATE_DIR",
                                                     DEFAULT_STATE_DIR)),

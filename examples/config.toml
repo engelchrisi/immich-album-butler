@@ -1,6 +1,11 @@
-# Global settings. Copy to /etc/immich-album-butler/config.toml and edit.
+# The whole configuration of immich-album-butler, in one file.
+# Copy to /etc/immich-album-butler/config.toml and edit.
+#
 # The API key is NOT here: it comes from IMMICH_KEY in the environment, so it
 # never lands in a config file, a backup or another user's `ps` output.
+#
+# Design mode rewrites this file when it saves. Values survive -- the login
+# hashes below included -- but comments like these do not.
 
 server = "http://immich.example.lan:2283"
 
@@ -9,8 +14,8 @@ server = "http://immich.example.lan:2283"
 #        "every <N>h", "every <N>m", "manual".
 #
 # "manual" is the safe default: an album updates only when you ask it to, and
-# an album that should keep itself current says so in its own file. Most albums
-# are finished holidays, which will never match anything new.
+# an album that should keep itself current says so in its own section. Most
+# albums are finished holidays, which will never match anything new.
 auto-update-schedule = "manual"
 
 # Used to interpret the schedules above. Defaults to the system time zone.
@@ -23,6 +28,8 @@ log_level = "info"
 design_port = 8081
 design_idle_minutes = 30
 
+
+# ---------------------------------------------------------------------------
 # Who may sign in to design mode.
 #
 # Design mode can show thumbnails from the photo library, so this login is the
@@ -32,6 +39,71 @@ design_idle_minutes = 30
 #     immich-album-butler passwd <name>
 #
 # and paste what it prints. The hash below is a placeholder and matches nothing.
+# ---------------------------------------------------------------------------
+
 [[design.users]]
 name     = "designer"
 password = "scrypt$32768$8$1$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+
+
+# ---------------------------------------------------------------------------
+# Named sets of people, so an album can say "Family Example" instead of listing
+# everyone. The names must match the person names in Immich exactly (apart from
+# capitalisation). No UUIDs: a name is what you will recognise in a year.
+# ---------------------------------------------------------------------------
+
+[groups."Family Example"]
+members = ["Alex", "Sam", "Robin"]
+
+[groups."The Grandparents"]
+members = ["Jo", "Pat"]
+
+
+# ---------------------------------------------------------------------------
+# The albums. The key after "albums." is the album's id on the command line:
+#
+#     immich-album-butler run --once italy-2019
+#
+# while "name" is what Immich shows. Everything outside [match] is about the
+# album; everything inside it says which assets belong there.
+# ---------------------------------------------------------------------------
+
+# A holiday album: a date range plus the places visited.
+[albums.italy-2019]
+name    = "Italy 2019"
+enabled = true
+# No auto-update-schedule: this album follows the global default, which is
+# "manual". The trip is over, so nothing new will ever match this rule; run it
+# by hand on the rare occasion that old photos are imported.
+
+  [albums.italy-2019.match]
+  from = 2019-07-01
+  to   = 2019-07-21
+  countries = ["Italy"]
+
+  # Person names and/or group names from [groups] above.
+  people      = ["Family Example"]
+  people_mode = "any"     # "any" of them appears; "all" = everyone together
+
+  # Most photos carry no GPS at all. With this on, a photo taken inside the
+  # date range joins the album even though it has no coordinates -- which is
+  # usually the majority of a holiday's pictures.
+  include_unlocated = true
+
+
+# A person album: everything Immich recognises as this person, kept current.
+# This is what immich-face-to-album did, expressed as a rule.
+[albums.photos-of-alex]
+name    = "Photos of Alex"
+
+# "mirror" also REMOVES assets from this album when they stop matching -- for
+# instance after a face is reassigned in Immich. It never deletes anything from
+# the library, only from this album. The default, "add", never removes.
+sync    = "mirror"
+
+# Unlike a finished holiday, a person album is never done: photos of Alex keep
+# arriving. So this one overrides the global "manual" default.
+auto-update-schedule = "weekly sun 04:00"
+
+  [albums.photos-of-alex.match]
+  people = ["Alex"]

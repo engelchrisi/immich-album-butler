@@ -55,14 +55,14 @@ class Fixture:
         root = Path(self._temp.name)
         self.config_dir = root / "config"
         self.state_dir = root / "state"
-        (self.config_dir / "albums.d").mkdir(parents=True)
+        self.config_dir.mkdir(parents=True)
         self.state_dir.mkdir()
-        (self.config_dir / "config.toml").write_text(
-            SETTINGS.replace("http://immich.example.lan:2283", stub.url),
-            encoding="utf-8")
-        for name, text in albums.items():
-            (self.config_dir / "albums.d" / f"{name}.toml").write_text(
-                text, encoding="utf-8")
+        parts = [SETTINGS.replace("http://immich.example.lan:2283", stub.url)]
+        for slug, text in albums.items():
+            parts.append(f"\n[albums.{slug}]\n"
+                         + text.replace("[match]", f"[albums.{slug}.match]"))
+        (self.config_dir / "config.toml").write_text("\n".join(parts),
+                                                     encoding="utf-8")
         self.client = ImmichClient(stub.url, API_KEY)
 
     def load(self):
@@ -116,7 +116,7 @@ class CreateTests(unittest.TestCase):
                 config, state = fx.load()
                 run_once(fx.client, config, state)
                 saved = State.load(fx.state_dir)
-                config_text = (fx.config_dir / "albums.d" / "italy-2019.toml").read_text()
+                config_text = (fx.config_dir / "config.toml").read_text()
         self.assertTrue(saved.for_album("italy-2019").album_id)
         self.assertNotIn(saved.for_album("italy-2019").album_id, config_text)
 

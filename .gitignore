@@ -4,8 +4,6 @@
 /.secrets/
 /config/
 /config.toml
-/albums.d/
-/groups.toml
 /state.json
 /scan.json
 *.env

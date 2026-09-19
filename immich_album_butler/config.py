@@ -1,16 +1,36 @@
 """Reading and writing the butler's configuration.
 
 The configuration is the product of design mode and the input of runtime mode,
-so it is optimised for being read by a human a year later: TOML, one file per
-album, people by name, schedules in words. No UUID ever appears in it -- the
-Immich album id lives in the state file instead, because an id is meaningless
-to a reader and breaks if the album is recreated.
+so it is optimised for being read by a human a year later: TOML, people by
+name, schedules in words. No UUID ever appears in it -- the Immich album id
+lives in the state file instead, because an id is meaningless to a reader and
+breaks if the album is recreated.
 
-Layout of the config directory:
+**Everything is in one file**, `config.toml` in the config directory: the
+global settings, the design-mode logins, the person groups and every album
+rule. One file is the whole configuration, so it can be read top to bottom,
+copied somewhere else, or put in a backup without anyone wondering which of
+several files they forgot.
 
-    config.toml          global settings
-    groups.toml          named sets of people (optional)
-    albums.d/*.toml      one album rule per file
+    server = "http://immich.example.lan:2283"
+    auto-update-schedule = "manual"
+
+    [[design.users]]                # who may sign in to design mode
+    name = "designer"
+    password = ...                  # an scrypt hash, never a plaintext
+
+    [groups."Family Example"]       # named sets of people
+    members = ["Alex", "Sam"]
+
+    [albums.italy-2019]             # the key is the album's id on the CLI
+    name = "Italy 2019"
+
+      [albums.italy-2019.match]     # what belongs in it
+      from = 2019-07-01
+      to   = 2019-07-21
+
+Design mode rewrites this file whole when it saves, so hand-written comments
+do not survive a save -- but the values do, the login hashes included.
 """
 
 from __future__ import annotations
@@ -18,7 +38,7 @@ from __future__ import annotations
 import datetime as dt
 import re
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from .schedule import Schedule, ScheduleError
@@ -28,12 +48,14 @@ DEFAULT_CONFIG_DIR = Path("/etc/immich-album-butler")
 DEFAULT_STATE_DIR = Path("/var/lib/immich-album-butler")
 DEFAULT_PORT = 8081
 
+CONFIG_NAME = "config.toml"
+
 SYNC_MODES = ("add", "mirror")
 PEOPLE_MODES = ("any", "all")
 
 
 class ConfigError(ValueError):
-    """Configuration that cannot be used, with a message naming the file."""
+    """Configuration that cannot be used, with a message naming the section."""
 
 
 @dataclass(frozen=True)
@@ -64,7 +86,7 @@ class MatchRule:
 
 @dataclass(frozen=True)
 class Album:
-    """One album rule, as read from one file in albums.d/."""
+    """One album rule, as read from one `[albums.<slug>]` table."""
 
     slug: str
     name: str
@@ -73,7 +95,6 @@ class Album:
     schedule_inherited: bool = False
     enabled: bool = True
     sync: str = "add"
-    path: Path | None = None
 
     @property
     def mirrors(self) -> bool:
@@ -90,7 +111,7 @@ class DesignUser:
 
 @dataclass(frozen=True)
 class Settings:
-    """The global config.toml."""
+    """The global part of config.toml: everything outside an album."""
 
     server: str
     schedule: Schedule
@@ -103,12 +124,12 @@ class Settings:
 
 @dataclass
 class Config:
-    """Everything loaded from the config directory."""
+    """Everything loaded from config.toml."""
 
     settings: Settings
     albums: list[Album] = field(default_factory=list)
     groups: dict[str, tuple[str, ...]] = field(default_factory=dict)
-    # Per-file problems. One broken album must not stop the others, so these
+    # Per-section problems. One broken album must not stop the others, so these
     # are collected rather than raised.
     errors: list[str] = field(default_factory=list)
     directory: Path | None = None
@@ -118,6 +139,18 @@ class Config:
             if album.slug == slug:
                 return album
         return None
+
+    def with_album(self, album: Album) -> "Config":
+        """A copy with `album` added, or replacing the one of the same slug."""
+        albums = [a for a in self.albums if a.slug != album.slug] + [album]
+        albums.sort(key=lambda a: a.slug)
+        return replace(self, albums=albums)
+
+    def without_album(self, slug: str) -> "Config":
+        return replace(self, albums=[a for a in self.albums if a.slug != slug])
+
+    def with_groups(self, groups: dict[str, tuple[str, ...]]) -> "Config":
+        return replace(self, groups=dict(groups))
 
     def expand_people(self, names: tuple[str, ...]) -> tuple[list[str], list[str]]:
         """Resolve group names to their members. Returns (people, problems)."""
@@ -139,30 +172,35 @@ class Config:
 # --------------------------------------------------------------------------
 
 def load(config_dir: Path) -> Config:
-    """Load the whole config directory, tolerating broken album files."""
+    """Load config.toml, tolerating a broken album or group section."""
     config_dir = Path(config_dir)
-    settings_path = config_dir / "config.toml"
-    if not settings_path.exists():
-        raise ConfigError(f"no config.toml in {config_dir}")
+    path = config_dir / CONFIG_NAME
+    if not path.exists():
+        raise ConfigError(f"no {CONFIG_NAME} in {config_dir}")
 
-    settings = _load_settings(settings_path)
-    groups, group_errors = _load_groups(config_dir / "groups.toml")
+    data = _read_toml(path)
+    settings = _load_settings(data, CONFIG_NAME)
+    groups, errors = _load_groups(data.get("groups"))
 
     albums: list[Album] = []
-    errors: list[str] = list(group_errors)
-    albums_dir = config_dir / "albums.d"
-    for path in sorted(albums_dir.glob("*.toml")) if albums_dir.is_dir() else []:
+    raw_albums = data.get("albums", {})
+    if not isinstance(raw_albums, dict):
+        errors.append("[albums] must be a table of album rules, one per album "
+                      "-- for example [albums.italy-2019]")
+        raw_albums = {}
+
+    for slug in sorted(raw_albums):
         try:
-            albums.append(_load_album(path, settings, groups))
-        except (ConfigError, ScheduleError, tomllib.TOMLDecodeError) as exc:
-            errors.append(f"{path.name}: {exc}")
+            albums.append(_load_album(slug, raw_albums[slug], settings, groups))
+        except (ConfigError, ScheduleError) as exc:
+            errors.append(f"[albums.{slug}]: {exc}")
 
     seen: dict[str, str] = {}
     for album in albums:
         if album.name in seen:
             errors.append(
-                f"{album.slug}.toml: album name {album.name!r} is already used by "
-                f"{seen[album.name]}.toml -- names must be unique")
+                f"[albums.{album.slug}]: album name {album.name!r} is already "
+                f"used by [albums.{seen[album.name]}] -- names must be unique")
         seen.setdefault(album.name, album.slug)
 
     return Config(settings=settings, albums=albums, groups=groups,
@@ -177,39 +215,38 @@ def _read_toml(path: Path) -> dict:
         raise ConfigError(f"{path.name} is not valid TOML: {exc}") from None
 
 
-def _load_settings(path: Path) -> Settings:
-    data = _read_toml(path)
+def _load_settings(data: dict, filename: str) -> Settings:
     server = data.get("server")
     if not server or not isinstance(server, str):
-        raise ConfigError(f"{path.name}: 'server' is required, e.g. "
+        raise ConfigError(f"{filename}: 'server' is required, e.g. "
                           f'server = "http://immich.example.lan:2283"')
     server = server.rstrip("/")
     if not server.startswith(("http://", "https://")):
-        raise ConfigError(f"{path.name}: 'server' must start with http:// or https://")
+        raise ConfigError(f"{filename}: 'server' must start with http:// or https://")
 
     raw_schedule = data.get("auto-update-schedule", data.get("auto_update_schedule"))
     try:
         schedule = parse_schedule(raw_schedule) if raw_schedule else parse_schedule("manual")
     except ScheduleError as exc:
-        raise ConfigError(f"{path.name}: auto-update-schedule: {exc}") from None
+        raise ConfigError(f"{filename}: auto-update-schedule: {exc}") from None
 
     idle = data.get("design_idle_minutes", 30)
     if not isinstance(idle, int) or idle < 0:
-        raise ConfigError(f"{path.name}: design_idle_minutes must be a "
+        raise ConfigError(f"{filename}: design_idle_minutes must be a "
                           f"non-negative integer")
     port = data.get("design_port", DEFAULT_PORT)
     if not isinstance(port, int) or not 1 <= port <= 65535:
-        raise ConfigError(f"{path.name}: design_port must be a port number")
+        raise ConfigError(f"{filename}: design_port must be a port number")
 
     timezone = data.get("timezone")
     if timezone is not None and not isinstance(timezone, str):
-        raise ConfigError(f"{path.name}: timezone must be a string, "
+        raise ConfigError(f"{filename}: timezone must be a string, "
                           f'e.g. timezone = "Europe/Rome"')
 
     return Settings(server=server, schedule=schedule, timezone=timezone,
                     log_level=str(data.get("log_level", "info")).lower(),
                     design_idle_minutes=idle, design_port=port,
-                    design_users=_load_users(data.get("design"), path.name))
+                    design_users=_load_users(data.get("design"), filename))
 
 
 def _load_users(design: object, filename: str) -> tuple[DesignUser, ...]:
@@ -254,35 +291,39 @@ def _load_users(design: object, filename: str) -> tuple[DesignUser, ...]:
     return tuple(users)
 
 
-def _load_groups(path: Path) -> tuple[dict[str, tuple[str, ...]], list[str]]:
-    if not path.exists():
+def _load_groups(data: object) -> tuple[dict[str, tuple[str, ...]], list[str]]:
+    if data is None:
         return {}, []
-    data = _read_toml(path)
+    if not isinstance(data, dict):
+        return {}, ["[groups] must be a table of named groups, for example "
+                    '[groups."Family Example"]']
+
     groups: dict[str, tuple[str, ...]] = {}
     errors: list[str] = []
     for name, body in data.items():
+        where = f"[groups.{_toml_key(name)}]"
         if not isinstance(body, dict):
-            errors.append(f"groups.toml: [{name}] must be a table with 'members'")
+            errors.append(f"{where} must be a table with 'members'")
             continue
         members = body.get("members", [])
         if not isinstance(members, list) or not all(isinstance(m, str) for m in members):
-            errors.append(f"groups.toml: [{name}] members must be a list of names")
+            errors.append(f"{where} members must be a list of names")
             continue
         if not members:
-            errors.append(f"groups.toml: [{name}] has no members")
+            errors.append(f"{where} has no members")
             continue
         deduped = tuple(dict.fromkeys(members))
         if name in deduped:
-            errors.append(f"groups.toml: [{name}] lists itself as a member")
+            errors.append(f"{where} lists itself as a member")
             continue
         groups[name] = deduped
     return groups, errors
 
 
-def _load_album(path: Path, settings: Settings,
+def _load_album(slug: str, data: object, settings: Settings,
                 groups: dict[str, tuple[str, ...]]) -> Album:
-    data = _read_toml(path)
-    slug = path.stem
+    if not isinstance(data, dict):
+        raise ConfigError("must be a table, for example [albums.italy-2019]")
 
     name = data.get("name")
     if not name or not isinstance(name, str):
@@ -308,7 +349,7 @@ def _load_album(path: Path, settings: Settings,
     match = _load_match(data.get("match", {}), groups)
 
     return Album(slug=slug, name=name, match=match, schedule=schedule,
-                 schedule_inherited=inherited, enabled=enabled, sync=sync, path=path)
+                 schedule_inherited=inherited, enabled=enabled, sync=sync)
 
 
 def _load_match(data: object, groups: dict[str, tuple[str, ...]]) -> MatchRule:
@@ -381,13 +422,51 @@ def _as_names(value: object, key: str) -> tuple[str, ...]:
 
 _BARE_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
 
-HEADER = ("# Written by immich-album-butler design mode. Values may be edited by\n"
-          "# hand; comments are not preserved when design mode saves again.\n")
+HEADER = (
+    "# immich-album-butler -- the whole configuration.\n"
+    "#\n"
+    "# Design mode rewrites this file when it saves: values survive, including\n"
+    "# the login hashes below, but comments you add here do not.\n")
+
+
+def dump_config(config: Config) -> str:
+    """Render a whole Config as the text of config.toml."""
+    settings = config.settings
+    out = [HEADER, "\n", f"server   = {_toml_str(settings.server)}\n"]
+    out.append(f"auto-update-schedule = {_toml_str(str(settings.schedule))}"
+               f"   # default for albums that set none\n")
+    if settings.timezone:
+        out.append(f"timezone = {_toml_str(settings.timezone)}\n")
+    out.append(f"log_level = {_toml_str(settings.log_level)}\n")
+    out.append(f"design_port = {settings.design_port}\n")
+    out.append(f"design_idle_minutes = {settings.design_idle_minutes}\n")
+
+    if settings.design_users:
+        out.append("\n# Who may sign in to design mode. Each value below is an\n"
+                   "# scrypt hash, never a plaintext. Make one with:\n"
+                   "#     immich-album-butler passwd <name>\n")
+        for user in settings.design_users:
+            out.append("\n[[design.users]]\n")
+            out.append(f"name     = {_toml_str(user.name)}\n")
+            out.append(f"password = {_toml_str(user.password_hash)}\n")
+
+    if config.groups:
+        out.append("\n# Named sets of people, so an album can name a group\n"
+                   "# instead of listing everyone.\n")
+        for name in sorted(config.groups):
+            out.append(f"\n[groups.{_toml_key(name)}]\n")
+            out.append(f"members = {_toml_list(config.groups[name])}\n")
+
+    for album in sorted(config.albums, key=lambda a: a.slug):
+        out.append("\n")
+        out.append(dump_album(album))
+    return "".join(out)
 
 
 def dump_album(album: Album) -> str:
-    """Render one album rule as TOML, in a fixed, readable order."""
-    lines = [HEADER, f"name    = {_toml_str(album.name)}\n"]
+    """Render one album as its `[albums.<slug>]` section, in a fixed order."""
+    lines = [f"[albums.{_toml_key(album.slug)}]\n",
+             f"name    = {_toml_str(album.name)}\n"]
     if not album.enabled:
         lines.append("enabled = false\n")
     if album.sync != "add":
@@ -395,64 +474,57 @@ def dump_album(album: Album) -> str:
                      f"# also removes assets from this album when they stop matching\n")
     if album.schedule_inherited:
         lines.append(f"# auto-update-schedule = \"{album.schedule}\"   "
-                     f"# inherited from config.toml\n")
+                     f"# inherited from the global default\n")
     else:
         lines.append(f"auto-update-schedule = {_toml_str(str(album.schedule))}\n")
 
     match = album.match
-    lines.append("\n[match]\n")
+    lines.append(f"\n  [albums.{_toml_key(album.slug)}.match]\n")
     if match.from_date:
-        lines.append(f"from = {match.from_date.isoformat()}\n")
+        lines.append(f"  from = {match.from_date.isoformat()}\n")
     if match.to_date:
-        lines.append(f"to   = {match.to_date.isoformat()}\n")
+        lines.append(f"  to   = {match.to_date.isoformat()}\n")
     for key, values in (("countries", match.countries), ("states", match.states),
                         ("cities", match.cities)):
         if values:
-            lines.append(f"{key} = {_toml_list(values)}\n")
+            lines.append(f"  {key} = {_toml_list(values)}\n")
     if match.people:
-        lines.append(f"people = {_toml_list(match.people)}"
+        lines.append(f"  people = {_toml_list(match.people)}"
                      f"   # person names and/or group names\n")
         if match.people_mode != "any":
-            lines.append(f'people_mode = "{match.people_mode}"'
+            lines.append(f'  people_mode = "{match.people_mode}"'
                          f"   # every one of them must appear\n")
     if match.has_places or match.has_dates:
-        lines.append(f"include_unlocated = {str(match.include_unlocated).lower()}"
+        lines.append(f"  include_unlocated = {str(match.include_unlocated).lower()}"
                      f"   # photos in the window that carry no GPS\n")
     return "".join(lines)
 
 
-def dump_groups(groups: dict[str, tuple[str, ...]]) -> str:
-    lines = [HEADER]
-    for name in sorted(groups):
-        lines.append(f"\n[{_toml_key(name)}]\n")
-        lines.append(f"members = {_toml_list(groups[name])}\n")
-    return "".join(lines)
-
-
-def write_album(directory: Path, album: Album) -> Path:
-    """Write albums.d/<slug>.toml atomically."""
-    albums_dir = Path(directory) / "albums.d"
-    albums_dir.mkdir(parents=True, exist_ok=True)
-    path = albums_dir / f"{album.slug}.toml"
-    _write_atomic(path, dump_album(album))
-    return path
-
-
-def write_groups(directory: Path, groups: dict[str, tuple[str, ...]]) -> Path:
-    path = Path(directory) / "groups.toml"
+def write_config(directory: Path, config: Config) -> Path:
+    """Write config.toml atomically, replacing the whole file."""
+    path = Path(directory) / CONFIG_NAME
     path.parent.mkdir(parents=True, exist_ok=True)
-    _write_atomic(path, dump_groups(groups))
+    _write_atomic(path, dump_config(config))
     return path
 
 
 def _write_atomic(path: Path, text: str) -> None:
+    """Replace the file in one step, keeping whatever mode it already had.
+
+    config.toml holds the login hashes, so it is typically 0640 -- a save must
+    not quietly widen that to whatever the umask says.
+    """
     temp = path.with_suffix(path.suffix + ".tmp")
     temp.write_text(text, encoding="utf-8")
+    try:
+        temp.chmod(path.stat().st_mode & 0o7777)
+    except FileNotFoundError:
+        pass
     temp.replace(path)
 
 
 def slugify(name: str) -> str:
-    """A file-name-safe slug for an album name, never empty."""
+    """A key-safe slug for an album name, never empty."""
     slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
     return slug or "album"
 

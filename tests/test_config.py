@@ -32,25 +32,31 @@ people = ["Alex"]
 """
 
 GROUPS = """
-["Family Example"]
+[groups."Family Example"]
 members = ["Alex", "Sam", "Robin"]
 """
 
 
 class ConfigDir:
-    """A throwaway config directory built from strings."""
+    """A throwaway config directory holding one config.toml, built from strings.
+
+    Albums are given here as the body of a rule and pasted under their own
+    `[albums.<slug>]` heading, which keeps these tests about what a rule means
+    rather than about where its heading sits.
+    """
 
     def __init__(self, settings=GLOBAL, albums=None, groups=None):
         self._temp = tempfile.TemporaryDirectory()
         self.path = Path(self._temp.name)
-        if settings is not None:
-            (self.path / "config.toml").write_text(settings, encoding="utf-8")
+        if settings is None:
+            return
+        parts = [settings]
         if groups is not None:
-            (self.path / "groups.toml").write_text(groups, encoding="utf-8")
-        albums_dir = self.path / "albums.d"
-        albums_dir.mkdir()
-        for name, text in (albums or {}).items():
-            (albums_dir / f"{name}.toml").write_text(text, encoding="utf-8")
+            parts.append(groups)
+        for slug, text in (albums or {}).items():
+            body = text.replace("[match]", f"[albums.{slug}.match]")
+            parts.append(f"\n[albums.{slug}]\n{body}")
+        (self.path / "config.toml").write_text("\n".join(parts), encoding="utf-8")
 
     def __enter__(self):
         return self
@@ -119,7 +125,7 @@ class BrokenAlbumTests(unittest.TestCase):
             config = cfg.load(d.path)
         self.assertEqual([a.slug for a in config.albums], ["italy-2019"])
         self.assertEqual(len(config.errors), 1)
-        self.assertIn("broken.toml", config.errors[0])
+        self.assertIn("[albums.broken]", config.errors[0])
 
     def test_an_empty_match_is_refused_rather_than_matching_everything(self):
         with ConfigDir(albums={"everything": 'name = "All"\n[match]\n'}) as d:
@@ -137,10 +143,10 @@ class BrokenAlbumTests(unittest.TestCase):
                                       '[match]\npeople = ["Alex"]\n'}) as d:
             self.assertIn("sync", cfg.load(d.path).errors[0])
 
-    def test_a_bad_schedule_names_the_album_file(self):
+    def test_a_bad_schedule_names_the_album(self):
         with ConfigDir(albums={"odd": 'name = "O"\nauto-update-schedule = "hourly"\n'
                                       '[match]\npeople = ["Alex"]\n'}) as d:
-            self.assertIn("odd.toml", cfg.load(d.path).errors[0])
+            self.assertIn("[albums.odd]", cfg.load(d.path).errors[0])
 
     def test_two_albums_with_the_same_name_are_reported(self):
         with ConfigDir(albums={"a": 'name = "Same"\n[match]\npeople = ["Alex"]\n',
@@ -169,29 +175,31 @@ class GroupTests(unittest.TestCase):
         self.assertEqual(people, ["Alex", "Sam", "Robin"])
 
     def test_a_group_listing_itself_is_reported(self):
-        with ConfigDir(groups='["Loop"]\nmembers = ["Loop", "Alex"]\n') as d:
+        with ConfigDir(groups='[groups."Loop"]\nmembers = ["Loop", "Alex"]\n') as d:
             config = cfg.load(d.path)
         self.assertIn("itself", config.errors[0])
         self.assertEqual(config.groups, {})
 
     def test_an_empty_group_is_reported(self):
-        with ConfigDir(groups='["Nobody"]\nmembers = []\n') as d:
+        with ConfigDir(groups='[groups."Nobody"]\nmembers = []\n') as d:
             self.assertIn("no members", cfg.load(d.path).errors[0])
 
     def test_a_name_that_is_both_a_group_and_a_member_is_refused(self):
-        groups = '["Alex"]\nmembers = ["Sam"]\n["Family Example"]\nmembers = ["Alex"]\n'
+        groups = ('[groups."Alex"]\nmembers = ["Sam"]\n'
+                  '[groups."Family Example"]\nmembers = ["Alex"]\n')
         with ConfigDir(albums={"x": 'name = "X"\n[match]\npeople = ["Alex"]\n'},
                        groups=groups) as d:
             self.assertIn("both a group", cfg.load(d.path).errors[0])
 
 
 class WritingTests(unittest.TestCase):
-    """Design mode writes these files; they must load back identically."""
+    """Design mode rewrites config.toml whole; it must load back identically."""
 
     def test_an_album_round_trips_through_toml(self):
         with ConfigDir(albums={"italy-2019": ITALY}, groups=GROUPS) as d:
-            original = cfg.load(d.path).albums[0]
-            cfg.write_album(d.path, original)
+            config = cfg.load(d.path)
+            original = config.albums[0]
+            cfg.write_config(d.path, config)
             reloaded = cfg.load(d.path).albums[0]
         self.assertEqual(original.name, reloaded.name)
         self.assertEqual(original.match, reloaded.match)
@@ -200,40 +208,85 @@ class WritingTests(unittest.TestCase):
 
     def test_a_mirror_person_album_round_trips(self):
         with ConfigDir(albums={"photos-of-alex": PERSON_ALBUM}) as d:
-            original = cfg.load(d.path).albums[0]
-            cfg.write_album(d.path, original)
+            config = cfg.load(d.path)
+            cfg.write_config(d.path, config)
             reloaded = cfg.load(d.path).albums[0]
         self.assertTrue(reloaded.mirrors)
         self.assertEqual(reloaded.match.people, ("Alex",))
 
+    def test_rewriting_keeps_the_settings_groups_and_every_album(self):
+        """A save touches one album, so everything else must survive it."""
+        with ConfigDir(albums={"italy-2019": ITALY, "photos-of-alex": PERSON_ALBUM},
+                       groups=GROUPS) as d:
+            before = cfg.load(d.path)
+            cfg.write_config(d.path, before)
+            after = cfg.load(d.path)
+        self.assertEqual(after.settings.server, before.settings.server)
+        self.assertEqual(after.settings.timezone, before.settings.timezone)
+        self.assertEqual(str(after.settings.schedule), str(before.settings.schedule))
+        self.assertEqual(after.groups, before.groups)
+        self.assertEqual([a.slug for a in after.albums],
+                         [a.slug for a in before.albums])
+        self.assertEqual(after.errors, [])
+
+    def test_a_login_hash_survives_a_save(self):
+        """Design mode writes the file the logins live in. Losing one would
+        lock the user out of the tool that just saved."""
+        block = (f'\n[[design.users]]\nname = "designer"\n'
+                 f'password = "{DesignUserTests.HASH}"\n')
+        with ConfigDir(settings=GLOBAL + block,
+                       albums={"photos-of-alex": PERSON_ALBUM}) as d:
+            config = cfg.load(d.path)
+            cfg.write_config(d.path, config)
+            users = cfg.load(d.path).settings.design_users
+        self.assertEqual([u.name for u in users], ["designer"])
+        self.assertEqual(users[0].password_hash, DesignUserTests.HASH)
+
+    def test_adding_an_album_leaves_the_others_alone(self):
+        with ConfigDir(albums={"italy-2019": ITALY}, groups=GROUPS) as d:
+            config = cfg.load(d.path)
+            extra = cfg.Album(slug="photos-of-sam", name="Photos of Sam",
+                              match=cfg.MatchRule(people=("Sam",)),
+                              schedule=config.settings.schedule,
+                              schedule_inherited=True)
+            cfg.write_config(d.path, config.with_album(extra))
+            after = cfg.load(d.path)
+        self.assertEqual([a.slug for a in after.albums],
+                         ["italy-2019", "photos-of-sam"])
+        self.assertEqual(after.errors, [])
+
+    def test_deleting_an_album_removes_only_that_one(self):
+        with ConfigDir(albums={"italy-2019": ITALY, "photos-of-alex": PERSON_ALBUM}) as d:
+            config = cfg.load(d.path)
+            cfg.write_config(d.path, config.without_album("photos-of-alex"))
+            after = cfg.load(d.path)
+        self.assertEqual([a.slug for a in after.albums], ["italy-2019"])
+
     def test_an_inherited_schedule_is_written_as_a_comment_not_a_value(self):
         with ConfigDir(albums={"photos-of-alex": PERSON_ALBUM}) as d:
-            album = cfg.load(d.path).albums[0]
-            text = cfg.dump_album(album)
-        self.assertIn("# auto-update-schedule", text)
-        with ConfigDir(albums={"photos-of-alex": PERSON_ALBUM}) as d:
-            cfg.write_album(d.path, album)
+            config = cfg.load(d.path)
+            self.assertIn("# auto-update-schedule", cfg.dump_album(config.albums[0]))
+            cfg.write_config(d.path, config)
             self.assertTrue(cfg.load(d.path).albums[0].schedule_inherited)
 
     def test_quotes_in_a_name_survive_the_round_trip(self):
         with ConfigDir(albums={"x": 'name = "X"\n[match]\npeople = ["Alex"]\n'}) as d:
-            album = cfg.load(d.path).albums[0]
+            config = cfg.load(d.path)
             from dataclasses import replace
-            album = replace(album, name='The "Big" Trip')
-            cfg.write_album(d.path, album)
+            renamed = replace(config.albums[0], name='The "Big" Trip')
+            cfg.write_config(d.path, config.with_album(renamed))
             self.assertEqual(cfg.load(d.path).albums[0].name, 'The "Big" Trip')
 
-    def test_groups_round_trip(self):
+    def test_a_group_name_with_spaces_survives_the_round_trip(self):
         groups = {"Family Example": ("Alex", "Sam"), "Book Club": ("Robin",)}
         with ConfigDir() as d:
-            cfg.write_groups(d.path, groups)
+            cfg.write_config(d.path, cfg.load(d.path).with_groups(groups))
             self.assertEqual(cfg.load(d.path).groups, groups)
 
-    def test_slugify_makes_a_safe_non_empty_file_name(self):
+    def test_slugify_makes_a_safe_non_empty_key(self):
         self.assertEqual(cfg.slugify("Italy 2019"), "italy-2019")
         self.assertEqual(cfg.slugify("Photos of Alex!"), "photos-of-alex")
         self.assertEqual(cfg.slugify("!!!"), "album")
-
 
 
 class DesignUserTests(unittest.TestCase):

@@ -18,9 +18,9 @@ butler keeps it filled as new photos arrive.
 It has two modes:
 
 - **Design mode** — a small web UI to explore your library, detect trips,
-  build album rules with live previews, and save each rule as a config file.
+  build album rules with live previews, and save them to the config file.
 - **Runtime mode** — a headless daemon with no UI and no open port. It reads
-  those config files and updates the albums on a schedule.
+  that file and updates the albums on a schedule.
 
 Design mode writes the configuration; runtime mode consumes it. You can run
 runtime mode alone, and start design mode only when you want to change
@@ -60,50 +60,48 @@ only while you are using it.
 
 ## Configuration
 
-Everything lives in one directory (`/etc/immich-album-butler` by default), in
-TOML, in terms you can read. People are referenced by **name**, never by UUID.
+**One file**, `/etc/immich-album-butler/config.toml` by default: the global
+settings, the design-mode logins, the person groups and every album rule. TOML,
+in terms you can read. People are referenced by **name**, never by UUID.
 
 ```toml
-# config.toml
 server = "http://immich.example.lan:2283"   # the API key comes from the environment
 auto-update-schedule = "manual"             # default for albums that set none
 timezone = "Europe/Rome"
-```
 
-```toml
-# albums.d/italy-2019.toml — a finished trip
+[groups."Family Example"]
+members = ["Alex", "Sam", "Robin"]
+
+# A finished trip. No schedule of its own, so it inherits "manual" -- the trip
+# is over, and nothing new will ever match it.
+[albums.italy-2019]
 name = "Italy 2019"
-# No schedule: it inherits the global "manual". The trip is over, so nothing
-# new will ever match; run it by hand if old photos turn up.
 
-[match]
-from = 2019-07-01
-to   = 2019-07-21
-countries = ["Italy"]
-people = ["Family Example"]                 # person names and/or group names
-include_unlocated = true                    # photos in the window that have no GPS
-```
+  [albums.italy-2019.match]
+  from = 2019-07-01
+  to   = 2019-07-21
+  countries = ["Italy"]
+  people = ["Family Example"]               # person names and/or group names
+  include_unlocated = true                  # photos in the window with no GPS
 
-```toml
-# albums.d/photos-of-alex.toml — a person album, never finished
+# A person album, never finished.
+[albums.photos-of-alex]
 name = "Photos of Alex"
 auto-update-schedule = "weekly sun 04:00"   # photos of Alex keep arriving
 sync = "mirror"                             # keep the album exactly in sync
 
-[match]
-people = ["Alex"]
+  [albums.photos-of-alex.match]
+  people = ["Alex"]
 ```
 
-```toml
-# groups.toml
-["Family Example"]
-members = ["Alex", "Sam", "Robin"]
-```
+The key after `albums.` is the album's id on the command line; `name` is what
+Immich shows. Schedules read as English, not cron: `daily 03:30`,
+`weekly sun 04:00`, `monthly 1 05:00`, `every 6h`, or `manual`.
 
-Schedules read as English, not cron: `daily 03:30`, `weekly sun 04:00`,
-`monthly 1 05:00`, `every 6h`, or `manual`.
+Design mode rewrites this file when it saves. Values survive — the login hashes
+included — but comments you add do not.
 
-See [`examples/`](examples/) for complete files.
+See [`examples/config.toml`](examples/config.toml) for a complete file.
 
 ## Usage
 

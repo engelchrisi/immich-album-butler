@@ -155,8 +155,7 @@ class SaveTests(DesignTestCase):
         self.api.save_album({**ITALY, "match": {**ITALY["match"],
                                                 "people": ["Alex"]}})
         self.api.run({"slug": "italy-2019"})
-        text = (self.config_dir / "albums.d" / "italy-2019.toml").read_text(
-            encoding="utf-8")
+        text = (self.config_dir / "config.toml").read_text(encoding="utf-8")
         self.assertIn('people = ["Alex"]', text)
         self.assertNotIn(ALEX, text)                       # not the person id
         self.assertIsNone(UUID_LIKE.search(text))          # nor the album id

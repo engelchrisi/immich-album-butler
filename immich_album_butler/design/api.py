@@ -9,9 +9,11 @@ Two rules this layer keeps:
 * **Preview never writes.** It builds the same `Plan` runtime mode does, so
   what the UI shows is exactly what a run would do -- not a second, parallel
   implementation that can drift.
-* **Saving is the only write to disk**, and it writes one album file at a time,
-  atomically, through `config.write_album`. The daemon re-reads the directory
-  every tick, so a save takes effect without restarting anything.
+* **Saving is the only write to disk.** The whole configuration is one file,
+  so every save rewrites `config.toml` atomically from the config that was just
+  read, carrying the login hashes and everything else through untouched. The
+  daemon re-reads the file every tick, so a save takes effect without
+  restarting anything.
 """
 
 from __future__ import annotations
@@ -108,7 +110,7 @@ class DesignApi:
         config = self.config()
         groups = dict(config.groups)
         groups[name] = tuple(dict.fromkeys(members))
-        config_module.write_groups(self.config_dir, groups)
+        config_module.write_config(self.config_dir, config.with_groups(groups))
         return self.groups()
 
     def delete_group(self, name: str) -> dict:
@@ -120,7 +122,7 @@ class DesignApi:
         if used:
             raise ApiError(f"group {name!r} is still used by: {', '.join(used)}")
         del groups[name]
-        config_module.write_groups(self.config_dir, groups)
+        config_module.write_config(self.config_dir, config.with_groups(groups))
         return self.groups()
 
     # -- albums -----------------------------------------------------------
@@ -147,25 +149,26 @@ class DesignApi:
 
     def save_album(self, payload: dict) -> dict:
         album = self._album_from(payload)
-        existing = self.config().album(album.slug)
+        config = self.config()
+        existing = config.album(album.slug)
         if existing is not None and existing.name != album.name:
             # The name is how a lost state file re-finds the Immich album, so
             # renaming quietly would orphan it.
             log.info("album %s renamed from %r to %r",
                      album.slug, existing.name, album.name)
-        path = config_module.write_album(self.config_dir, album)
+        path = config_module.write_config(self.config_dir, config.with_album(album))
         return {"saved": album.slug, "path": str(path),
                 "renamed_from": existing.name if existing and
                 existing.name != album.name else None}
 
     def delete_album(self, slug: str) -> dict:
-        """Removes the rule file. The Immich album itself is never touched."""
-        path = self.config_dir / "albums.d" / f"{slug}.toml"
-        if not path.exists():
+        """Removes the rule. The Immich album itself is never touched."""
+        config = self.config()
+        if config.album(slug) is None:
             raise ApiError(f"no album config {slug!r}", status=404)
-        path.unlink()
+        config_module.write_config(self.config_dir, config.without_album(slug))
         return {"deleted": slug,
-                "note": "the config file is gone; the Immich album is untouched"}
+                "note": "the rule is gone; the Immich album is untouched"}
 
     # -- preview, analyze, run --------------------------------------------
 
