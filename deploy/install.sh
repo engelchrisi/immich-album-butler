@@ -58,7 +58,8 @@ cat <<EOF
 
 Installed. Next:
   1. edit $CONFIG_DIR/config.toml         (set 'server')
-  2. edit $CONFIG_DIR/immich-album-butler.env   (set IMMICH_KEY, UI_PASSWORD)
+  2. edit $CONFIG_DIR/immich-album-butler.env   (set IMMICH_KEY), and add a
+     design-mode login with:  immich-album-butler passwd <name>
   3. sudo -u $USER_NAME env IMMICH_KEY=... python3 -m immich_album_butler \\
          --config-dir $CONFIG_DIR --state-dir $STATE_DIR check
   4. systemctl enable --now immich-album-butler
