@@ -281,6 +281,13 @@ class ImmichClient:
             added += sum(1 for r in results if r.get("success"))
         return added
 
+    def rename_album(self, album_id: str, name: str) -> None:
+        """Rename an album, e.g. to add the marker suffix to an adopted one.
+
+        Like set_album_cover, this needs `album.update` on the API key.
+        """
+        self.request("PATCH", f"albums/{album_id}", {"albumName": name})
+
     def set_album_cover(self, album_id: str, asset_id: str) -> None:
         """Point the album's cover at one of its assets.
 

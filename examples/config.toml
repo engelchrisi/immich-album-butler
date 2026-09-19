@@ -21,6 +21,17 @@ auto-update-schedule = "manual"
 # Used to interpret the schedules above. Defaults to the system time zone.
 timezone = "Europe/Rome"
 
+# Appended to every album name in Immich, so the albums this tool keeps can be
+# told apart from the ones you made by hand. Immich albums carry no tags, so
+# the name is the only marker its UI can show. Leave it out for no marker.
+#
+# A new album is created with the suffix already on it, which needs no extra
+# permission. An album that exists is renamed, which needs "album.update";
+# without that the album keeps its name and keeps working. Albums are found by
+# name with OR without the suffix, so switching this on or off never makes a
+# second copy of an album.
+album_suffix = "[AB]"
+
 log_level = "info"
 
 # Design mode: which port it listens on, and how long it stays up with nobody

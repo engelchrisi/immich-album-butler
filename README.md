@@ -99,6 +99,24 @@ The key after `albums.` is the album's id on the command line; `name` is what
 Immich shows. Schedules read as English, not cron: `daily 03:30`,
 `weekly sun 04:00`, `monthly 1 05:00`, `every 6h`, or `manual`.
 
+### Marking the butler's albums
+
+Immich albums have no tags, so the only place a marker can show up in its UI is
+the name. `album_suffix` appends one to every album the butler owns:
+
+```toml
+album_suffix = "[AB]"     # "Italy 2019" becomes "Italy 2019 [AB]" in Immich
+```
+
+Off by default. With it on, a new album is *created* with the suffix, which
+needs no extra permission; an album that already exists is **renamed**, which
+needs `album.update` — without it the album keeps its old name and keeps
+working, and the run says so.
+
+Albums are found by remembered id first, then by name **with or without** the
+suffix, so turning the marker on or off never produces a second copy of an
+album, and a rebuilt machine with no state file still finds them.
+
 ### Album covers
 
 The picture on the front of an album is a rule too, so the config still holds

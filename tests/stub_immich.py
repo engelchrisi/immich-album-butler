@@ -324,6 +324,8 @@ def _make_handler(stub: StubImmich):
                 album = stub.albums.get(path.rsplit("/", 1)[-1])
                 if album is None:
                     return self._send(404, {"message": "Not found"})
+                if "albumName" in body:
+                    album["albumName"] = body["albumName"]
                 if "albumThumbnailAssetId" in body:
                     cover = body["albumThumbnailAssetId"]
                     if not any(a["id"] == cover for a in album["assets"]):

@@ -126,6 +126,11 @@ class Settings:
     server: str
     schedule: Schedule
     timezone: str | None = None
+    # Appended to every album name in Immich, so the butler's albums can be
+    # told apart there. Immich albums carry no tags and nothing else writable
+    # worth marking, so the name is the only place a marker shows up in the UI.
+    # Empty (the default) means no marker at all.
+    album_suffix: str = ""
     log_level: str = "info"
     design_idle_minutes: int = 30
     design_port: int = DEFAULT_PORT
@@ -253,7 +258,14 @@ def _load_settings(data: dict, filename: str) -> Settings:
         raise ConfigError(f"{filename}: timezone must be a string, "
                           f'e.g. timezone = "Europe/Rome"')
 
+    suffix = data.get("album_suffix", "")
+    if not isinstance(suffix, str):
+        raise ConfigError(f"{filename}: album_suffix must be a string, "
+                          f'e.g. album_suffix = "[AB]"')
+    suffix = suffix.strip()
+
     return Settings(server=server, schedule=schedule, timezone=timezone,
+                    album_suffix=suffix,
                     log_level=str(data.get("log_level", "info")).lower(),
                     design_idle_minutes=idle, design_port=port,
                     design_users=_load_users(data.get("design"), filename))
@@ -469,6 +481,10 @@ def dump_config(config: Config) -> str:
                f"   # default for albums that set none\n")
     if settings.timezone:
         out.append(f"timezone = {_toml_str(settings.timezone)}\n")
+    if settings.album_suffix:
+        out.append(f"album_suffix = {_toml_str(settings.album_suffix)}"
+                   f"   # appended to every album name, to mark it as this "
+                   f"tool's\n")
     out.append(f"log_level = {_toml_str(settings.log_level)}\n")
     out.append(f"design_port = {settings.design_port}\n")
     out.append(f"design_idle_minutes = {settings.design_idle_minutes}\n")

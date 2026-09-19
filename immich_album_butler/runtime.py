@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,11 +45,14 @@ class Plan:
     # The asset the cover should point at, set only when the album asks for a
     # cover and the one it has now is a different picture.
     cover_asset_id: str | None = None
+    # The name the album should carry in Immich, set only when the marker
+    # suffix is on and the album does not carry it yet.
+    rename_to: str | None = None
 
     @property
     def changes(self) -> bool:
         return bool(self.to_add or self.to_remove or self.creates_album
-                    or self.cover_asset_id)
+                    or self.cover_asset_id or self.rename_to)
 
     def summary(self) -> str:
         if self.creates_album:
@@ -61,7 +65,10 @@ class Plan:
             parts.append(f"-{len(self.to_remove)}")
         if self.cover_asset_id:
             parts.append("new cover")
-        if not self.to_add and not self.to_remove and not self.cover_asset_id:
+        if self.rename_to:
+            parts.append(f"rename to {self.rename_to!r}")
+        if not (self.to_add or self.to_remove or self.cover_asset_id
+                or self.rename_to):
             parts.append("already up to date")
         return f"{self.album.name!r}: " + ", ".join(parts)
 
@@ -74,6 +81,7 @@ class RunReport:
     removed: int = 0
     created: bool = False
     cover_set: bool = False
+    renamed: bool = False
     error: str | None = None
     dry_run: bool = False
     warnings: list[str] = field(default_factory=list)
@@ -111,8 +119,21 @@ class Butler:
 
     # -- planning ---------------------------------------------------------
 
+    def marked_name(self, album: Album) -> str:
+        """The album's name in Immich, with the marker suffix if one is set."""
+        suffix = self.config.settings.album_suffix
+        if not suffix or album.name.endswith(suffix):
+            return album.name
+        return f"{album.name} {suffix}"
+
     def find_album(self, album: Album) -> AlbumInfo | None:
-        """By remembered id first, then by name -- so a lost state file recovers."""
+        """By remembered id first, then by name -- so a lost state file recovers.
+
+        Both names count: an album that already carries the marker suffix and
+        one that does not. Otherwise turning the suffix on would stop matching
+        every album the butler has, and the next run would build a second copy
+        of each one beside it.
+        """
         remembered = self.state.for_album(album.slug).album_id
         existing = self.albums()
         if remembered:
@@ -121,8 +142,18 @@ class Butler:
                     return info
             log.info("album %r: remembered album is gone, matching by name instead",
                      album.name)
+        wanted = {self.marked_name(album), album.name}
         for info in existing:
-            if info.name == album.name:
+            if info.name in wanted:
+                return info
+        # Nothing matched exactly. An album may still be one of ours carrying a
+        # marker that is no longer configured -- the suffix was changed, or
+        # turned off -- and on a container with no state file the name is all
+        # there is to go on. So a trailing bracketed word is allowed to differ.
+        for info in existing:
+            if _without_marker(info.name) == album.name:
+                log.info("album %r: adopting %r, which carries an old marker",
+                         album.name, info.name)
                 return info
         return None
 
@@ -147,6 +178,9 @@ class Butler:
             return plan
 
         plan.album_id = info.id
+        wanted_name = self.marked_name(album)
+        if info.name != wanted_name:
+            plan.rename_to = wanted_name
         current = self.client.album_asset_ids(info.id)
         plan.existing = len(current)
         plan.to_add = [asset_id for asset_id in matched if asset_id not in current]
@@ -187,16 +221,22 @@ class Butler:
             report.removed = len(plan.to_remove)
             report.created = plan.creates_album
             report.cover_set = bool(plan.cover_asset_id)
+            report.renamed = bool(plan.rename_to)
             return report
 
         if plan.creates_album:
-            info = self.client.create_album(album.name, asset_ids=plan.to_add)
+            # Created with the marker already on it, which needs no permission
+            # -- unlike renaming one that exists.
+            info = self.client.create_album(self.marked_name(album),
+                                            asset_ids=plan.to_add)
             report.created = True
             report.added = len(plan.to_add)
             plan.album_id = info.id
             self._albums = None
         else:
             assert plan.album_id is not None
+            if plan.rename_to:
+                report.renamed = self._rename(plan, report)
             if plan.to_add:
                 report.added = self.client.add_assets(plan.album_id, plan.to_add)
             if plan.to_remove:
@@ -210,6 +250,27 @@ class Butler:
         record.assets_added = report.added
         record.assets_removed = report.removed
         return report
+
+    def _rename(self, plan: Plan, report: RunReport) -> bool:
+        """Add the marker suffix to an album that has not got it yet.
+
+        Needs `album.update`, like the cover. A key without it means the album
+        keeps the name it has and keeps working; only the marker is missing,
+        which is cosmetic, so it must not fail the run.
+        """
+        assert plan.album_id is not None and plan.rename_to is not None
+        try:
+            self.client.rename_album(plan.album_id, plan.rename_to)
+            self._albums = None
+            return True
+        except ImmichError as exc:
+            if exc.status == 403:
+                report.warnings.append(
+                    f"not renamed to {plan.rename_to!r}: the API key needs the "
+                    f"'album.update' permission. Everything else worked.")
+            else:
+                report.warnings.append(f"not renamed: {exc}")
+            return False
 
     def _set_cover(self, plan: Plan, report: RunReport) -> bool:
         """Set the cover, turning a missing permission into a warning.
@@ -267,6 +328,14 @@ class Butler:
             if album.schedule.is_due(last, now):
                 due.append(album)
         return due
+
+
+_MARKER = re.compile(r"\s*\[[^\[\]]{1,16}\]$")
+
+
+def _without_marker(name: str) -> str:
+    """A name with one trailing `[...]` token removed, e.g. "Italy 2019 [AB]"."""
+    return _MARKER.sub("", name)
 
 
 def _with_people(rule, people: tuple[str, ...]):
