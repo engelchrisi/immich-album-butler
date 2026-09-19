@@ -81,6 +81,14 @@ class Album:
 
 
 @dataclass(frozen=True)
+class DesignUser:
+    """One design-mode login. Holds a password *hash*, never a password."""
+
+    name: str
+    password_hash: str
+
+
+@dataclass(frozen=True)
 class Settings:
     """The global config.toml."""
 
@@ -90,6 +98,7 @@ class Settings:
     log_level: str = "info"
     design_idle_minutes: int = 30
     design_port: int = DEFAULT_PORT
+    design_users: tuple[DesignUser, ...] = ()
 
 
 @dataclass
@@ -199,7 +208,50 @@ def _load_settings(path: Path) -> Settings:
 
     return Settings(server=server, schedule=schedule, timezone=timezone,
                     log_level=str(data.get("log_level", "info")).lower(),
-                    design_idle_minutes=idle, design_port=port)
+                    design_idle_minutes=idle, design_port=port,
+                    design_users=_load_users(data.get("design"), path.name))
+
+
+def _load_users(design: object, filename: str) -> tuple[DesignUser, ...]:
+    """Read `[[design.users]]`.
+
+    The password is stored as a hash produced by `immich-album-butler passwd`.
+    A plaintext `password` is refused rather than accepted quietly: design mode
+    can show the photo library, so a config file must not be a password file.
+    """
+    if design is None:
+        return ()
+    if not isinstance(design, dict):
+        raise ConfigError(f"{filename}: [design] must be a table")
+
+    raw = design.get("users", [])
+    if not isinstance(raw, list):
+        raise ConfigError(f"{filename}: [[design.users]] must be a list of users")
+
+    users: list[DesignUser] = []
+    seen: set[str] = set()
+    for entry in raw:
+        if not isinstance(entry, dict):
+            raise ConfigError(f"{filename}: each [[design.users]] entry is a table "
+                              f"with 'name' and 'password'")
+        name = entry.get("name")
+        if not name or not isinstance(name, str):
+            raise ConfigError(f"{filename}: a [[design.users]] entry has no 'name'")
+        if name.casefold() in seen:
+            raise ConfigError(f"{filename}: two design users are named {name!r}")
+        seen.add(name.casefold())
+
+        secret = entry.get("password")
+        if not secret or not isinstance(secret, str):
+            raise ConfigError(f"{filename}: user {name!r} has no 'password'. Run "
+                              f"'immich-album-butler passwd {name}' to make one.")
+        if not secret.startswith("scrypt$"):
+            raise ConfigError(
+                f"{filename}: the password for {name!r} is not a hash. Design mode "
+                f"never stores plaintext -- run 'immich-album-butler passwd {name}' "
+                f"and paste the line it prints.")
+        users.append(DesignUser(name=name, password_hash=secret))
+    return tuple(users)
 
 
 def _load_groups(path: Path) -> tuple[dict[str, tuple[str, ...]], list[str]]:

@@ -18,6 +18,11 @@ from urllib.parse import parse_qs
 
 API_KEY = "test-key"
 
+# A 1x1 transparent GIF, standing in for a thumbnail.
+_PIXEL = (b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\x00\x00\x00!"
+          b"\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00"
+          b"\x00\x02\x02D\x01\x00;")
+
 # Deliberately obvious placeholders, never anything from a real library.
 ZERO = "00000000-0000-0000-0000-0000000000"
 
@@ -231,10 +236,29 @@ def _make_handler(stub: StubImmich):
                     "id": album["id"], "albumName": album["albumName"],
                     "description": "", "assetCount": stub.display_count(album)})
 
+            if path.startswith("/api/assets/") and path.endswith("/thumbnail"):
+                if not self._authorized("asset.view"):
+                    return
+                asset_id = path.split("/")[3]
+                if not any(a["id"] == asset_id for a in stub.assets):
+                    return self._send(404, {"message": "Not found"})
+                # A one-pixel GIF stands in for the real JPEG.
+                self.send_response(200)
+                self.send_header("Content-Type", "image/gif")
+                self.send_header("Content-Length", str(len(_PIXEL)))
+                self.end_headers()
+                return self.wfile.write(_PIXEL)
+
             if path == "/api/search/suggestions":
                 if not self._authorized():
                     return
-                return self._send(200, ["Italy", "Spain"])
+                kind = (parse_qs(query).get("type") or ["country"])[0]
+                field = {"country": "country", "state": "state", "city": "city"}
+                if kind not in field:
+                    return self._send(400, {"message": f"bad type {kind}"})
+                values = sorted({a["exifInfo"].get(field[kind]) for a in stub.assets
+                                 if a["exifInfo"].get(field[kind])})
+                return self._send(200, values)
 
             self._send(404, {"message": f"no route {path}"})
 

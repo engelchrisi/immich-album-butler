@@ -17,11 +17,21 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from .config import MatchRule
 from .immich import Asset, ImmichClient, Person
 
 log = logging.getLogger(__name__)
+
+
+class Located(Protocol):
+    """The location fields `place_matches` needs. Asset and Point both fit."""
+
+    located: bool
+    city: str | None
+    state: str | None
+    country: str | None
 
 
 class MatchError(RuntimeError):
@@ -76,8 +86,12 @@ def _one(name: str, matches: list[Person], known: set[str] | None = None) -> str
     return matches[0].id
 
 
-def place_matches(asset: Asset, rule: MatchRule) -> bool:
-    """Whether one asset satisfies the rule's place criteria."""
+def place_matches(asset: "Located", rule: MatchRule) -> bool:
+    """Whether one asset satisfies the rule's place criteria.
+
+    Takes anything carrying the four location fields, so analyze mode can reuse
+    it on the smaller `trips.Point` without converting back to an Asset.
+    """
     if not rule.has_places:
         return True
     if not asset.located:

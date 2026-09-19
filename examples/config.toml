@@ -18,3 +18,16 @@ log_level = "info"
 # using it before shutting itself down again.
 design_port = 8081
 design_idle_minutes = 30
+
+# Who may sign in to design mode.
+#
+# Design mode can show thumbnails from the photo library, so this login is the
+# boundary around it -- without an entry here it refuses to listen anywhere but
+# 127.0.0.1. The value below is an scrypt hash, never a plaintext. Make one with
+#
+#     immich-album-butler passwd <name>
+#
+# and paste what it prints. The hash below is a placeholder and matches nothing.
+[[design.users]]
+name     = "designer"
+password = "scrypt$32768$8$1$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="

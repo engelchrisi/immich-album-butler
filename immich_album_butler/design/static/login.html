@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Album Butler — sign in</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login">
+
+<form method="post" action="/login" autocomplete="on">
+  <h1>Album Butler</h1>
+  <p class="muted">Design mode can show your photo library, so it asks who you are.</p>
+
+  <div class="message" role="alert"><!--MESSAGE--></div>
+
+  <label class="field">
+    <span>User</span>
+    <input name="name" type="text" autocomplete="username" autofocus required>
+  </label>
+
+  <label class="field">
+    <span>Password</span>
+    <input name="password" type="password" autocomplete="current-password" required>
+  </label>
+
+  <label class="check">
+    <input name="remember" type="checkbox" value="1" checked>
+    Stay signed in on this browser
+  </label>
+
+  <button type="submit" class="primary">Sign in</button>
+</form>
+
+</body>
+</html>

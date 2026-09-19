@@ -3,6 +3,11 @@
 A butler that keeps your [Immich](https://immich.app) albums in order: by
 people, places and dates.
 
+> **Built entirely by [Claude](https://claude.com/claude-code).** Every line of
+> code, test and document in this repository was written by Claude, working
+> from a human's requirements and review. Worth knowing before you trust it
+> with your library — read it as you would any code from a stranger.
+
 > Unofficial third-party tool. Not affiliated with or endorsed by the Immich
 > project.
 
@@ -23,8 +28,8 @@ something.
 
 ## Status
 
-Early development. The core (config, scheduling, matching, runtime) comes
-first; design mode follows.
+Early development, but usable: the core (config, scheduling, matching,
+runtime) and design mode are both in place.
 
 ## Requirements
 
@@ -83,11 +88,47 @@ immich-album-butler run                     # daemon: follow every album's sched
 immich-album-butler run --once --dry-run    # show what would change, change nothing
 immich-album-butler run --once italy-2019   # update one album now
 immich-album-butler design                  # web UI on http://127.0.0.1:8081
+immich-album-butler passwd alex             # make a design-mode login
 ```
 
-Configuration directory: `--config-dir`. The API key comes from `IMMICH_KEY`
-(the design UI's password from `UI_PASSWORD`), so no secret is ever stored in
-a config file or visible in `ps`.
+Configuration directory: `--config-dir`. The API key comes from `IMMICH_KEY`,
+so it is never stored in a config file and never visible in `ps`.
+
+## Design mode
+
+A small web UI for building album rules, started when you want it and stopped
+again by itself after `design_idle_minutes` of nobody using it.
+
+- **Builder** — Who / When / Where pickers over one live preview: how many
+  assets match, how many are already in the album, a thumbnail strip, and when
+  the album would next run. The preview is produced by the same code a real run
+  uses, so it cannot show you one thing and then do another.
+- **Trips** — scans the library for stretches spent away from home and offers
+  each as a ready-made album, marking those an album already covers.
+- **Analyze** — the near-misses a rule leaves out: assets shot within hours of
+  the album, ones inside the date range without GPS, ones inside the range but
+  elsewhere. Each says which rule change would include it, or can be added once
+  without changing the rule at all.
+
+### Signing in
+
+Design mode can show thumbnails from your library, so it sits behind a login.
+Accounts live in `config.toml` as scrypt hashes — never as passwords:
+
+```sh
+immich-album-butler passwd alex     # prompts, then prints the block to paste
+```
+
+```toml
+[[design.users]]
+name     = "alex"
+password = "scrypt$32768$8$1$..."   # a hash; a plaintext here is refused
+```
+
+The session is an HttpOnly, SameSite=Strict cookie, so you sign in once rather
+than on every visit — for the working day, or a month with "stay signed in".
+Repeated wrong guesses are locked out. With no accounts configured, design mode
+refuses to listen on anything but `127.0.0.1`.
 
 ## Safety
 

@@ -13,7 +13,8 @@ Type=simple
 User=immich-album-butler
 Group=immich-album-butler
 
-# Holds IMMICH_KEY and UI_PASSWORD.
+# Holds IMMICH_KEY. The design-mode login is a [[design.users]] entry in
+# config.toml instead, as a hash -- see 'immich-album-butler passwd'.
 EnvironmentFile=/etc/immich-album-butler/immich-album-butler.env
 
 ExecStart=/usr/bin/python3 -m immich_album_butler \

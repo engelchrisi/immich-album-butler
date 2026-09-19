@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Album Butler</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+  <h1>Album Butler</h1>
+  <nav id="tabs">
+    <button class="tab active" data-tab="albums">Albums</button>
+    <button class="tab" data-tab="builder">Builder</button>
+    <button class="tab" data-tab="trips">Trips</button>
+  </nav>
+  <div id="whoami">
+    <span class="muted" id="whoami-name"></span>
+    <form method="post" action="/logout"><button id="sign-out" hidden>Sign out</button></form>
+  </div>
+</header>
+
+<div id="banner" hidden></div>
+
+<!-- ---------------------------------------------------------------- -->
+<section id="albums" class="panel active">
+  <div class="bar">
+    <button id="new-album" class="primary">New album</button>
+    <button id="new-person-album">New person album</button>
+    <span class="muted" id="albums-note"></span>
+  </div>
+  <div id="album-list" class="cards"></div>
+</section>
+
+<!-- ---------------------------------------------------------------- -->
+<section id="builder" class="panel">
+  <div class="split">
+
+    <div class="column">
+      <label class="field">
+        <span>Album name</span>
+        <input id="album-name" type="text" placeholder="Italy 2019" autocomplete="off">
+      </label>
+
+      <fieldset>
+        <legend>Who</legend>
+        <div class="row">
+          <input id="person-search" type="search" placeholder="Search people and groups…"
+                 autocomplete="off">
+          <select id="people-mode">
+            <option value="any">any of them</option>
+            <option value="all">all together</option>
+          </select>
+        </div>
+        <div id="person-results" class="chips muted-empty"
+             data-empty="Type a name, or leave this empty for an album that is not about people."></div>
+        <div id="person-chosen" class="chips chosen"></div>
+        <button id="make-group" class="link" hidden>Save these as a group…</button>
+      </fieldset>
+
+      <fieldset>
+        <legend>When</legend>
+        <div class="row">
+          <label class="field"><span>From</span>
+            <input id="date-from" type="date"></label>
+          <label class="field"><span>To</span>
+            <input id="date-to" type="date"></label>
+        </div>
+        <div class="row presets">
+          <button data-preset="clear" class="link">clear</button>
+          <button data-preset="year" class="link">whole year</button>
+          <button data-preset="month" class="link">whole month</button>
+          <button data-preset="pad" class="link">± 1 day</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Where</legend>
+        <div class="row">
+          <select id="pick-country"><option value="">country…</option></select>
+          <select id="pick-state"><option value="">state…</option></select>
+          <select id="pick-city"><option value="">city…</option></select>
+        </div>
+        <div id="place-chosen" class="chips chosen muted-empty"
+             data-empty="No place filter: the date range alone decides."></div>
+        <label class="check">
+          <input id="include-unlocated" type="checkbox" checked>
+          Include photos in the date range that carry no GPS
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Options</legend>
+        <label class="field"><span>Update schedule</span>
+          <select id="schedule">
+            <option value="inherit">inherit the global default</option>
+            <option value="daily 03:30">daily at 03:30</option>
+            <option value="weekly sun 04:00">weekly, Sunday 04:00</option>
+            <option value="monthly 1 05:00">monthly, the 1st at 05:00</option>
+            <option value="every 6h">every 6 hours</option>
+            <option value="manual">manual only</option>
+          </select>
+        </label>
+        <div class="muted" id="next-run"></div>
+        <label class="check">
+          <input id="enabled" type="checkbox" checked> Enabled
+        </label>
+        <label class="check">
+          <input id="mirror" type="checkbox">
+          Also remove assets from the album when they stop matching
+          <span class="muted">(never deletes from the library)</span>
+        </label>
+      </fieldset>
+    </div>
+
+    <div class="column">
+      <div id="preview" class="preview">
+        <div class="muted">Pick something on the left to see a preview.</div>
+      </div>
+
+      <div class="bar">
+        <button id="save" class="primary">Save</button>
+        <button id="dry-run">Dry run</button>
+        <button id="run-now">Run now</button>
+        <button id="analyze">Analyze</button>
+        <button id="delete-config" class="danger" hidden>Delete config</button>
+      </div>
+      <div id="run-result" class="muted"></div>
+
+      <div id="analysis"></div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ---------------------------------------------------------------- -->
+<section id="trips" class="panel">
+  <div class="bar">
+    <button id="rescan">Scan the library</button>
+    <label class="field inline"><span>away km</span>
+      <input id="away-km" type="number" value="100" min="1" step="10"></label>
+    <label class="field inline"><span>min assets</span>
+      <input id="min-assets" type="number" value="30" min="1"></label>
+    <span class="muted" id="scan-note"></span>
+  </div>
+  <div id="trip-list" class="cards"></div>
+</section>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -235,5 +235,68 @@ class WritingTests(unittest.TestCase):
         self.assertEqual(cfg.slugify("!!!"), "album")
 
 
+
+class DesignUserTests(unittest.TestCase):
+    """`[[design.users]]`: the login that stands in front of the library."""
+
+    HASH = ("scrypt$32768$8$1$AAAAAAAAAAAAAAAAAAAAAA=="
+            "$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+
+    def settings(self, block):
+        return GLOBAL + block
+
+    def test_no_users_configured_is_allowed(self):
+        with ConfigDir() as d:
+            self.assertEqual(cfg.load(d.path).settings.design_users, ())
+
+    def test_a_user_is_read_with_its_hash(self):
+        block = f'\n[[design.users]]\nname = "designer"\npassword = "{self.HASH}"\n'
+        with ConfigDir(settings=self.settings(block)) as d:
+            users = cfg.load(d.path).settings.design_users
+        self.assertEqual([u.name for u in users], ["designer"])
+        self.assertEqual(users[0].password_hash, self.HASH)
+
+    def test_several_users_are_read(self):
+        block = (f'\n[[design.users]]\nname = "alex"\npassword = "{self.HASH}"\n'
+                 f'\n[[design.users]]\nname = "sam"\npassword = "{self.HASH}"\n')
+        with ConfigDir(settings=self.settings(block)) as d:
+            users = cfg.load(d.path).settings.design_users
+        self.assertEqual([u.name for u in users], ["alex", "sam"])
+
+    def test_a_plaintext_password_is_refused_with_the_command_to_run(self):
+        """A config file must not become a password file."""
+        block = '\n[[design.users]]\nname = "designer"\npassword = "hunter2"\n'
+        with ConfigDir(settings=self.settings(block)) as d:
+            with self.assertRaises(cfg.ConfigError) as caught:
+                cfg.load(d.path)
+        self.assertIn("passwd designer", str(caught.exception))
+
+    def test_a_user_without_a_password_is_refused(self):
+        block = '\n[[design.users]]\nname = "designer"\n'
+        with ConfigDir(settings=self.settings(block)) as d:
+            with self.assertRaises(cfg.ConfigError):
+                cfg.load(d.path)
+
+    def test_a_user_without_a_name_is_refused(self):
+        block = f'\n[[design.users]]\npassword = "{self.HASH}"\n'
+        with ConfigDir(settings=self.settings(block)) as d:
+            with self.assertRaises(cfg.ConfigError):
+                cfg.load(d.path)
+
+    def test_two_users_with_the_same_name_are_refused(self):
+        block = (f'\n[[design.users]]\nname = "designer"\npassword = "{self.HASH}"\n'
+                 f'\n[[design.users]]\nname = "Designer"\npassword = "{self.HASH}"\n')
+        with ConfigDir(settings=self.settings(block)) as d:
+            with self.assertRaises(cfg.ConfigError) as caught:
+                cfg.load(d.path)
+        self.assertIn("named", str(caught.exception))
+
+    def test_the_example_config_shipped_with_the_repo_parses(self):
+        """The example is what people copy, so it must actually load."""
+        example = Path(__file__).resolve().parent.parent / "examples" / "config.toml"
+        with ConfigDir(settings=example.read_text(encoding="utf-8")) as d:
+            settings = cfg.load(d.path).settings
+        self.assertEqual([u.name for u in settings.design_users], ["designer"])
+
 if __name__ == "__main__":
     unittest.main()

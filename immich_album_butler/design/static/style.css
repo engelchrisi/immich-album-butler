@@ -1,0 +1,172 @@
+/* Design mode's look: plain, dense, readable. No framework, no web fonts --
+   the page is served from a container with no internet access. */
+
+:root {
+  --bg: #12151a;
+  --panel: #1a1f27;
+  --line: #2c333f;
+  --ink: #e6e9ee;
+  --muted: #8b95a5;
+  --accent: #5aa9e6;
+  --good: #57b97a;
+  --warn: #d9a441;
+  --bad: #e06c75;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+header {
+  display: flex; align-items: center; gap: 1.5rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  position: sticky; top: 0; z-index: 5;
+}
+h1 { font-size: 1.05rem; margin: 0; font-weight: 600; letter-spacing: 0.02em; }
+
+nav { display: flex; gap: 0.25rem; }
+.tab {
+  background: none; border: 1px solid transparent; color: var(--muted);
+  padding: 0.35rem 0.9rem; border-radius: 6px; cursor: pointer; font-size: 0.95rem;
+}
+.tab:hover { color: var(--ink); }
+.tab.active { color: var(--ink); background: #232a34; border-color: var(--line); }
+
+.panel { display: none; padding: 1.25rem; }
+.panel.active { display: block; }
+
+/* -- layout ------------------------------------------------------------ */
+
+.split { display: flex; gap: 1.25rem; align-items: flex-start; flex-wrap: wrap; }
+.column { flex: 1 1 380px; min-width: 340px; display: flex;
+          flex-direction: column; gap: 0.9rem; }
+
+.bar { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;
+       margin-bottom: 1rem; }
+.row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: flex-end; }
+.row > * { flex: 1 1 auto; }
+
+fieldset {
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 0.85rem 1rem 1rem; margin: 0; background: var(--panel);
+}
+legend { padding: 0 0.4rem; color: var(--muted); font-size: 0.8rem;
+         text-transform: uppercase; letter-spacing: 0.08em; }
+
+/* -- controls ---------------------------------------------------------- */
+
+.field { display: flex; flex-direction: column; gap: 0.25rem; }
+.field > span { color: var(--muted); font-size: 0.8rem; }
+.field.inline { flex-direction: row; align-items: center; gap: 0.4rem; }
+.field.inline input { width: 5rem; }
+
+input, select, button {
+  font: inherit; color: var(--ink);
+  background: #10141a; border: 1px solid var(--line);
+  border-radius: 6px; padding: 0.4rem 0.55rem;
+}
+input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+button { cursor: pointer; background: #232a34; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: 0.5; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #0b1018;
+                 font-weight: 600; }
+button.danger { color: var(--bad); }
+button.link { background: none; border: none; color: var(--accent); padding: 0.2rem;
+              text-decoration: underline; flex: 0 0 auto; }
+
+.check { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem; }
+.check input { flex: 0 0 auto; }
+
+.presets { margin-top: 0.5rem; }
+
+/* -- chips ------------------------------------------------------------- */
+
+.chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.6rem;
+         min-height: 1.2rem; }
+.chip {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  background: #232a34; border: 1px solid var(--line);
+  border-radius: 999px; padding: 0.2rem 0.65rem; font-size: 0.88rem;
+  cursor: pointer;
+}
+.chip:hover { border-color: var(--accent); }
+.chip.group { border-style: dashed; }
+.chosen .chip { background: #1d3448; border-color: #2f5f85; }
+.chip .x { color: var(--muted); font-weight: 700; }
+
+.muted-empty:empty::before {
+  content: attr(data-empty); color: var(--muted); font-size: 0.88rem;
+}
+
+/* -- preview and cards -------------------------------------------------- */
+
+.preview, .card {
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 0.9rem 1rem; background: var(--panel);
+}
+.cards { display: grid; gap: 0.75rem;
+         grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+.card h3 { margin: 0 0 0.35rem; font-size: 1rem; }
+.card .meta { color: var(--muted); font-size: 0.85rem; }
+.card .bar { margin: 0.7rem 0 0; }
+
+.count { font-size: 1.9rem; font-weight: 600; line-height: 1.1; }
+.count small { font-size: 0.85rem; font-weight: 400; color: var(--muted);
+               display: block; }
+
+.strip { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 0.75rem; }
+.strip img {
+  width: 64px; height: 64px; object-fit: cover; border-radius: 4px;
+  background: #0d1117;
+}
+
+.warn { color: var(--warn); font-size: 0.88rem; margin-top: 0.5rem; }
+.bad { color: var(--bad); }
+.good { color: var(--good); }
+.muted { color: var(--muted); font-size: 0.88rem; }
+
+#analysis { display: flex; flex-direction: column; gap: 0.75rem; }
+#analysis .card h3 { font-size: 0.95rem; }
+
+#banner {
+  padding: 0.6rem 1.25rem; background: #3a2226; color: #ffd7da;
+  border-bottom: 1px solid #5c3238;
+}
+#banner.ok { background: #1d3524; color: #cbf0d5; border-color: #2f5f3f; }
+
+.pill { font-size: 0.75rem; padding: 0.1rem 0.5rem; border-radius: 999px;
+        border: 1px solid var(--line); color: var(--muted); }
+.pill.on { color: var(--good); border-color: #2f5f3f; }
+.pill.off { color: var(--muted); }
+.pill.err { color: var(--bad); border-color: #5c3238; }
+
+.spin { color: var(--muted); font-size: 0.88rem; }
+
+/* -- the sign-in page --------------------------------------------------- */
+
+body.login { display: grid; place-items: center; min-height: 100vh; }
+body.login form {
+  width: min(24rem, calc(100vw - 2rem));
+  display: flex; flex-direction: column; gap: 0.75rem;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--panel); padding: 1.75rem;
+}
+body.login h1 { font-size: 1.25rem; }
+body.login button { margin-top: 0.5rem; padding: 0.55rem; }
+body.login .message:empty { display: none; }
+body.login .message {
+  background: #3a2226; color: #ffd7da; border: 1px solid #5c3238;
+  border-radius: 6px; padding: 0.5rem 0.7rem; font-size: 0.9rem;
+}
+
+#whoami { margin-left: auto; display: flex; align-items: center; gap: 0.6rem; }

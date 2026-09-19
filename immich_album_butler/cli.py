@@ -58,6 +58,9 @@ def build_parser() -> argparse.ArgumentParser:
     trips.add_argument("--min-assets", type=int, default=trips_module.MIN_ASSETS)
     trips.add_argument("--min-days", type=int, default=trips_module.MIN_DAYS)
 
+    passwd = sub.add_parser("passwd", help="make a design-mode login for config.toml")
+    passwd.add_argument("name", help="the user name to sign in with")
+
     sub.add_parser("check", help="validate the configuration and exit")
     return parser
 
@@ -77,6 +80,8 @@ def main(argv: list[str] | None = None) -> int:
             return _trips(args)
         if args.command == "design":
             return _design(args)
+        if args.command == "passwd":
+            return _passwd(args)
     except ConfigError as exc:
         print(f"configuration error: {exc}", file=sys.stderr)
         return 2
@@ -164,9 +169,52 @@ def _trips(args) -> int:
 
 
 def _design(args) -> int:
-    print("design mode is not implemented yet -- coming in the next step.",
-          file=sys.stderr)
-    return 4
+    from .design.api import DesignApi
+    from .design.server import serve
+
+    config = config_module.load(args.config_dir)
+    for problem in config.errors:
+        logging.error("config: %s", problem)
+
+    api = DesignApi(_client(config), args.config_dir, args.state_dir)
+    serve(api, host=args.host, port=args.port or config.settings.design_port,
+          users=list(config.settings.design_users),
+          idle_minutes=config.settings.design_idle_minutes)
+    return 0
+
+
+def _passwd(args) -> int:
+    """Print a `[[design.users]]` block to paste into config.toml.
+
+    Printed rather than written: the config file is the administrator's, and a
+    command that edits it behind their back is a command they cannot review.
+    The password is read from a prompt, never a flag, so it stays out of shell
+    history and out of other users' `ps`.
+    """
+    from getpass import getpass
+
+    from .design.auth import AuthError, hash_password
+
+    if not sys.stdin.isatty():
+        print("passwd needs a terminal to prompt for the password",
+              file=sys.stderr)
+        return 2
+
+    first = getpass(f"Password for {args.name}: ")
+    if first != getpass("Repeat: "):
+        print("the two passwords differ", file=sys.stderr)
+        return 1
+    try:
+        hashed = hash_password(first)
+    except AuthError as exc:
+        print(f"{exc}", file=sys.stderr)
+        return 1
+
+    print("\n# Add this to config.toml. It holds a hash, not the password.")
+    print("[[design.users]]")
+    print(f'name     = "{args.name}"')
+    print(f'password = "{hashed}"')
+    return 0
 
 
 if __name__ == "__main__":

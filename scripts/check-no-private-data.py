@@ -66,7 +66,31 @@ PLACEHOLDER = re.compile(
     r"^(?:|<.*>|\{\{.*\}\}|\$\{?[A-Z_]+\}?|x{3,}|\.{3}|changeme|change-me|todo|none|null"
     r"|your[-_ ].*|example.*|placeholder.*|redacted.*|test[-_].*|fake.*|dummy.*|\*+"
     # A type annotation is not a secret.            private-data-check: allow
-    r"|str|bytes|int|float|bool|Any|Optional\[.*\]|str \| None)$", re.I)
+    r"|str|bytes|int|float|bool|Any|Optional\[.*\]|str \| None"
+    # An f-string hole: the value is computed, so the source holds nothing.
+    r"|\{[A-Za-z_][A-Za-z0-9_.\[\]'\"]*\})$", re.I)
+
+# An all-zero scrypt hash, the password equivalent of the all-zero UUID: it is
+# what the example config carries, and it matches no password. A hash elided
+# with "..." counts too -- that is how the README shows the shape of one.
+ZERO_HASH = re.compile(r"^scrypt\$\d+\$\d+\$\d+\$(?:A+=*\$A+=*|\.{3})$")
+
+# `password = get_it()` is code, not a credential -- and so is `password=PASSWORD`  # private-data-check: allow
+# as a keyword argument. A value that is a call, an attribute lookup, a bare
+# variable reference or a bracketed expression is source; a real secret is a
+# literal. Only ever applied to *unquoted* values (see scan_text).
+CODE_VALUE = re.compile(
+    r"^[A-Za-z_][A-Za-z0-9_.]*\s*\("      # get_it(...)  /  self.thing(...)
+    r"|^[A-Za-z_][A-Za-z0-9_]*\."         # obj.attr
+    r"|^[(\[{]"                           # (form.get(...))[0]
+    r"|^(?:\+\+|--)")                     # ++state.previewToken
+
+# A bare identifier -- `password=PASSWORD` -- is a variable reference in source,  # private-data-check: allow
+# but in a .env or a config file it is the secret itself (IMMICH_KEY=s3cr3t
+# looks identical). So this one is allowed only where code lives.
+BARE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+CODE_SUFFIXES = {".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".rs", ".java",
+                 ".c", ".h", ".cpp", ".sh"}
 
 # A long, high-entropy-looking run of key characters sitting in the source.
 KEYLIKE = re.compile(r"\b(?=[A-Za-z0-9_-]*[a-z])(?=[A-Za-z0-9_-]*[A-Z])"
@@ -130,9 +154,17 @@ def scan_text(path: str, text: str, terms_re: re.Pattern[str] | None) -> list[Fi
 
         for match in SECRET_ASSIGN.finditer(line):
             # A quoted value may contain spaces, e.g. "<your key here>".
-            value = (match.group("quoted") if match.group("quoted") is not None
+            quoted = match.group("quoted")
+            value = (quoted if quoted is not None
                      else match.group("bare")).rstrip(",);:")
-            if not PLACEHOLDER.match(value):
+            # The code exemption applies only to an unquoted value: an
+            # expression is never in quotes, but "s3cret(value)" is a literal
+            # that happens to look like a call, and must still be caught.
+            code = quoted is None and (
+                CODE_VALUE.match(value)
+                or (BARE_NAME.match(value)
+                    and Path(path).suffix.lower() in CODE_SUFFIXES))
+            if not PLACEHOLDER.match(value) and not ZERO_HASH.match(value) and not code:
                 findings.append(Finding(path, line_no, "secret assignment",
                                         f"{match.group(0)[:40]}..."))
 

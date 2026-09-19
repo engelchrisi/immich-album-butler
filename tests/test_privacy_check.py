@@ -174,5 +174,68 @@ class ExitCodeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
 
+
+class PasswordHashTests(unittest.TestCase):
+    """The login feature added three ways to be wrong about a `password =`."""  # private-data-check: allow
+
+    REAL = ("scrypt$32768$8$1$T0hOZnNkZmtqaGdmZHNhcQ=="
+            "$bXlyZWFsc2VjcmV0aGFzaHZhbHVlZ29lc2hlcmVvaw==")  # private-data-check: allow
+    ZERO = ("scrypt$32768$8$1$AAAAAAAAAAAAAAAAAAAAAA=="
+            "$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+
+    def test_a_real_looking_password_hash_is_caught(self):
+        """Someone's actual hash must never be committed, even hashed."""
+        with Tree({"config.toml": f'password = "{self.REAL}"\n'}) as tree:
+            findings = tree.check()
+        self.assertTrue(findings)
+        self.assertEqual(findings[0].kind, "secret assignment")
+
+    def test_the_all_zero_hash_the_example_uses_is_allowed(self):
+        with Tree({"config.toml": f'password = "{self.ZERO}"\n'}) as tree:
+            self.assertEqual(tree.check(), [])
+
+    def test_a_bare_name_is_code_in_a_source_file(self):
+        with Tree({"t.py": "self.login(password=PASSWORD)\n"}) as tree:  # private-data-check: allow
+            self.assertEqual(tree.check(), [])
+
+    def test_a_bare_value_in_an_env_file_is_still_a_secret(self):
+        """It looks identical to a variable reference, so the file type decides."""
+        planted = "IMMICH_KEY=s3cr3tvalue\n"          # private-data-check: allow
+        for name in (".env", "config.toml", "settings.yml"):
+            with Tree({name: planted}) as tree:
+                self.assertTrue(tree.check(), name)
+
+    def test_an_elided_hash_in_prose_is_allowed(self):
+        """The README shows the shape of a hash without carrying one."""
+        with Tree({"README.md": 'password = "scrypt$32768$8$1$..."\n'}) as tree:
+            self.assertEqual(tree.check(), [])
+
+    def test_an_elided_hash_with_real_material_is_still_caught(self):
+        planted = 'password = "scrypt$32768$8$1$T0hOZnNk..."\n'  # private-data-check: allow
+        with Tree({"README.md": planted}) as tree:
+            self.assertTrue(tree.check())
+
+    def test_a_plaintext_password_is_still_caught(self):
+        with Tree({"config.toml": 'password = "hunter2"\n'}) as tree:  # private-data-check: allow
+            findings = tree.check()
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].kind, "secret assignment")
+
+    def test_a_variable_assigned_from_a_call_is_not_a_secret(self):
+        source = ('passwd = sub.add_parser("passwd")\n'
+                  'secret = entry.get("password")\n'
+                  'token = self.headers.get("Cookie")\n')
+        with Tree({"cli.py": source}) as tree:
+            self.assertEqual(tree.check(), [])
+
+    def test_an_f_string_hole_is_not_a_secret(self):
+        with Tree({"cli.py": 'print(f\'password = "{hashed}"\')\n'}) as tree:
+            self.assertEqual(tree.check(), [])
+
+    def test_a_call_lookalike_holding_a_literal_is_still_caught(self):
+        """The exemption is for expressions, not for anything with a bracket."""
+        with Tree({"cli.py": 'password = "s3cret(value)"\n'}) as tree:  # private-data-check: allow
+            self.assertTrue(tree.check())
+
 if __name__ == "__main__":
     unittest.main()
