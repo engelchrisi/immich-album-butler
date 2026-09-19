@@ -1,0 +1,33 @@
+# --- never commit: real configuration, state and secrets ---------------------
+# Anchored to the repo root so the fictional files under examples/ stay tracked.
+/.private-terms
+/.secrets/
+/config/
+/config.toml
+/albums.d/
+/groups.toml
+/state.json
+/scan.json
+*.env
+!deploy/*.env.example
+
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- editors / OS ------------------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

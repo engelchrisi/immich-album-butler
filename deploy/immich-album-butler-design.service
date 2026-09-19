@@ -1,0 +1,40 @@
+[Unit]
+Description=Immich album butler (design mode web UI)
+Documentation=https://github.com/engelchrisi/immich-album-butler
+Wants=network-online.target
+After=network-online.target
+
+# Deliberately NOT enabled: start it when you want to change something, and it
+# shuts itself down again after design_idle_minutes of nobody using it.
+#   systemctl start immich-album-butler-design
+
+[Service]
+Type=simple
+User=immich-album-butler
+Group=immich-album-butler
+
+# Holds IMMICH_KEY and UI_PASSWORD.
+EnvironmentFile=/etc/immich-album-butler/immich-album-butler.env
+
+ExecStart=/usr/bin/python3 -m immich_album_butler \
+    --config-dir /etc/immich-album-butler \
+    --state-dir /var/lib/immich-album-butler \
+    design --host 0.0.0.0
+Environment=PYTHONPATH=/opt/immich-album-butler
+Environment=PYTHONUNBUFFERED=1
+
+Restart=no
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+# Design mode is the only part that writes configuration.
+ReadWritePaths=/var/lib/immich-album-butler /etc/immich-album-butler
+
+[Install]
+WantedBy=multi-user.target

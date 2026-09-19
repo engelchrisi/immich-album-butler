@@ -1,0 +1,20 @@
+# Global settings. Copy to /etc/immich-album-butler/config.toml and edit.
+# The API key is NOT here: it comes from IMMICH_KEY in the environment, so it
+# never lands in a config file, a backup or another user's `ps` output.
+
+server = "http://immich.example.lan:2283"
+
+# Default for every album that does not set its own auto-update-schedule.
+# Forms: "daily HH:MM", "weekly <day> HH:MM", "monthly <day-of-month> HH:MM",
+#        "every <N>h", "every <N>m", "manual".
+auto-update-schedule = "daily 03:30"
+
+# Used to interpret the schedules above. Defaults to the system time zone.
+timezone = "Europe/Rome"
+
+log_level = "info"
+
+# Design mode: which port it listens on, and how long it stays up with nobody
+# using it before shutting itself down again.
+design_port = 8081
+design_idle_minutes = 30

@@ -1,0 +1,38 @@
+[Unit]
+Description=Immich album butler (runtime mode)
+Documentation=https://github.com/engelchrisi/immich-album-butler
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=immich-album-butler
+Group=immich-album-butler
+
+# Holds IMMICH_KEY. Keep it 0640, owned root:immich-album-butler -- passing the
+# key this way keeps it out of `ps`, unlike a --key flag.
+EnvironmentFile=/etc/immich-album-butler/immich-album-butler.env
+
+ExecStart=/usr/bin/python3 -m immich_album_butler \
+    --config-dir /etc/immich-album-butler \
+    --state-dir /var/lib/immich-album-butler \
+    run
+Environment=PYTHONPATH=/opt/immich-album-butler
+Environment=PYTHONUNBUFFERED=1
+
+Restart=on-failure
+RestartSec=60
+
+# It only needs to read its config and write its own state.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+ReadWritePaths=/var/lib/immich-album-butler
+
+[Install]
+WantedBy=multi-user.target

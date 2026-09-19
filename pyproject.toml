@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "immich-album-butler"
+version = "0.1.0"
+description = "A butler that keeps your Immich albums in order: by people, places and dates."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+# No runtime dependencies, deliberately: the tool must unpack onto a minimal
+# host that has no pip. tomllib, urllib, http.server and zoneinfo are enough.
+dependencies = []
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: No Input/Output (Daemon)",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Multimedia :: Graphics",
+]
+
+[project.scripts]
+immich-album-butler = "immich_album_butler.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["immich_album_butler*"]

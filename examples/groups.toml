@@ -1,0 +1,11 @@
+# Named sets of people, so an album can say "Family Example" instead of listing
+# everyone. Design mode writes this file; editing it by hand is fine too.
+#
+# The names here must match the person names in Immich exactly (apart from
+# capitalisation). No UUIDs: a name is what you will recognise in a year.
+
+["Family Example"]
+members = ["Alex", "Sam", "Robin"]
+
+["The Grandparents"]
+members = ["Chris", "Jo"]

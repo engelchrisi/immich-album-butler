@@ -1,0 +1,27 @@
+# A holiday album: a date range plus the places visited.
+#
+# The file name (italy-2019) is the album's id on the command line:
+#     immich-album-butler run --once italy-2019
+
+name = "Italy 2019"
+enabled = true
+
+# This one refreshes weekly rather than at the global default, because a trip
+# from years ago rarely gains new photos.
+auto-update-schedule = "weekly sun 04:00"
+
+[match]
+from = 2019-07-01
+to   = 2019-07-21
+countries = ["Italy"]
+states    = []
+cities    = []
+
+# Person names and/or group names from groups.toml.
+people      = ["Family Example"]
+people_mode = "any"            # "any" of them appears; "all" = everyone together
+
+# Most photos carry no GPS at all. With this on, a photo taken inside the date
+# range joins the album even though it has no coordinates -- which is usually
+# the majority of a holiday's pictures.
+include_unlocated = true

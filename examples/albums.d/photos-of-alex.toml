@@ -1,0 +1,14 @@
+# A person album: everything Immich recognises as this person, kept current.
+# This is what immich-face-to-album did, expressed as a rule.
+
+name = "Photos of Alex"
+
+# "mirror" also REMOVES assets from this album when they stop matching -- for
+# instance after a face is reassigned in Immich. It never deletes anything from
+# the library, only from this album. The default, "add", never removes.
+sync = "mirror"
+
+# No auto-update-schedule: this album follows the global default in config.toml.
+
+[match]
+people = ["Alex"]
