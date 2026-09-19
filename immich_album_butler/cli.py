@@ -159,6 +159,11 @@ def _run(args) -> int:
                 done.append(f"share with {report.shared}")
             if done:
                 print(f"  ~  {report.name}: {prefix}" + ", ".join(done))
+            elif report.warnings:
+                # Something was asked for and did not happen -- a missing
+                # permission, an account nobody answers to. The warnings below
+                # say what; "up to date" would claim the opposite.
+                print(f"  ~  {report.name}: nothing changed")
             else:
                 print(f"  =  {report.name}: up to date")
         for warning in report.warnings:

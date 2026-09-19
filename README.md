@@ -56,7 +56,13 @@ sudo systemctl enable --now immich-album-butler
 ```
 
 The design-mode unit is installed but deliberately **not** enabled: start it
-only while you are using it.
+only while you are using it:
+
+```sh
+sudo systemctl start immich-album-butler-design
+```
+
+It shuts itself down after `design_idle_minutes` (default 30) of nobody using it.
 
 ## Configuration
 
@@ -186,7 +192,8 @@ See [`examples/config.toml`](examples/config.toml) for a complete file.
 immich-album-butler run                     # daemon: follow every album's schedule
 immich-album-butler run --once --dry-run    # show what would change, change nothing
 immich-album-butler run --once italy-2019   # update one album now
-immich-album-butler design                  # web UI on http://127.0.0.1:8081
+immich-album-butler design                  # web UI on http://127.0.0.1:8081 (default)
+immich-album-butler design --host 0.0.0.0 --port 9000  # listen on any interface, port 9000
 immich-album-butler passwd alex             # make a design-mode login
 ```
 
@@ -208,6 +215,26 @@ again by itself after `design_idle_minutes` of nobody using it.
   the album, ones inside the date range without GPS, ones inside the range but
   elsewhere. Each says which rule change would include it, or can be added once
   without changing the rule at all.
+
+### API key permissions
+
+The butler needs some permissions on its Immich API key. The **required** ones
+run on every update; the **optional** ones depend on which features you use:
+
+| Permission | Purpose | Needed for |
+|---|---|---|
+| `asset.read` | **required** | Search and fetch asset metadata and thumbnails |
+| `album.read` | **required** | List your albums |
+| `album.create` | **required** | Create new albums |
+| `albumAsset.create` | **required** | Add assets to albums |
+| `album.update` | optional | Rename with `album_suffix`, set `cover` |
+| `user.read` | optional | Resolve account names for `share_with` |
+| `albumUser.create` | optional | Share albums with other accounts |
+| `albumUser.update` | optional | Change a shared account's role later |
+| `albumAsset.delete` | optional | Remove assets when `sync = "mirror"` |
+
+Without an optional permission, that feature fails gracefully: the album still
+fills correctly, and the run reports what is missing.
 
 ### Signing in
 
