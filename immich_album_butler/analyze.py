@@ -69,7 +69,7 @@ def analyze(points: Sequence[Point], matched_ids: Sequence[str], rule: MatchRule
 
     outside = [p for p in points if p.id not in matched]
     found = [
-        _close_in_time(inside, outside, close_hours),
+        _close_in_time(inside, outside, rule, close_hours),
         _window_unlocated(outside, rule),
         _window_other_place(outside, rule),
         _nearby_other_time(inside, outside, rule, nearby_km),
@@ -82,26 +82,51 @@ def analyze(points: Sequence[Point], matched_ids: Sequence[str], rule: MatchRule
 # --------------------------------------------------------------------------
 
 def _close_in_time(inside: Sequence[Point], outside: Sequence[Point],
-                   hours: float) -> Suggestion | None:
+                   rule: MatchRule, hours: float) -> Suggestion | None:
     """Assets shot within `hours` of something already in the album.
 
     The arrival and departure photos, usually: the same occasion, just past
     whichever boundary the rule drew.
     """
+    if not rule.has_dates:
+        return None          # nothing to widen: the rule is not about dates
+
     stamps = sorted(p.taken_at for p in inside)
     window = dt.timedelta(hours=hours)
     near = [p for p in outside if _nearest_gap(stamps, p.taken_at) <= window]
     if not near:
         return None
 
+    # A rule's dates are whole days, so the widening that takes these in always
+    # takes the rest of those two days as well. Report what the change actually
+    # does rather than the tighter set that suggested it -- a count the builder
+    # then contradicts is worse than no count.
     dates = [p.taken_at.date() for p in near] + [s.date() for s in stamps]
+    widened = {"from": min(dates).isoformat(), "to": max(dates).isoformat()}
+    first, last = min(dates), max(dates)
+
+    detail = ("Taken just before or after the album's own assets -- usually "
+              "the journey there and back.")
+    if rule.people:
+        # Face data is not in the scan, so the people filter cannot be applied
+        # here; the honest thing is to show the set we are sure of.
+        hits = near
+        detail += (" The rule also filters by people, so widening the dates may "
+                   "bring in fewer than this.")
+    else:
+        hits = [p for p in outside
+                if not _within_window(p, rule)
+                and first <= p.taken_at.date() <= last
+                and place_matches(p, rule)]
+    if not hits:
+        return None
+
     return Suggestion(
         key="close_in_time",
         title=f"Within {_hours(hours)} of the album",
-        detail=("Taken just before or after the album's own assets -- usually "
-                "the journey there and back."),
-        asset_ids=[p.id for p in near],
-        adjust={"from": min(dates).isoformat(), "to": max(dates).isoformat()})
+        detail=detail,
+        asset_ids=[p.id for p in hits],
+        adjust=widened)
 
 
 def _window_unlocated(outside: Sequence[Point], rule: MatchRule) -> Suggestion | None:

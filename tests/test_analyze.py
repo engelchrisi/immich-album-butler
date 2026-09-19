@@ -29,36 +29,70 @@ class CloseInTimeTests(unittest.TestCase):
 
     def setUp(self):
         self.points = [
-            point(1, at(2019, 6, 30, 22), **ROME),      # 14h before: too early
-            point(2, at(2019, 7, 1, 6), **ROME),        # 6h before the album
-            point(3, at(2019, 7, 1, 12), **ROME),       # in the album
-            point(4, at(2019, 7, 2, 12), **ROME),       # in the album
-            point(5, at(2019, 7, 2, 20), **ROME),       # 8h after
+            point(1, at(2019, 6, 29, 12), **ROME),      # a day and a half early
+            point(2, at(2019, 6, 30, 20), **ROME),      # 6h before the album
+            point(3, at(2019, 7, 1, 2), **ROME),        # in the album
+            point(4, at(2019, 7, 2, 22), **ROME),       # in the album
+            point(5, at(2019, 7, 3, 6), **ROME),        # 8h after
+            point(6, at(2019, 6, 30, 3), **ROME),       # same day as 2, but 23h out
         ]
         self.matched = [fake_id(3), fake_id(4)]
         self.rule = MatchRule(from_date=dt.date(2019, 7, 1),
                               to_date=dt.date(2019, 7, 2))
 
-    def _group(self, key, **kwargs):
-        found = analyze(self.points, self.matched, self.rule, **kwargs)
+    def _group(self, key, rule=None, **kwargs):
+        found = analyze(self.points, self.matched, rule or self.rule, **kwargs)
         return next((s for s in found if s.key == key), None)
 
     def test_it_finds_the_assets_just_outside_the_window(self):
         group = self._group("close_in_time")
-        self.assertEqual(set(group.asset_ids), {fake_id(2), fake_id(5)})
+        self.assertIn(fake_id(2), group.asset_ids)
+        self.assertIn(fake_id(5), group.asset_ids)
 
     def test_something_far_outside_is_not_included(self):
         group = self._group("close_in_time")
         self.assertNotIn(fake_id(1), group.asset_ids)
 
     def test_a_wider_window_reaches_further(self):
-        group = self._group("close_in_time", close_hours=24)
+        group = self._group("close_in_time", close_hours=48)
         self.assertIn(fake_id(1), group.asset_ids)
 
     def test_the_suggested_adjustment_widens_the_dates_to_cover_them(self):
         group = self._group("close_in_time")
-        self.assertEqual(group.adjust["from"], "2019-07-01")
-        self.assertEqual(group.adjust["to"], "2019-07-02")
+        self.assertEqual(group.adjust["from"], "2019-06-30")
+        self.assertEqual(group.adjust["to"], "2019-07-03")
+
+    def test_the_count_matches_what_the_widened_dates_would_take(self):
+        """Dates are whole days, so the change takes the rest of those days too.
+
+        Point 6 is 23 hours from the album -- outside the 12-hour reach that
+        suggested the widening, but on a day the widening now covers. Counting
+        only the closer assets would promise less than the builder then shows.
+        """
+        group = self._group("close_in_time")
+        self.assertIn(fake_id(6), group.asset_ids)
+        self.assertEqual(len(group.asset_ids), 3)
+
+    def test_a_place_the_rule_rejects_is_not_counted(self):
+        """The widening only moves the dates; the place filter still applies."""
+        self.points.append(point(7, at(2019, 6, 30, 21), **MADRID))
+        group = self._group("close_in_time",
+                            rule=MatchRule(from_date=dt.date(2019, 7, 1),
+                                           to_date=dt.date(2019, 7, 2),
+                                           countries=["Italy"]))
+        self.assertNotIn(fake_id(7), group.asset_ids)
+
+    def test_a_rule_with_people_reports_only_the_assets_it_is_sure_of(self):
+        """Face data is not in the scan, so the wider set cannot be checked."""
+        rule = MatchRule(from_date=dt.date(2019, 7, 1), to_date=dt.date(2019, 7, 2),
+                         people=["Alex"])
+        group = self._group("close_in_time", rule=rule)
+        self.assertNotIn(fake_id(6), group.asset_ids)
+        self.assertIn("people", group.detail)
+
+    def test_a_rule_without_dates_has_nothing_to_widen(self):
+        rule = MatchRule(people=["Alex"])
+        self.assertIsNone(self._group("close_in_time", rule=rule))
 
     def test_an_album_with_nothing_in_it_yields_no_suggestions(self):
         self.assertEqual(analyze(self.points, [], self.rule), [])
