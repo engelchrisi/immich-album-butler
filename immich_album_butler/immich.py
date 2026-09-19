@@ -16,7 +16,7 @@ import logging
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Iterator
 
 log = logging.getLogger(__name__)
@@ -25,6 +25,13 @@ log = logging.getLogger(__name__)
 # costs one chunk rather than the whole album.
 ADD_CHUNK = 500
 PAGE_SIZE = 1000
+
+# The roles Immich gives a user on an album. "owner" is the album's own owner
+# and is never something the butler grants.
+VIEWER = "viewer"
+EDITOR = "editor"
+OWNER = "owner"
+SHARE_ROLES = (VIEWER, EDITOR)
 
 
 class ImmichError(RuntimeError):
@@ -91,17 +98,60 @@ class Person:
 
 
 @dataclass(frozen=True)
+class User:
+    """Another account on the same Immich server.
+
+    Only what is needed to share an album with somebody and to name them in a
+    message: the config refers to people by name or address, never by id.
+    """
+
+    id: str
+    name: str
+    email: str = ""
+
+    @classmethod
+    def from_api(cls, data: dict) -> "User":
+        return cls(id=data["id"], name=data.get("name") or "",
+                   email=data.get("email") or "")
+
+    def answers_to(self, wanted: str) -> bool:
+        folded = wanted.strip().casefold()
+        return folded in (self.name.casefold(), self.email.casefold())
+
+    def label(self) -> str:
+        return self.name or self.email or self.id
+
+
+@dataclass(frozen=True)
 class AlbumInfo:
     id: str
     name: str
     asset_count: int = 0
     cover_asset_id: str | None = None
+    # Who else can see this album: user id -> role ("viewer" or "editor").
+    # The owner is left out; an album is not shared with the person who owns it.
+    shared_with: dict[str, str] = field(default_factory=dict)
+    # Whose album this is. The listing returns albums shared *with* this
+    # account as well as its own, and only an owner may share one on.
+    owner_id: str | None = None
 
     @classmethod
     def from_api(cls, data: dict) -> "AlbumInfo":
+        shared = {}
+        owner = (data.get("owner") or {}).get("id")
+        for entry in data.get("albumUsers") or []:
+            role = entry.get("role") or ""
+            user = (entry.get("user") or {}).get("id")
+            if not user:
+                continue
+            if role == OWNER:
+                owner = owner or user
+            else:
+                shared[user] = role
         return cls(id=data["id"], name=data.get("albumName") or "",
                    asset_count=int(data.get("assetCount") or 0),
-                   cover_asset_id=data.get("albumThumbnailAssetId") or None)
+                   cover_asset_id=data.get("albumThumbnailAssetId") or None,
+                   shared_with=shared, owner_id=owner)
 
 
 class ImmichClient:
@@ -186,6 +236,20 @@ class ImmichClient:
     def albums(self) -> list[AlbumInfo]:
         data = self.request("GET", "albums") or []
         return [AlbumInfo.from_api(a) for a in data]
+
+    def users(self) -> list[User]:
+        """The other accounts on this server, for `share_with`.
+
+        Needs `user.read` on the key. Listing them is what lets the config name
+        an account the way a human does -- "viewer", or an address -- instead
+        of carrying a UUID, which is the same reason people are named by name.
+        """
+        data = self.request("GET", "users") or []
+        return [User.from_api(u) for u in data]
+
+    def me(self) -> User:
+        """The account this key belongs to. Needs `user.read`, like users()."""
+        return User.from_api(self.request("GET", "users/me") or {})
 
     def album_asset_ids(self, album_id: str) -> set[str]:
         """Which assets are in an album.
@@ -297,6 +361,28 @@ class ImmichClient:
         """
         self.request("PATCH", f"albums/{album_id}",
                      {"albumThumbnailAssetId": asset_id})
+
+    def share_album(self, album_id: str, grants: list[tuple[str, str]]) -> None:
+        """Give other accounts access to an album. Needs `albumUser.create`.
+
+        Only ever *adds* access. There is deliberately no unshare here: taking
+        somebody's access away is not something an unattended daemon should do
+        on the strength of an edited config file, so it stays a human act in
+        the Immich UI -- the same reasoning that keeps `albumAsset.delete` off
+        the key unless an album asks to mirror.
+        """
+        self.request("PUT", f"albums/{album_id}/users",
+                     {"albumUsers": [{"userId": user_id, "role": role}
+                                     for user_id, role in grants]})
+
+    def set_album_user_role(self, album_id: str, user_id: str, role: str) -> None:
+        """Change the role of somebody who already has access.
+
+        A separate call from share_album, and a separate permission
+        (`albumUser.update`), because Immich refuses to re-add a user who is
+        already on the album.
+        """
+        self.request("PUT", f"albums/{album_id}/user/{user_id}", {"role": role})
 
     def remove_assets(self, album_id: str, asset_ids: list[str]) -> int:
         """Remove assets from an album. Never deletes them from the library."""

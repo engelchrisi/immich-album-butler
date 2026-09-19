@@ -137,6 +137,44 @@ Setting a cover is the **only** thing the butler does that needs the
 `album.update` permission on the API key. Without it the album is still filled
 correctly and the run reports that the cover could not be set.
 
+### Sharing an album with another account
+
+Another account on the same Immich server can be given access to an album, named
+the way a person names it — an account name or an e-mail address, never a UUID:
+
+```toml
+[albums.photos-of-alex]
+name       = "Photos of Alex"
+share_with = ["Sam"]        # or ["sam@example.com"]
+share_role = "viewer"       # "viewer" (default) may look; "editor" may also change
+```
+
+Albums the butler has **no rule for** — the hand-made ones, usually the
+majority — are shared with a `[[shares]]` block instead. It only ever hands out
+access: it never creates, fills or renames an album.
+
+```toml
+[[shares]]
+albums = ["Holiday snaps", "Birthdays"]   # or ["*"] for every album you own
+with   = ["Sam"]
+role   = "viewer"
+```
+
+Two things the butler deliberately does **not** do:
+
+- **It never takes access away.** Removing a name from `share_with` leaves that
+  account's access alone, because an edited config file is a poor reason for
+  somebody to lose sight of an album. Unshare in the Immich UI.
+- **It cannot share people.** Immich has no per-person sharing; a person belongs
+  to one account. What it does have is a *cluster group*, which makes faces
+  recognised across the accounts in it — a one-time invitation in Immich's
+  sharing settings, not something this tool does. A rule per person, shared, is
+  the browsable substitute.
+
+Sharing needs **`user.read`** (to resolve a name to an account) and
+**`albumUser.create`** on the API key, plus `albumUser.update` if you change a
+role later. Without them the albums still fill and the run says what is missing.
+
 Design mode rewrites this file when it saves. Values survive — the login hashes
 included — but comments you add do not.
 

@@ -58,10 +58,17 @@ class StubImmich:
                  page_size: int = 2,
                  unnamed_people: int = 0,
                  stacked_pairs: int = 0,
+                 users: list[dict] | None = None,
                  missing_permissions: set[str] | None = None) -> None:
         self.stacked_pairs = stacked_pairs
         self.assets = assets or []
         self.people = people or []
+        # Other accounts on this server, for share_with. The owner of the
+        # albums is not among them: Immich never lists an album's owner as
+        # somebody it is shared with.
+        self.users = users or []
+        # Whose key this is, and so who owns every album the stub creates.
+        self.owner = {"id": "user-me", "name": "Me", "email": "me@example.com"}
         # Face clusters nobody has named. A real library has thousands.
         self.unnamed_people = [{"id": f"cluster-{n}", "name": ""}
                                for n in range(unnamed_people)]
@@ -99,10 +106,17 @@ class StubImmich:
 
     def add_album(self, name: str, asset_ids: list[str] | None = None) -> dict:
         album = {"id": str(uuid.uuid4()), "albumName": name,
-                 "assets": [{"id": i} for i in (asset_ids or [])]}
+                 "assets": [{"id": i} for i in (asset_ids or [])],
+                 "albumUsers": [{"user": self.owner, "role": "owner"}]}
         album["assetCount"] = len(album["assets"])
         self.albums[album["id"]] = album
         return album
+
+    def shared_with(self, album: dict) -> dict[str, str]:
+        """Who can see an album: user id -> role, owner excluded."""
+        return {entry["user"]["id"]: entry["role"]
+                for entry in album.get("albumUsers") or []
+                if entry["role"] != "owner"}
 
     def album_named(self, name: str) -> dict | None:
         for album in self.albums.values():
@@ -223,8 +237,21 @@ def _make_handler(stub: StubImmich):
                 return self._send(200, [
                     {"id": a["id"], "albumName": a["albumName"],
                      "assetCount": stub.display_count(a),
-                     "albumThumbnailAssetId": a.get("albumThumbnailAssetId")}
+                     "albumThumbnailAssetId": a.get("albumThumbnailAssetId"),
+                     # Like the real listing: who the album is shared with
+                     # comes back with it, so no extra call is needed.
+                     "albumUsers": a.get("albumUsers") or []}
                     for a in stub.albums.values()])
+
+            if path == "/api/users/me":
+                if not self._authorized("user.read"):
+                    return
+                return self._send(200, stub.owner)
+
+            if path == "/api/users":
+                if not self._authorized("user.read"):
+                    return
+                return self._send(200, list(stub.users))
 
             if path.startswith("/api/albums/"):
                 if not self._authorized("album.read"):
@@ -307,6 +334,42 @@ def _make_handler(stub: StubImmich):
                         results.append({"id": asset_id, "success": True})
                 album["assetCount"] = len(album["assets"])
                 return self._send(200, results)
+
+            # Sharing an album with another account. Two calls with two
+            # permissions, because Immich refuses to re-add a user who is
+            # already on the album -- their role is changed instead.
+            if path.startswith("/api/albums/") and path.endswith("/users"):
+                if not self._authorized("albumUser.create"):
+                    return
+                album = stub.albums.get(path.split("/")[3])
+                if album is None:
+                    return self._send(404, {"message": "Not found"})
+                present = stub.shared_with(album)
+                for entry in body.get("albumUsers") or []:
+                    user_id = entry.get("userId")
+                    known = next((u for u in stub.users if u["id"] == user_id), None)
+                    if known is None:
+                        return self._send(400, {"message": "no such user"})
+                    if user_id in present:
+                        return self._send(
+                            400, {"message": "user is already in the album"})
+                    album.setdefault("albumUsers", []).append(
+                        {"user": known, "role": entry.get("role") or "editor"})
+                return self._send(200, {"id": album["id"]})
+
+            if "/api/albums/" in path and "/user/" in path:
+                if not self._authorized("albumUser.update"):
+                    return
+                parts = path.split("/")
+                album = stub.albums.get(parts[3])
+                if album is None:
+                    return self._send(404, {"message": "Not found"})
+                user_id = parts[5]
+                for entry in album.get("albumUsers") or []:
+                    if entry["user"]["id"] == user_id:
+                        entry["role"] = body.get("role") or entry["role"]
+                        return self._send(200, {"id": album["id"]})
+                return self._send(400, {"message": "user is not in the album"})
 
             self._send(404, {"message": f"no route {path}"})
 

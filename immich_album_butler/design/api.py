@@ -25,6 +25,7 @@ from pathlib import Path
 from .. import analyze as analyze_module
 from .. import config as config_module
 from .. import cover as cover_module
+from .. import immich as immich_module
 from .. import trips as trips_module
 from ..config import Album, MatchRule, slugify
 from ..immich import ImmichClient, ImmichError
@@ -138,6 +139,8 @@ class DesignApi:
                 "slug": album.slug, "name": album.name,
                 "enabled": album.enabled, "sync": album.sync,
                 "cover": album.cover,
+                "share_with": list(album.share_with),
+                "share_role": album.share_role,
                 "schedule": str(album.schedule),
                 "schedule_inherited": album.schedule_inherited,
                 "match": rule_to_json(album.match),
@@ -148,6 +151,20 @@ class DesignApi:
         return {"albums": rows,
                 "default_schedule": str(config.settings.schedule),
                 "errors": config.errors}
+
+    def accounts(self) -> dict:
+        """The other accounts on this server, for the share picker.
+
+        A key without `user.read` gets an empty list and a note rather than an
+        error: sharing is one optional feature, and design mode has to stay
+        usable without it.
+        """
+        try:
+            users = self.client.users()
+        except ImmichError as exc:
+            return {"accounts": [], "unavailable": str(exc)}
+        return {"accounts": [{"name": user.name, "email": user.email}
+                             for user in users]}
 
     def save_album(self, payload: dict) -> dict:
         album = self._album_from(payload)
@@ -197,6 +214,9 @@ class DesignApi:
             # would end up on the front before anything is saved.
             "cover": album.cover,
             "cover_asset": plan.cover_asset_id,
+            # How many accounts would gain access, so the builder can say so
+            # before anything is saved.
+            "to_share": len(plan.to_share),
             "next_run": self._next_run(album, config),
         }
 
@@ -334,10 +354,32 @@ class DesignApi:
         if cover == cover_module.EVERYONE and not rule.people:
             raise ApiError('a cover of "everyone" needs the rule to name people')
 
+        share_with, share_role = self._sharing_from(payload)
+
         return Album(slug=slug, name=name or "(draft)", match=rule,
                      schedule=schedule, schedule_inherited=inherited,
                      enabled=bool(payload.get("enabled", True)), sync=sync,
-                     cover=cover)
+                     cover=cover, share_with=share_with, share_role=share_role)
+
+    def _sharing_from(self, payload: dict) -> tuple[tuple[str, ...], str]:
+        """Read the builder's share picker.
+
+        Saving rewrites the whole config file, so a payload that simply omits
+        `share_with` would silently drop sharing from a rule that had it --
+        the picker always sends the field, and an absent one means nobody.
+        """
+        raw = payload.get("share_with") or []
+        if isinstance(raw, str):
+            raw = [raw]
+        if not isinstance(raw, list):
+            raise ApiError("share_with must be a list of account names")
+        names = [str(entry).strip() for entry in raw if str(entry).strip()]
+
+        role = str(payload.get("share_role") or immich_module.VIEWER).lower()
+        if role not in immich_module.SHARE_ROLES:
+            raise ApiError(f"share_role must be one of "
+                           f"{', '.join(immich_module.SHARE_ROLES)}, got {role!r}")
+        return tuple(dict.fromkeys(names)), role
 
     def _rule_from(self, data: dict) -> MatchRule:
         rule = MatchRule(

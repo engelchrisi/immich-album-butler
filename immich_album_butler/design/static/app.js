@@ -15,12 +15,14 @@ const state = {
   groups: [],
   people: [],           // last search result
   previewToken: 0,
+  accounts: [],         // other accounts on this server, for sharing
+  accountsNote: "",
 };
 
 function emptyDraft() {
   return {
     slug: "", name: "", enabled: true, sync: "add", schedule: "inherit",
-    cover: "auto",
+    cover: "auto", share_with: [], share_role: "viewer",
     match: {
       from: null, to: null, countries: [], states: [], cities: [],
       people: [], people_mode: "any", include_unlocated: true,
@@ -106,7 +108,9 @@ async function loadAlbums() {
         describe(album.match), el("br"),
         `${album.schedule}${album.schedule_inherited ? " (inherited)" : ""}`,
         album.sync === "mirror" ? " · mirrored" : "",
-        album.cover && album.cover !== "auto" ? ` · cover: ${album.cover}` : ""),
+        album.cover && album.cover !== "auto" ? ` · cover: ${album.cover}` : "",
+        (album.share_with || []).length
+          ? ` · shared with ${album.share_with.join(", ")}` : ""),
       album.last_error
         ? el("div", { class: "warn bad" }, album.last_error)
         : el("div", { class: "muted" },
@@ -160,6 +164,8 @@ function editAlbum(album) {
   state.draft = {
     slug: album.slug, name: album.name, enabled: album.enabled,
     sync: album.sync, cover: album.cover || "auto",
+    share_with: [...(album.share_with || [])],
+    share_role: album.share_role || "viewer",
     schedule: album.schedule_inherited ? "inherit" : album.schedule,
     match: { ...album.match },
   };
@@ -179,6 +185,7 @@ function fillForm() {
   $("enabled").checked = draft.enabled;
   $("mirror").checked = draft.sync === "mirror";
   fillCover(draft.cover || "auto");
+  fillSharing(draft.share_with || [], draft.share_role || "viewer");
   $("schedule").value = [...$("schedule").options].some(o => o.value === draft.schedule)
     ? draft.schedule : "inherit";
   $("delete-config").hidden = !state.saved.some(a => a.slug === draft.slug);
@@ -206,6 +213,58 @@ function bindDraft() {
   };
   $("cover").onchange = () => { readCover(); refreshPreview(); };
   $("cover-name").oninput = debounce(() => { readCover(); refreshPreview(); }, 350);
+  $("share-with").onchange = () => { readSharing(); refreshPreview(); };
+  $("share-role").onchange = () => { readSharing(); refreshPreview(); };
+}
+
+/* -- builder: sharing ---------------------------------------------------
+
+   The picker lists the other accounts on this server. Loading it is allowed
+   to fail: a key without `user.read` simply cannot share, and that must not
+   stop the rest of the builder working. */
+
+async function loadAccounts() {
+  try {
+    const data = await api("/api/accounts");
+    state.accounts = data.accounts || [];
+    state.accountsNote = data.unavailable || "";
+  } catch (_) {
+    state.accounts = [];
+    state.accountsNote = "the account list could not be read";
+  }
+  fillSharing(state.draft.share_with || [], state.draft.share_role || "viewer");
+}
+
+function fillSharing(chosen, role) {
+  const box = $("share-with");
+  const wanted = new Set(chosen.map(name => name.toLowerCase()));
+  box.replaceChildren();
+  for (const account of state.accounts || []) {
+    const label = account.name || account.email;
+    const option = el("option", { value: label }, label);
+    option.selected = wanted.has(label.toLowerCase()) ||
+                      wanted.has((account.email || "").toLowerCase());
+    box.append(option);
+  }
+  // A name in the rule that no longer answers to an account is kept and shown,
+  // rather than quietly dropped on the next save.
+  for (const name of chosen) {
+    if (![...box.options].some(o => o.selected && o.value === name)) {
+      const option = el("option", { value: name }, `${name} (unknown)`);
+      option.selected = true;
+      box.append(option);
+    }
+  }
+  $("share-role").value = role;
+  $("share-role-row").hidden = chosen.length === 0;
+  if (state.accountsNote) $("share-note").textContent = state.accountsNote;
+}
+
+function readSharing() {
+  const chosen = [...$("share-with").selectedOptions].map(o => o.value);
+  state.draft.share_with = chosen;
+  state.draft.share_role = $("share-role").value;
+  $("share-role-row").hidden = chosen.length === 0;
 }
 
 /* The cover is one value in the config but two controls here: a list of rules
@@ -428,6 +487,10 @@ const refreshPreview = debounce(async () => {
       el("img", { src: `/api/thumb/${data.cover_asset}`, loading: "lazy", alt: "" }),
       el("span", { class: "muted" }, "would become the album cover")));
   }
+  if (data.to_share) {
+    children.push(el("div", { class: "muted" },
+      `${data.to_share} account(s) would gain access to this album`));
+  }
   $("next-run").textContent = data.next_run
     ? `next automatic run: ${data.next_run.replace("T", " ")}`
     : "never runs automatically";
@@ -630,6 +693,7 @@ async function start() {
   await loadAlbums();
   try { state.groups = (await api("/api/groups")).groups; }
   catch (error) { banner(error.message); }
+  await loadAccounts();
   fillPlaces("country");
   fillForm();
 }

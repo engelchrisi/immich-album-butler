@@ -21,13 +21,16 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from . import config as config_module
 from . import cover
 from .config import Album, Config
-from .immich import AlbumInfo, ImmichClient, ImmichError, Person
+from .immich import AlbumInfo, ImmichClient, ImmichError, Person, User
 from .matcher import MatchError, match
 from .state import State
 
 log = logging.getLogger(__name__)
 
 TICK_SECONDS = 60
+# How often the daemon re-checks the [[shares]] rules. They cost one album
+# listing and one user listing, and the albums they name change rarely.
+SHARE_SECONDS = 3600
 
 
 @dataclass
@@ -48,11 +51,17 @@ class Plan:
     # The name the album should carry in Immich, set only when the marker
     # suffix is on and the album does not carry it yet.
     rename_to: str | None = None
+    # Access to grant: (user id, role) for each account named in `share_with`
+    # that cannot see the album yet, or sees it in the other role.
+    to_share: list[tuple[str, str]] = field(default_factory=list)
+    # Who can see the album now (user id -> role), so applying can tell a new
+    # grant from a role change: Immich refuses to re-add an existing member.
+    current_shares: dict[str, str] = field(default_factory=dict)
 
     @property
     def changes(self) -> bool:
         return bool(self.to_add or self.to_remove or self.creates_album
-                    or self.cover_asset_id or self.rename_to)
+                    or self.cover_asset_id or self.rename_to or self.to_share)
 
     def summary(self) -> str:
         if self.creates_album:
@@ -67,8 +76,10 @@ class Plan:
             parts.append("new cover")
         if self.rename_to:
             parts.append(f"rename to {self.rename_to!r}")
+        if self.to_share:
+            parts.append(f"share with {len(self.to_share)}")
         if not (self.to_add or self.to_remove or self.cover_asset_id
-                or self.rename_to):
+                or self.rename_to or self.to_share):
             parts.append("already up to date")
         return f"{self.album.name!r}: " + ", ".join(parts)
 
@@ -82,6 +93,7 @@ class RunReport:
     created: bool = False
     cover_set: bool = False
     renamed: bool = False
+    shared: int = 0
     error: str | None = None
     dry_run: bool = False
     warnings: list[str] = field(default_factory=list)
@@ -100,6 +112,7 @@ class Butler:
         self.state = state
         self._people: list[Person] | None = None
         self._albums: list[AlbumInfo] | None = None
+        self._users: list[User] | None = None
 
     # -- caches, refreshed once per pass ----------------------------------
 
@@ -113,9 +126,20 @@ class Butler:
             self._albums = self.client.albums()
         return self._albums
 
+    def users(self) -> list[User]:
+        """The other accounts, fetched once per pass and only if one is named.
+
+        Nothing else needs `user.read`, so an installation that shares no album
+        never makes this call and never needs the permission.
+        """
+        if self._users is None:
+            self._users = self.client.users()
+        return self._users
+
     def invalidate(self) -> None:
         self._people = None
         self._albums = None
+        self._users = None
 
     # -- planning ---------------------------------------------------------
 
@@ -175,6 +199,7 @@ class Butler:
             plan.creates_album = True
             plan.to_add = matched
             plan.cover_asset_id = self._cover(album, result, None, plan)
+            plan.to_share = self._sharing(album, {}, plan)
             return plan
 
         plan.album_id = info.id
@@ -188,7 +213,47 @@ class Butler:
             wanted = set(matched)
             plan.to_remove = sorted(current - wanted)
         plan.cover_asset_id = self._cover(album, result, info.cover_asset_id, plan)
+        plan.current_shares = dict(info.shared_with)
+        plan.to_share = self._sharing(album, plan.current_shares, plan)
         return plan
+
+    def _sharing(self, album: Album, current: dict[str, str],
+                 plan: Plan) -> list[tuple[str, str]]:
+        """Who still needs access to this album, and in which role.
+
+        Only additions and role changes: an account that already sees the album
+        in the role the rule asks for costs nothing, and an account the rule no
+        longer names keeps its access -- see `ImmichClient.share_album` for why
+        the butler never takes access away.
+
+        A name nobody answers to is a warning on this album, like an unknown
+        person, because one mistyped account must not stop the album filling.
+        """
+        if not album.shares:
+            return []
+        try:
+            accounts = self.users()
+        except ImmichError as exc:
+            plan.warnings.append(_share_problem(exc, album.share_with))
+            return []
+
+        grants: list[tuple[str, str]] = []
+        for wanted in album.share_with:
+            matches = [user for user in accounts if user.answers_to(wanted)]
+            if not matches:
+                plan.warnings.append(
+                    f"not shared with {wanted!r}: no account of that name or "
+                    f"address on this server")
+                continue
+            if len(matches) > 1:
+                plan.warnings.append(
+                    f"not shared with {wanted!r}: {len(matches)} accounts "
+                    f"answer to it; use the e-mail address instead")
+                continue
+            user = matches[0]
+            if current.get(user.id) != album.share_role:
+                grants.append((user.id, album.share_role))
+        return grants
 
     def _cover(self, album: Album, result, current: str | None,
                plan: Plan) -> str | None:
@@ -215,13 +280,20 @@ class Butler:
 
     def apply(self, plan: Plan, dry_run: bool = False) -> RunReport:
         album = plan.album
-        report = RunReport(slug=album.slug, name=album.name, dry_run=dry_run)
+        report = RunReport(slug=album.slug, name=album.name, dry_run=dry_run,
+                           # Everything planning noticed belongs in the report
+                           # too: the CLI prints the report's warnings, so a
+                           # problem found while planning -- an unfindable
+                           # cover, an account nobody answers to -- would
+                           # otherwise only ever reach the log.
+                           warnings=list(plan.warnings))
         if dry_run:
             report.added = len(plan.to_add)
             report.removed = len(plan.to_remove)
             report.created = plan.creates_album
             report.cover_set = bool(plan.cover_asset_id)
             report.renamed = bool(plan.rename_to)
+            report.shared = len(plan.to_share)
             return report
 
         if plan.creates_album:
@@ -244,6 +316,8 @@ class Butler:
 
         if plan.cover_asset_id and plan.album_id:
             report.cover_set = self._set_cover(plan, report)
+        if plan.to_share and plan.album_id:
+            report.shared = self._share(plan, report)
 
         record = self.state.for_album(album.slug)
         record.album_id = plan.album_id
@@ -293,6 +367,160 @@ class Butler:
                 report.warnings.append(f"the cover was not set: {exc}")
             return False
 
+    def _share(self, plan: Plan, report: RunReport) -> int:
+        """Grant the access the plan worked out. Returns how many accounts got it.
+
+        Two calls, because Immich distinguishes them: somebody new is added to
+        the album (`albumUser.create`), somebody already on it has their role
+        changed (`albumUser.update`). A key without either permission means the
+        album is filled and simply not shared -- a warning, never a failed run,
+        for the same reason a missing `album.update` only costs the cover.
+        """
+        assert plan.album_id is not None
+        fresh = [(user_id, role) for user_id, role in plan.to_share
+                 if user_id not in plan.current_shares]
+        changed = [(user_id, role) for user_id, role in plan.to_share
+                   if user_id in plan.current_shares]
+
+        shared = 0
+        if fresh:
+            try:
+                self.client.share_album(plan.album_id, fresh)
+                shared += len(fresh)
+            except ImmichError as exc:
+                report.warnings.append(
+                    _share_problem(exc, [self._name_of(user_id)
+                                         for user_id, _ in fresh]))
+        for user_id, role in changed:
+            try:
+                self.client.set_album_user_role(plan.album_id, user_id, role)
+                shared += 1
+            except ImmichError as exc:
+                report.warnings.append(
+                    f"the role of {self._name_of(user_id)!r} was not changed "
+                    f"to {role!r}: " + (
+                        "the API key needs the 'albumUser.update' permission"
+                        if exc.status == 403 else str(exc)) +
+                    ". Everything else worked.")
+        if shared:
+            self._albums = None
+        return shared
+
+    # -- sharing albums that have no rule ----------------------------------
+
+    def apply_shares(self, dry_run: bool = False) -> list[RunReport]:
+        """Carry out the `[[shares]]` rules: one report per album touched.
+
+        These reach albums the butler has no rule for -- the hand-made ones,
+        which in most libraries are the majority. Nothing here creates, fills
+        or renames an album: a share rule only ever hands out access to an
+        album that already exists, so naming the wrong one costs a warning and
+        no pictures move.
+        """
+        rules = self.config.settings.shares
+        if not rules:
+            return []
+
+        reports: list[RunReport] = []
+        for index, rule in enumerate(rules):
+            report = RunReport(slug=f"shares[{index}]",
+                               name=_share_rule_name(rule), dry_run=dry_run)
+            try:
+                self._apply_share_rule(rule, report, dry_run)
+            except ImmichError as exc:
+                report.error = str(exc)
+            for warning in report.warnings:
+                log.warning("%s: %s", report.name, warning)
+            reports.append(report)
+        return reports
+
+    def _apply_share_rule(self, rule, report: RunReport, dry_run: bool) -> None:
+        accounts = self._resolve_accounts(rule.accounts, rule.role, report)
+        if not accounts:
+            return
+        targets = self._albums_for(rule, report)
+        for info in targets:
+            grants = [(user_id, role) for user_id, role in accounts
+                      if info.shared_with.get(user_id) != role]
+            if not grants:
+                continue
+            if dry_run:
+                report.shared += len(grants)
+                continue
+            plan = Plan(album=_placeholder_album(info.name), album_id=info.id,
+                        to_share=grants, current_shares=dict(info.shared_with))
+            report.shared += self._share(plan, report)
+
+    def _resolve_accounts(self, names, role: str,
+                          report: RunReport) -> list[tuple[str, str]]:
+        """Names to (user id, role), warning about each one that does not resolve."""
+        try:
+            accounts = self.users()
+        except ImmichError as exc:
+            report.warnings.append(_share_problem(exc, names))
+            return []
+        resolved: list[tuple[str, str]] = []
+        for wanted in names:
+            matches = [user for user in accounts if user.answers_to(wanted)]
+            if len(matches) == 1:
+                resolved.append((matches[0].id, role))
+            elif not matches:
+                report.warnings.append(
+                    f"no account named {wanted!r} on this server")
+            else:
+                report.warnings.append(
+                    f"{len(matches)} accounts answer to {wanted!r}; "
+                    f"use the e-mail address instead")
+        return resolved
+
+    def _albums_for(self, rule, report: RunReport) -> list[AlbumInfo]:
+        """The albums a share rule names, by the name they carry in Immich.
+
+        A name matches with or without the marker suffix, so a rule can say
+        "Italy 2019" whether or not the butler has since renamed it to
+        "Italy 2019 [AB]".
+        """
+        existing = self.albums()
+        if rule.every_album:
+            mine = self._own_albums(existing, report)
+            if mine is None:
+                return []
+            return mine
+        found: list[AlbumInfo] = []
+        for wanted in rule.albums:
+            matches = [info for info in existing
+                       if info.name == wanted
+                       or _without_marker(info.name) == wanted]
+            if not matches:
+                report.warnings.append(f"no album named {wanted!r} in Immich")
+                continue
+            found.extend(matches)
+        return found
+
+    def _own_albums(self, existing: list[AlbumInfo],
+                    report: RunReport) -> list[AlbumInfo] | None:
+        """Every album this account owns.
+
+        The listing also returns albums other people shared *with* us, and only
+        an owner can share an album on, so "*" has to mean "mine" -- otherwise
+        one rule would produce a warning for every album somebody else owns.
+        """
+        try:
+            me = self.client.me()
+        except ImmichError as exc:
+            report.warnings.append(
+                f"cannot tell which albums are this account's own: {exc}")
+            return None
+        return [info for info in existing
+                if info.owner_id is None or info.owner_id == me.id]
+
+    def _name_of(self, user_id: str) -> str:
+        """A readable name for an account id, for a message. Never fails."""
+        for user in self._users or []:
+            if user.id == user_id:
+                return user.label()
+        return user_id
+
     # -- one pass ----------------------------------------------------------
 
     def run_album(self, album: Album, dry_run: bool = False,
@@ -301,7 +529,7 @@ class Butler:
         try:
             plan = self.plan(album)
             report = self.apply(plan, dry_run=dry_run)
-            for warning in plan.warnings + report.warnings:
+            for warning in report.warnings:
                 log.warning("%s: %s", album.name, warning)
             log.info("%s", plan.summary())
             if not dry_run:
@@ -328,6 +556,39 @@ class Butler:
             if album.schedule.is_due(last, now):
                 due.append(album)
         return due
+
+
+def _share_rule_name(rule) -> str:
+    """A readable name for one [[shares]] entry, for the run summary."""
+    what = "every album" if rule.every_album else ", ".join(rule.albums)
+    return f"{what} -> {', '.join(rule.accounts)}"
+
+
+def _placeholder_album(name: str):
+    """A stand-in Album for an existing album that has no rule.
+
+    `_share` reports against a Plan, and a Plan carries the rule it came from.
+    A shared hand-made album has none, so this supplies just enough of one to
+    name it in a message -- it is never matched, filled or written back.
+    """
+    from .config import Album, MatchRule
+    from .schedule import parse as parse_schedule
+    return Album(slug="", name=name, match=MatchRule(),
+                 schedule=parse_schedule("manual"))
+
+
+def _share_problem(exc: ImmichError, names) -> str:
+    """One message for a failed share, naming the permission when that is why.
+
+    Both the lookup and the grant can be refused, and they need different
+    permissions, so the message names them together rather than guessing which
+    of the two the key is missing.
+    """
+    who = ", ".join(repr(name) for name in names) or "the named accounts"
+    if exc.status == 403:
+        return (f"not shared with {who}: the API key needs the 'user.read' and "
+                f"'albumUser.create' permissions. Everything else worked.")
+    return f"not shared with {who}: {exc}"
 
 
 _MARKER = re.compile(r"\s*\[[^\[\]]{1,16}\]$")
@@ -384,6 +645,11 @@ def run_once(client: ImmichClient, config: Config, state: State,
         albums = [a for a in albums if a.enabled]
 
     reports = [butler.run_album(album, dry_run=dry_run, now=now) for album in albums]
+    # The [[shares]] rules are about albums, not about any one rule, so they
+    # run once after the albums -- and only for a whole pass, never when a
+    # single album was asked for by name.
+    if not only:
+        reports.extend(butler.apply_shares(dry_run=dry_run))
     if not dry_run:
         state.save()
     return reports
@@ -397,6 +663,7 @@ def run_forever(client: ImmichClient, config_dir: Path, state_dir: Path,
     effect without anyone restarting a service.
     """
     log.info("runtime mode started; watching %s", config_dir)
+    shares_checked: float | None = None
     while True:
         started = time.monotonic()
         try:
@@ -413,6 +680,14 @@ def run_forever(client: ImmichClient, config_dir: Path, state_dir: Path,
                 for album in due:
                     butler.run_album(album, now=now)
                 state.save()
+            # Share rules are not on any album's schedule -- they are about
+            # albums the butler may never touch -- so they get their own slow
+            # beat, and one immediately after a start so a config change does
+            # not wait an hour to take effect.
+            if (shares_checked is None
+                    or time.monotonic() - shares_checked >= SHARE_SECONDS):
+                butler.apply_shares()
+                shares_checked = time.monotonic()
         except config_module.ConfigError as exc:
             log.error("configuration unusable: %s", exc)
         except Exception:                    # noqa: BLE001 - the daemon must survive

@@ -109,8 +109,14 @@ def _check(args) -> int:
     for album in config.albums:
         mark = " " if album.enabled else "-"
         inherited = " (inherited)" if album.schedule_inherited else ""
+        shared = (f"  shared with {', '.join(album.share_with)}"
+                  if album.shares else "")
         print(f" {mark} {album.slug:<28} {album.schedule}{inherited}"
-              f"  sync={album.sync}")
+              f"  sync={album.sync}{shared}")
+    for rule in config.settings.shares:
+        what = "every album" if rule.every_album else ", ".join(rule.albums)
+        print(f"   share  {what} -> {', '.join(rule.accounts)} "
+              f"as {rule.role}")
     for problem in config.errors:
         print(f"   ! {problem}", file=sys.stderr)
     return 1 if config.errors else 0
@@ -149,6 +155,8 @@ def _run(args) -> int:
                 done.append("rename")
             if report.cover_set:
                 done.append("set the cover")
+            if report.shared:
+                done.append(f"share with {report.shared}")
             if done:
                 print(f"  ~  {report.name}: {prefix}" + ", ".join(done))
             else:

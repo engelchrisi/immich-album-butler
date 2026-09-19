@@ -41,6 +41,27 @@ design_idle_minutes = 30
 
 
 # ---------------------------------------------------------------------------
+# Albums to show another account on this server, INCLUDING ones this tool has
+# no rule for -- the ones you made by hand, which in most libraries are the
+# majority. A rule here only ever hands out access: it never creates, fills or
+# renames an album, and it never takes access away again.
+#
+# "albums" holds album names as they appear in Immich (with or without the
+# suffix above), or "*" for every album this account owns. "with" holds account
+# names or e-mail addresses. Needs "user.read" and "albumUser.create" on the
+# key; without them the albums still fill and the run says what is missing.
+#
+# Immich has no way to share a *person*: a person belongs to one account. Its
+# cluster group makes faces recognised across accounts, and that is a one-time
+# invitation in Immich's own sharing settings, not something this tool does.
+
+[[shares]]
+albums = ["Holiday snaps", "Birthdays"]
+with   = ["Sam"]
+role   = "viewer"   # they may look, not change anything
+
+
+# ---------------------------------------------------------------------------
 # Who may sign in to design mode.
 #
 # Design mode can show thumbnails from the photo library, so this login is the
@@ -99,6 +120,14 @@ enabled = true
 # "album.update" permission on the API key. Without it the album is still
 # filled and the run says the cover could not be set.
 cover   = "everyone"
+
+# Other accounts on this server that should see this album, named the way you
+# name a person: an account name, or an e-mail address. Access is only ever
+# granted -- removing a name here leaves that account's access alone, because
+# an edited config file is a poor reason for somebody to lose sight of an
+# album. Unshare in the Immich UI.
+share_with = ["Sam"]
+share_role = "viewer"   # "viewer" may look; "editor" may add and remove too
 
 # No auto-update-schedule: this album follows the global default, which is
 # "manual". The trip is over, so nothing new will ever match this rule; run it

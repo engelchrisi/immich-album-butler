@@ -333,6 +333,8 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
                                   query.get("country", ""), query.get("state", ""))
             if path == "/api/albums":
                 return api.albums()
+            if path == "/api/accounts":
+                return api.accounts()
             if path == "/api/groups":
                 return api.groups()
             if path == "/api/trips":

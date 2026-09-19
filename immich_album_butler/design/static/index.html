@@ -117,6 +117,21 @@
           Cover file name
           <input id="cover-name" type="text" placeholder="IMG_0042.jpg">
         </label>
+        <label>
+          Also visible to
+          <select id="share-with" multiple size="3"></select>
+          <span class="muted" id="share-note">
+            other accounts on this server; access is only ever granted, never
+            taken away
+          </span>
+        </label>
+        <label id="share-role-row" hidden>
+          They may
+          <select id="share-role">
+            <option value="viewer">look, and nothing else</option>
+            <option value="editor">add and remove pictures too</option>
+          </select>
+        </label>
         <label class="check">
           <input id="enabled" type="checkbox" checked> Enabled
         </label>

@@ -162,6 +162,32 @@ class SaveTests(DesignTestCase):
         self.assertIsNotNone(UUID_LIKE.search(
             (self.state_dir / "state.json").read_text(encoding="utf-8")))
 
+    def test_sharing_survives_a_save_and_reaches_the_runtime_loader(self):
+        self.api.save_album({**ITALY, "share_with": ["Sam"],
+                             "share_role": "editor"})
+        text = (self.config_dir / "config.toml").read_text(encoding="utf-8")
+        self.assertIn('share_with = ["Sam"]', text)
+        album = config_module.load(self.config_dir).album("italy-2019")
+        self.assertEqual(album.share_with, ("Sam",))
+        self.assertEqual(album.share_role, "editor")
+
+    def test_saving_an_album_leaves_the_global_share_rules_alone(self):
+        """Design mode rewrites the whole file, so [[shares]] must survive it."""
+        path = self.config_dir / "config.toml"
+        path.write_text(path.read_text(encoding="utf-8") +
+                        '\n[[shares]]\nalbums = ["*"]\nwith = ["Sam"]\n',
+                        encoding="utf-8")
+        self.api.save_album(ITALY)
+        shares = config_module.load(self.config_dir).settings.shares
+        self.assertEqual(len(shares), 1)
+        self.assertEqual(shares[0].accounts, ("Sam",))
+        self.assertTrue(shares[0].every_album)
+
+    def test_an_unknown_share_role_is_refused(self):
+        with self.assertRaises(ApiError):
+            self.api.save_album({**ITALY, "share_with": ["Sam"],
+                                 "share_role": "owner"})
+
     def test_an_inherited_schedule_is_written_as_a_comment(self):
         result = self.api.save_album(ITALY)
         text = Path(result["path"]).read_text(encoding="utf-8")

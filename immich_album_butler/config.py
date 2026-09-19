@@ -43,6 +43,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from . import cover as cover_module
+from . import immich as immich_module
 from .schedule import Schedule, ScheduleError
 from .schedule import parse as parse_schedule
 
@@ -101,6 +102,11 @@ class Album:
     # alone), "everyone", "newest", "oldest", or an original file name. Never
     # an asset id -- see the note about UUIDs at the top of this module.
     cover: str = "auto"
+    # Other accounts on the same server that should see this album, named the
+    # way a human names them -- an account name or an e-mail address, resolved
+    # at run time, never a UUID.
+    share_with: tuple[str, ...] = ()
+    share_role: str = immich_module.VIEWER
 
     @property
     def mirrors(self) -> bool:
@@ -110,6 +116,10 @@ class Album:
     def sets_cover(self) -> bool:
         return self.cover != "auto"
 
+    @property
+    def shares(self) -> bool:
+        return bool(self.share_with)
+
 
 @dataclass(frozen=True)
 class DesignUser:
@@ -117,6 +127,29 @@ class DesignUser:
 
     name: str
     password_hash: str
+
+
+ALL_ALBUMS = "*"
+
+
+@dataclass(frozen=True)
+class ShareRule:
+    """One `[[shares]]` entry: albums the butler does not own a rule for.
+
+    `share_with` on an album rule can only reach albums the butler keeps. Most
+    libraries are mostly hand-made albums, and those should be shareable too
+    without inventing a rule that would then start filling them. So this names
+    albums by the name they carry in Immich -- or `"*"` for all of them -- and
+    never creates, fills or renames anything.
+    """
+
+    albums: tuple[str, ...]
+    accounts: tuple[str, ...]
+    role: str = immich_module.VIEWER
+
+    @property
+    def every_album(self) -> bool:
+        return ALL_ALBUMS in self.albums
 
 
 @dataclass(frozen=True)
@@ -135,6 +168,8 @@ class Settings:
     design_idle_minutes: int = 30
     design_port: int = DEFAULT_PORT
     design_users: tuple[DesignUser, ...] = ()
+    # Sharing for albums that have no rule -- the hand-made ones.
+    shares: tuple[ShareRule, ...] = ()
 
 
 @dataclass
@@ -268,7 +303,33 @@ def _load_settings(data: dict, filename: str) -> Settings:
                     album_suffix=suffix,
                     log_level=str(data.get("log_level", "info")).lower(),
                     design_idle_minutes=idle, design_port=port,
-                    design_users=_load_users(data.get("design"), filename))
+                    design_users=_load_users(data.get("design"), filename),
+                    shares=_load_shares(data.get("shares"), filename))
+
+
+def _load_shares(raw: object, filename: str) -> tuple[ShareRule, ...]:
+    """Read `[[shares]]`, the sharing that is not tied to an album rule."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise ConfigError(f"{filename}: [[shares]] must be a list of tables")
+
+    rules: list[ShareRule] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            raise ConfigError(f"{filename}: each [[shares]] entry is a table "
+                              f"with 'albums' and 'with'")
+        albums = _load_share_with(entry.get("albums"))
+        accounts = _load_share_with(entry.get("with", entry.get("accounts")))
+        if not albums:
+            raise ConfigError(f"{filename}: a [[shares]] entry needs 'albums', "
+                              f'either album names or "{ALL_ALBUMS}" for all')
+        if not accounts:
+            raise ConfigError(f"{filename}: a [[shares]] entry needs 'with', "
+                              f"the accounts to share those albums with")
+        rules.append(ShareRule(albums=albums, accounts=accounts,
+                               role=_load_share_role(entry.get("role"))))
+    return tuple(rules)
 
 
 def _load_users(design: object, filename: str) -> tuple[DesignUser, ...]:
@@ -370,10 +431,47 @@ def _load_album(slug: str, data: object, settings: Settings,
 
     match = _load_match(data.get("match", {}), groups)
     cover = _load_cover(data.get("cover"), match)
+    share_with = _load_share_with(data.get("share_with", data.get("share-with")))
+    share_role = _load_share_role(data.get("share_role", data.get("share-role")))
 
     return Album(slug=slug, name=name, match=match, schedule=schedule,
                  schedule_inherited=inherited, enabled=enabled, sync=sync,
-                 cover=cover)
+                 cover=cover, share_with=share_with, share_role=share_role)
+
+
+def _load_share_with(value: object) -> tuple[str, ...]:
+    """Validate `share_with`: the accounts this album should be visible to.
+
+    Whether such an account exists is not decided here -- that needs the
+    server, and a name that no longer resolves must be a warning on one album
+    rather than a config file that refuses to load and stops every album.
+    """
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list):
+        raise ConfigError("share_with must be a list of account names or "
+                          'e-mail addresses, for example ["sam"]')
+    names: list[str] = []
+    for entry in value:
+        if not isinstance(entry, str) or not entry.strip():
+            raise ConfigError("share_with entries must be non-empty strings")
+        name = entry.strip()
+        if not any(name.casefold() == seen.casefold() for seen in names):
+            names.append(name)
+    return tuple(names)
+
+
+def _load_share_role(value: object) -> str:
+    if value is None:
+        return immich_module.VIEWER
+    role = str(value).strip().lower()
+    if role not in immich_module.SHARE_ROLES:
+        raise ConfigError(
+            f"share_role must be one of "
+            f"{', '.join(immich_module.SHARE_ROLES)}, got {value!r}")
+    return role
 
 
 def _load_cover(value: object, match: MatchRule) -> str:
@@ -498,6 +596,17 @@ def dump_config(config: Config) -> str:
             out.append(f"name     = {_toml_str(user.name)}\n")
             out.append(f"password = {_toml_str(user.password_hash)}\n")
 
+    if settings.shares:
+        out.append("\n# Albums to share with other accounts, including ones the\n"
+                   "# butler has no rule for. Access is only ever granted here,\n"
+                   "# never taken away.\n")
+        for rule in settings.shares:
+            out.append("\n[[shares]]\n")
+            out.append(f"albums = {_toml_list(rule.albums)}\n")
+            out.append(f"with   = {_toml_list(rule.accounts)}\n")
+            out.append(f'role   = "{rule.role}"'
+                       f"   # {_describe_role(rule.role)}\n")
+
     if config.groups:
         out.append("\n# Named sets of people, so an album can name a group\n"
                    "# instead of listing everyone.\n")
@@ -509,6 +618,12 @@ def dump_config(config: Config) -> str:
         out.append("\n")
         out.append(dump_album(album))
     return "".join(out)
+
+
+def _describe_role(role: str) -> str:
+    if role == immich_module.EDITOR:
+        return "they may add and remove pictures too"
+    return "they may look, not change anything"
 
 
 def dump_album(album: Album) -> str:
@@ -523,6 +638,11 @@ def dump_album(album: Album) -> str:
     if album.sets_cover:
         lines.append(f"cover   = {_toml_str(album.cover)}   "
                      f"# {cover_module.describe(album.cover)}\n")
+    if album.shares:
+        lines.append(f"share_with = {_toml_list(album.share_with)}"
+                     f"   # other accounts that may see this album\n")
+        lines.append(f'share_role = "{album.share_role}"'
+                     f"   # {_describe_role(album.share_role)}\n")
     if album.schedule_inherited:
         lines.append(f"# auto-update-schedule = \"{album.schedule}\"   "
                      f"# inherited from the global default\n")
