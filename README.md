@@ -44,14 +44,15 @@ TOML, in terms you can read. People are referenced by **name**, never by UUID.
 ```toml
 # config.toml
 server = "http://immich.example.lan:2283"   # the API key comes from the environment
-auto-update-schedule = "daily 03:30"        # default for albums that set none
+auto-update-schedule = "manual"             # default for albums that set none
 timezone = "Europe/Rome"
 ```
 
 ```toml
-# albums.d/italy-2019.toml
+# albums.d/italy-2019.toml — a finished trip
 name = "Italy 2019"
-auto-update-schedule = "weekly sun 04:00"   # optional; omitted = the global default
+# No schedule: it inherits the global "manual". The trip is over, so nothing
+# new will ever match; run it by hand if old photos turn up.
 
 [match]
 from = 2019-07-01
@@ -62,8 +63,9 @@ include_unlocated = true                    # photos in the window that have no 
 ```
 
 ```toml
-# albums.d/photos-of-alex.toml — a person album
+# albums.d/photos-of-alex.toml — a person album, never finished
 name = "Photos of Alex"
+auto-update-schedule = "weekly sun 04:00"   # photos of Alex keep arriving
 sync = "mirror"                             # keep the album exactly in sync
 
 [match]

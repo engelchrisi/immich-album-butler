@@ -7,7 +7,11 @@ server = "http://immich.example.lan:2283"
 # Default for every album that does not set its own auto-update-schedule.
 # Forms: "daily HH:MM", "weekly <day> HH:MM", "monthly <day-of-month> HH:MM",
 #        "every <N>h", "every <N>m", "manual".
-auto-update-schedule = "daily 03:30"
+#
+# "manual" is the safe default: an album updates only when you ask it to, and
+# an album that should keep itself current says so in its own file. Most albums
+# are finished holidays, which will never match anything new.
+auto-update-schedule = "manual"
 
 # Used to interpret the schedules above. Defaults to the system time zone.
 timezone = "Europe/Rome"

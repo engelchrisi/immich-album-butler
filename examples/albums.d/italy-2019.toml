@@ -6,9 +6,9 @@
 name = "Italy 2019"
 enabled = true
 
-# This one refreshes weekly rather than at the global default, because a trip
-# from years ago rarely gains new photos.
-auto-update-schedule = "weekly sun 04:00"
+# No auto-update-schedule: this album follows the global default, which is
+# "manual". The trip is over, so nothing new will ever match this rule; run it
+# by hand on the rare occasion that old photos are imported.
 
 [match]
 from = 2019-07-01
