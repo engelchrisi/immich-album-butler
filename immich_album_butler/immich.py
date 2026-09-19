@@ -42,6 +42,7 @@ class Asset:
     id: str
     taken_at: dt.datetime | None
     kind: str = "IMAGE"                 # IMAGE or VIDEO
+    file_name: str = ""                 # the original file name, for cover = "<name>"
     latitude: float | None = None
     longitude: float | None = None
     city: str | None = None
@@ -68,6 +69,7 @@ class Asset:
             id=data["id"],
             taken_at=taken,
             kind=str(data.get("type", "IMAGE")),
+            file_name=str(data.get("originalFileName") or ""),
             latitude=_as_float(exif.get("latitude")),
             longitude=_as_float(exif.get("longitude")),
             city=exif.get("city") or None,
@@ -93,11 +95,13 @@ class AlbumInfo:
     id: str
     name: str
     asset_count: int = 0
+    cover_asset_id: str | None = None
 
     @classmethod
     def from_api(cls, data: dict) -> "AlbumInfo":
         return cls(id=data["id"], name=data.get("albumName") or "",
-                   asset_count=int(data.get("assetCount") or 0))
+                   asset_count=int(data.get("assetCount") or 0),
+                   cover_asset_id=data.get("albumThumbnailAssetId") or None)
 
 
 class ImmichClient:
@@ -276,6 +280,16 @@ class ImmichClient:
                                    {"ids": chunk}) or []
             added += sum(1 for r in results if r.get("success"))
         return added
+
+    def set_album_cover(self, album_id: str, asset_id: str) -> None:
+        """Point the album's cover at one of its assets.
+
+        This is the one write that needs `album.update` on the API key, which
+        no other feature uses. A key without it fails here and nowhere else,
+        so the failure is reported per album rather than stopping a run.
+        """
+        self.request("PATCH", f"albums/{album_id}",
+                     {"albumThumbnailAssetId": asset_id})
 
     def remove_assets(self, album_id: str, asset_ids: list[str]) -> int:
         """Remove assets from an album. Never deletes them from the library."""

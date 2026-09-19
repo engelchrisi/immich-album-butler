@@ -72,6 +72,23 @@ members = ["Jo", "Pat"]
 [albums.italy-2019]
 name    = "Italy 2019"
 enabled = true
+
+# Which picture Immich shows on the front of the album:
+#
+#   "auto"      leave whatever Immich picked (the default)
+#   "everyone"  the matching picture showing the most of the album's people,
+#               newest one if several show them all -- for a group album, the
+#               picture with the whole family in it
+#   "newest" / "oldest"    the ends of the album
+#   anything else          the original file name of one of the album's own
+#                          pictures, e.g. "IMG_0042.jpg"
+#
+# There is no asset id here on purpose: this file stays readable a year later.
+# Setting a cover is the only thing the butler does that needs the
+# "album.update" permission on the API key. Without it the album is still
+# filled and the run says the cover could not be set.
+cover   = "everyone"
+
 # No auto-update-schedule: this album follows the global default, which is
 # "manual". The trip is over, so nothing new will ever match this rule; run it
 # by hand on the rare occasion that old photos are imported.
@@ -104,6 +121,9 @@ sync    = "mirror"
 # Unlike a finished holiday, a person album is never done: photos of Alex keep
 # arriving. So this one overrides the global "manual" default.
 auto-update-schedule = "weekly sun 04:00"
+
+# One person, so "everyone" would mean nothing here: name the picture instead.
+cover   = "IMG_0042.jpg"
 
   [albums.photos-of-alex.match]
   people = ["Alex"]

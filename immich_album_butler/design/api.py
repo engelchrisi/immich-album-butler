@@ -24,6 +24,7 @@ from pathlib import Path
 
 from .. import analyze as analyze_module
 from .. import config as config_module
+from .. import cover as cover_module
 from .. import trips as trips_module
 from ..config import Album, MatchRule, slugify
 from ..immich import ImmichClient, ImmichError
@@ -136,6 +137,7 @@ class DesignApi:
             rows.append({
                 "slug": album.slug, "name": album.name,
                 "enabled": album.enabled, "sync": album.sync,
+                "cover": album.cover,
                 "schedule": str(album.schedule),
                 "schedule_inherited": album.schedule_inherited,
                 "match": rule_to_json(album.match),
@@ -191,6 +193,10 @@ class DesignApi:
             "summary": plan.summary(),
             "warnings": plan.warnings,
             "thumbnails": plan.matched[:PREVIEW_THUMBS],
+            # The cover the rule picks, so the builder can show which picture
+            # would end up on the front before anything is saved.
+            "cover": album.cover,
+            "cover_asset": plan.cover_asset_id,
             "next_run": self._next_run(album, config),
         }
 
@@ -323,10 +329,15 @@ class DesignApi:
         if sync not in config_module.SYNC_MODES:
             raise ApiError(f"sync must be add or mirror, got {sync!r}")
 
-        return Album(slug=slug, name=name or "(draft)",
-                     match=self._rule_from(payload.get("match") or {}),
+        rule = self._rule_from(payload.get("match") or {})
+        cover = str(payload.get("cover") or cover_module.AUTO).strip() or cover_module.AUTO
+        if cover == cover_module.EVERYONE and not rule.people:
+            raise ApiError('a cover of "everyone" needs the rule to name people')
+
+        return Album(slug=slug, name=name or "(draft)", match=rule,
                      schedule=schedule, schedule_inherited=inherited,
-                     enabled=bool(payload.get("enabled", True)), sync=sync)
+                     enabled=bool(payload.get("enabled", True)), sync=sync,
+                     cover=cover)
 
     def _rule_from(self, data: dict) -> MatchRule:
         rule = MatchRule(

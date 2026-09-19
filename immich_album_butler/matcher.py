@@ -42,6 +42,10 @@ class MatchError(RuntimeError):
 class MatchResult:
     assets: list[Asset] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # Which of the rule's people each matched asset shows, as person id ->
+    # asset ids. Only filled when the rule names people, and only because
+    # choosing a cover that shows everyone needs it; matching itself does not.
+    by_person: dict[str, set[str]] = field(default_factory=dict)
 
     @property
     def ids(self) -> list[str]:
@@ -119,10 +123,11 @@ def match(client: ImmichClient, rule: MatchRule,
         person_ids = (resolve_people(list(rule.people), people) if people
                       else resolve_people_via(client, list(rule.people)))
 
+    by_person: dict[str, set[str]] = {}
     if rule.people_mode == "all" and len(person_ids) > 1:
-        assets = _assets_for_all(client, rule, person_ids)
+        assets = _assets_for_all(client, rule, person_ids, by_person)
     elif person_ids:
-        assets = _assets_for_any(client, rule, person_ids)
+        assets = _assets_for_any(client, rule, person_ids, by_person)
     else:
         assets = _fetch(client, rule, None)
 
@@ -138,22 +143,27 @@ def match(client: ImmichClient, rule: MatchRule,
             f"included because include_unlocated is true")
 
     result.assets = sorted(kept, key=lambda a: (a.taken_at or _EPOCH, a.id))
+    survivors = {a.id for a in kept}
+    result.by_person = {person: ids & survivors for person, ids in by_person.items()}
     return result
 
 
-def _assets_for_any(client: ImmichClient, rule: MatchRule,
-                    person_ids: list[str]) -> dict[str, Asset]:
+def _assets_for_any(client: ImmichClient, rule: MatchRule, person_ids: list[str],
+                    by_person: dict[str, set[str]]) -> dict[str, Asset]:
     found: dict[str, Asset] = {}
     for person_id in person_ids:
-        found.update(_fetch(client, rule, [person_id]))
+        batch = _fetch(client, rule, [person_id])
+        by_person[person_id] = set(batch)
+        found.update(batch)
     return found
 
 
-def _assets_for_all(client: ImmichClient, rule: MatchRule,
-                    person_ids: list[str]) -> dict[str, Asset]:
+def _assets_for_all(client: ImmichClient, rule: MatchRule, person_ids: list[str],
+                    by_person: dict[str, set[str]]) -> dict[str, Asset]:
     common: dict[str, Asset] | None = None
     for person_id in person_ids:
         batch = _fetch(client, rule, [person_id])
+        by_person[person_id] = set(batch)
         if common is None:
             common = batch
         else:

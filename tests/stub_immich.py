@@ -34,12 +34,14 @@ def fake_id(number: int) -> str:
 def make_asset(number: int, *, when: str, lat: float | None = None,
                lon: float | None = None, city: str | None = None,
                state: str | None = None, country: str | None = None,
-               kind: str = "IMAGE", people: tuple[str, ...] = ()) -> dict:
+               kind: str = "IMAGE", people: tuple[str, ...] = (),
+               file_name: str | None = None) -> dict:
     """One asset as Immich's search/metadata returns it."""
     return {
         "id": fake_id(number),
         "type": kind,
         "localDateTime": when,
+        "originalFileName": file_name or f"IMG_{number:04d}.jpg",
         "_people": list(people),          # stub-only, used for personIds filtering
         "exifInfo": {"latitude": lat, "longitude": lon, "city": city,
                      "state": state, "country": country,
@@ -220,7 +222,8 @@ def _make_handler(stub: StubImmich):
                     return
                 return self._send(200, [
                     {"id": a["id"], "albumName": a["albumName"],
-                     "assetCount": stub.display_count(a)}
+                     "assetCount": stub.display_count(a),
+                     "albumThumbnailAssetId": a.get("albumThumbnailAssetId")}
                     for a in stub.albums.values()])
 
             if path.startswith("/api/albums/"):
@@ -304,6 +307,32 @@ def _make_handler(stub: StubImmich):
                         results.append({"id": asset_id, "success": True})
                 album["assetCount"] = len(album["assets"])
                 return self._send(200, results)
+
+            self._send(404, {"message": f"no route {path}"})
+
+        def do_PATCH(self) -> None:                  # noqa: N802
+            path = self.path.partition("?")[0]
+            stub.requests.append(("PATCH", path))
+            body = self._body()
+
+            # Setting a cover is the one call that needs album.update, so the
+            # stub guards it separately -- a key without that permission has to
+            # fail here and nowhere else.
+            if path.startswith("/api/albums/"):
+                if not self._authorized("album.update"):
+                    return
+                album = stub.albums.get(path.rsplit("/", 1)[-1])
+                if album is None:
+                    return self._send(404, {"message": "Not found"})
+                if "albumThumbnailAssetId" in body:
+                    cover = body["albumThumbnailAssetId"]
+                    if not any(a["id"] == cover for a in album["assets"]):
+                        return self._send(
+                            400, {"message": "cover asset is not in the album"})
+                    album["albumThumbnailAssetId"] = cover
+                return self._send(200, {
+                    "id": album["id"], "albumName": album["albumName"],
+                    "albumThumbnailAssetId": album.get("albumThumbnailAssetId")})
 
             self._send(404, {"message": f"no route {path}"})
 

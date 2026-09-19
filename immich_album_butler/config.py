@@ -24,6 +24,7 @@ several files they forgot.
 
     [albums.italy-2019]             # the key is the album's id on the CLI
     name = "Italy 2019"
+    cover = "everyone"              # a rule, or an original file name
 
       [albums.italy-2019.match]     # what belongs in it
       from = 2019-07-01
@@ -41,6 +42,7 @@ import tomllib
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from . import cover as cover_module
 from .schedule import Schedule, ScheduleError
 from .schedule import parse as parse_schedule
 
@@ -95,10 +97,18 @@ class Album:
     schedule_inherited: bool = False
     enabled: bool = True
     sync: str = "add"
+    # How to pick the album's front picture: "auto" (leave Immich's own choice
+    # alone), "everyone", "newest", "oldest", or an original file name. Never
+    # an asset id -- see the note about UUIDs at the top of this module.
+    cover: str = "auto"
 
     @property
     def mirrors(self) -> bool:
         return self.sync == "mirror"
+
+    @property
+    def sets_cover(self) -> bool:
+        return self.cover != "auto"
 
 
 @dataclass(frozen=True)
@@ -347,9 +357,31 @@ def _load_album(slug: str, data: object, settings: Settings,
             raise ConfigError(f"auto-update-schedule: {exc}") from None
 
     match = _load_match(data.get("match", {}), groups)
+    cover = _load_cover(data.get("cover"), match)
 
     return Album(slug=slug, name=name, match=match, schedule=schedule,
-                 schedule_inherited=inherited, enabled=enabled, sync=sync)
+                 schedule_inherited=inherited, enabled=enabled, sync=sync,
+                 cover=cover)
+
+
+def _load_cover(value: object, match: MatchRule) -> str:
+    """Validate the `cover` key.
+
+    Anything that is not one of the rules is taken as an original file name,
+    so a typo of a rule name ("newset") becomes a file name that will not be
+    found -- reported at run time, naming the album, rather than here, where it
+    would stop the whole file from loading.
+    """
+    if value is None:
+        return cover_module.AUTO
+    if not isinstance(value, str) or not value.strip():
+        raise ConfigError(
+            'cover must be a string: "auto", "everyone", "newest", "oldest", '
+            'or the original file name of one of the album\'s pictures')
+    cover = value.strip()
+    if cover == cover_module.EVERYONE and not match.people:
+        raise ConfigError('cover = "everyone" needs the rule to name people')
+    return cover
 
 
 def _load_match(data: object, groups: dict[str, tuple[str, ...]]) -> MatchRule:
@@ -472,6 +504,9 @@ def dump_album(album: Album) -> str:
     if album.sync != "add":
         lines.append(f'sync    = "{album.sync}"   '
                      f"# also removes assets from this album when they stop matching\n")
+    if album.sets_cover:
+        lines.append(f"cover   = {_toml_str(album.cover)}   "
+                     f"# {cover_module.describe(album.cover)}\n")
     if album.schedule_inherited:
         lines.append(f"# auto-update-schedule = \"{album.schedule}\"   "
                      f"# inherited from the global default\n")

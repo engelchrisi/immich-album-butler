@@ -247,8 +247,17 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
                 return True             # curl and the like; no browser to abuse
             if urlparse(origin).netloc == self.headers.get("Host", ""):
                 return True
+            # Read the body we are about to refuse. Answering before the client
+            # has finished sending makes the connection abort rather than carry
+            # the 403, so the refusal would never arrive.
+            self._discard_body()
             self._error(403, "cross-origin request refused")
             return False
+
+        def _discard_body(self) -> None:
+            length = int(self.headers.get("Content-Length") or 0)
+            if length:
+                self.rfile.read(length)
 
         # -- routing ------------------------------------------------------
 

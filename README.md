@@ -89,6 +89,7 @@ name = "Italy 2019"
 name = "Photos of Alex"
 auto-update-schedule = "weekly sun 04:00"   # photos of Alex keep arriving
 sync = "mirror"                             # keep the album exactly in sync
+cover = "IMG_0042.jpg"                      # the front picture, by file name
 
   [albums.photos-of-alex.match]
   people = ["Alex"]
@@ -97,6 +98,26 @@ sync = "mirror"                             # keep the album exactly in sync
 The key after `albums.` is the album's id on the command line; `name` is what
 Immich shows. Schedules read as English, not cron: `daily 03:30`,
 `weekly sun 04:00`, `monthly 1 05:00`, `every 6h`, or `manual`.
+
+### Album covers
+
+The picture on the front of an album is a rule too, so the config still holds
+no UUIDs:
+
+| `cover` | The front picture becomes |
+|---|---|
+| `"auto"` (default) | whatever Immich picked — the butler does not touch it |
+| `"everyone"` | the matching picture showing **most of the album's people**, and where several show them all, the newest |
+| `"newest"` / `"oldest"` | the ends of the album |
+| anything else | the original file name of one of the album's own pictures |
+
+`"everyone"` is what a group album wants: one picture with the whole family in
+it. It costs nothing extra — the butler already knows which pictures each
+person appears in from matching them.
+
+Setting a cover is the **only** thing the butler does that needs the
+`album.update` permission on the API key. Without it the album is still filled
+correctly and the run reports that the cover could not be set.
 
 Design mode rewrites this file when it saves. Values survive — the login hashes
 included — but comments you add do not.

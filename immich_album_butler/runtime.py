@@ -18,6 +18,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import config as config_module
+from . import cover
 from .config import Album, Config
 from .immich import AlbumInfo, ImmichClient, ImmichError, Person
 from .matcher import MatchError, match
@@ -40,10 +41,14 @@ class Plan:
     album_id: str | None = None
     creates_album: bool = False
     warnings: list[str] = field(default_factory=list)
+    # The asset the cover should point at, set only when the album asks for a
+    # cover and the one it has now is a different picture.
+    cover_asset_id: str | None = None
 
     @property
     def changes(self) -> bool:
-        return bool(self.to_add or self.to_remove or self.creates_album)
+        return bool(self.to_add or self.to_remove or self.creates_album
+                    or self.cover_asset_id)
 
     def summary(self) -> str:
         if self.creates_album:
@@ -54,7 +59,9 @@ class Plan:
             parts.append(f"+{len(self.to_add)}")
         if self.to_remove:
             parts.append(f"-{len(self.to_remove)}")
-        if not self.to_add and not self.to_remove:
+        if self.cover_asset_id:
+            parts.append("new cover")
+        if not self.to_add and not self.to_remove and not self.cover_asset_id:
             parts.append("already up to date")
         return f"{self.album.name!r}: " + ", ".join(parts)
 
@@ -66,8 +73,10 @@ class RunReport:
     added: int = 0
     removed: int = 0
     created: bool = False
+    cover_set: bool = False
     error: str | None = None
     dry_run: bool = False
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -134,6 +143,7 @@ class Butler:
         if info is None:
             plan.creates_album = True
             plan.to_add = matched
+            plan.cover_asset_id = self._cover(album, result, None, plan)
             return plan
 
         plan.album_id = info.id
@@ -143,7 +153,29 @@ class Butler:
         if album.mirrors:
             wanted = set(matched)
             plan.to_remove = sorted(current - wanted)
+        plan.cover_asset_id = self._cover(album, result, info.cover_asset_id, plan)
         return plan
+
+    def _cover(self, album: Album, result, current: str | None,
+               plan: Plan) -> str | None:
+        """Which asset the cover should become, or None to leave it as it is.
+
+        The choice is made among the assets the rule matched, which for a
+        `sync = "add"` album may be fewer than the album holds -- a cover is a
+        statement about the rule, so anything hand-added is deliberately not a
+        candidate. A rule that cannot be satisfied (a file name nobody has)
+        becomes a warning on this album, never a failed run.
+        """
+        if not album.sets_cover:
+            return None
+        try:
+            chosen = cover.choose(album.cover, result.assets, result.by_person)
+        except cover.CoverError as exc:
+            plan.warnings.append(f"cover: {exc}")
+            return None
+        if chosen is None or chosen == current:
+            return None
+        return chosen
 
     # -- applying ---------------------------------------------------------
 
@@ -154,6 +186,7 @@ class Butler:
             report.added = len(plan.to_add)
             report.removed = len(plan.to_remove)
             report.created = plan.creates_album
+            report.cover_set = bool(plan.cover_asset_id)
             return report
 
         if plan.creates_album:
@@ -169,11 +202,35 @@ class Butler:
             if plan.to_remove:
                 report.removed = self.client.remove_assets(plan.album_id, plan.to_remove)
 
+        if plan.cover_asset_id and plan.album_id:
+            report.cover_set = self._set_cover(plan, report)
+
         record = self.state.for_album(album.slug)
         record.album_id = plan.album_id
         record.assets_added = report.added
         record.assets_removed = report.removed
         return report
+
+    def _set_cover(self, plan: Plan, report: RunReport) -> bool:
+        """Set the cover, turning a missing permission into a warning.
+
+        Setting a cover is the only call that needs `album.update` on the key.
+        A key without it would otherwise make a run that added photos perfectly
+        well look like a failure, so the album keeps its photos and says what
+        the key is missing.
+        """
+        assert plan.album_id is not None
+        try:
+            self.client.set_album_cover(plan.album_id, plan.cover_asset_id)
+            return True
+        except ImmichError as exc:
+            if exc.status == 403:
+                report.warnings.append(
+                    "the cover was not set: the API key needs the "
+                    "'album.update' permission. Everything else worked.")
+            else:
+                report.warnings.append(f"the cover was not set: {exc}")
+            return False
 
     # -- one pass ----------------------------------------------------------
 
@@ -183,7 +240,7 @@ class Butler:
         try:
             plan = self.plan(album)
             report = self.apply(plan, dry_run=dry_run)
-            for warning in plan.warnings:
+            for warning in plan.warnings + report.warnings:
                 log.warning("%s: %s", album.name, warning)
             log.info("%s", plan.summary())
             if not dry_run:

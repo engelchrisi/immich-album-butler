@@ -103,6 +103,20 @@
           </select>
         </label>
         <div class="muted" id="next-run"></div>
+        <label>
+          Cover picture
+          <select id="cover">
+            <option value="auto">leave Immich's own choice alone</option>
+            <option value="everyone">the one with most of the people in it</option>
+            <option value="newest">the newest picture</option>
+            <option value="oldest">the oldest picture</option>
+            <option value="named">a picture I name…</option>
+          </select>
+        </label>
+        <label id="cover-name-row" hidden>
+          Cover file name
+          <input id="cover-name" type="text" placeholder="IMG_0042.jpg">
+        </label>
         <label class="check">
           <input id="enabled" type="checkbox" checked> Enabled
         </label>

@@ -20,6 +20,7 @@ const state = {
 function emptyDraft() {
   return {
     slug: "", name: "", enabled: true, sync: "add", schedule: "inherit",
+    cover: "auto",
     match: {
       from: null, to: null, countries: [], states: [], cities: [],
       people: [], people_mode: "any", include_unlocated: true,
@@ -104,7 +105,8 @@ async function loadAlbums() {
       el("div", { class: "meta" },
         describe(album.match), el("br"),
         `${album.schedule}${album.schedule_inherited ? " (inherited)" : ""}`,
-        album.sync === "mirror" ? " · mirrored" : ""),
+        album.sync === "mirror" ? " · mirrored" : "",
+        album.cover && album.cover !== "auto" ? ` · cover: ${album.cover}` : ""),
       album.last_error
         ? el("div", { class: "warn bad" }, album.last_error)
         : el("div", { class: "muted" },
@@ -157,7 +159,7 @@ $("new-person-album").onclick = () => {
 function editAlbum(album) {
   state.draft = {
     slug: album.slug, name: album.name, enabled: album.enabled,
-    sync: album.sync,
+    sync: album.sync, cover: album.cover || "auto",
     schedule: album.schedule_inherited ? "inherit" : album.schedule,
     match: { ...album.match },
   };
@@ -176,6 +178,7 @@ function fillForm() {
   $("include-unlocated").checked = draft.match.include_unlocated;
   $("enabled").checked = draft.enabled;
   $("mirror").checked = draft.sync === "mirror";
+  fillCover(draft.cover || "auto");
   $("schedule").value = [...$("schedule").options].some(o => o.value === draft.schedule)
     ? draft.schedule : "inherit";
   $("delete-config").hidden = !state.saved.some(a => a.slug === draft.slug);
@@ -201,6 +204,27 @@ function bindDraft() {
     state.draft.schedule = e.target.value;
     refreshPreview();
   };
+  $("cover").onchange = () => { readCover(); refreshPreview(); };
+  $("cover-name").oninput = debounce(() => { readCover(); refreshPreview(); }, 350);
+}
+
+/* The cover is one value in the config but two controls here: a list of rules
+   plus, for "a picture I name", the file name itself. */
+const COVER_RULES = ["auto", "everyone", "newest", "oldest"];
+
+function fillCover(cover) {
+  const named = !COVER_RULES.includes(cover);
+  $("cover").value = named ? "named" : cover;
+  $("cover-name").value = named ? cover : "";
+  $("cover-name-row").hidden = !named;
+}
+
+function readCover() {
+  const choice = $("cover").value;
+  $("cover-name-row").hidden = choice !== "named";
+  state.draft.cover = choice === "named"
+    ? ($("cover-name").value.trim() || "auto")
+    : choice;
 }
 
 function set(key, value) {
@@ -398,6 +422,11 @@ const refreshPreview = debounce(async () => {
       strip.append(el("img", { src: `/api/thumb/${id}`, loading: "lazy", alt: "" }));
     }
     children.push(strip);
+  }
+  if (data.cover_asset) {
+    children.push(el("div", { class: "cover" },
+      el("img", { src: `/api/thumb/${data.cover_asset}`, loading: "lazy", alt: "" }),
+      el("span", { class: "muted" }, "would become the album cover")));
   }
   $("next-run").textContent = data.next_run
     ? `next automatic run: ${data.next_run.replace("T", " ")}`
