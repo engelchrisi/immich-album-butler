@@ -36,6 +36,28 @@ runtime) and design mode are both in place.
 - An Immich server and an API key
 - Python **3.11+**, standard library only — no pip packages, no Docker
 
+## Installing
+
+There is nothing to build and nothing to download at install time — the whole
+package is standard library, so installing it is copying it into place.
+
+```sh
+git clone https://github.com/engelchrisi/immich-album-butler
+cd immich-album-butler
+sudo deploy/install.sh
+```
+
+That creates a system user, `/etc/immich-album-butler`,
+`/var/lib/immich-album-butler`, and two systemd units. Then set `server` in
+`config.toml`, put your API key in `immich-album-butler.env`, and:
+
+```sh
+sudo systemctl enable --now immich-album-butler
+```
+
+The design-mode unit is installed but deliberately **not** enabled: start it
+only while you are using it.
+
 ## Configuration
 
 Everything lives in one directory (`/etc/immich-album-butler` by default), in
