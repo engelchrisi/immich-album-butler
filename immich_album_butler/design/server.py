@@ -276,7 +276,10 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
                 return self._login_page()
             if path == "/static/style.css":
                 return self._static("style.css")
-            if path in ("/favicon.svg", "/static/icon.svg"):
+            # /favicon.ico is the browser's own unprompted probe: answer it
+            # with the same drawing rather than letting it fall through to
+            # the login page, which parks an HTML body in the icon slot.
+            if path in ("/favicon.svg", "/favicon.ico", "/static/icon.svg"):
                 return self._static("icon.svg")
 
             if not self._require_login(api_call=path.startswith("/api/")):
