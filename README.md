@@ -1,9 +1,23 @@
-<img src="immich_album_butler/design/static/icon.svg" alt="" width="120">
+<!-- PROJECT LOGO -->
+<br />
+<div align="center">
+  <a href="https://github.com/engelchrisi/immich-album-butler">
+    <img src="immich_album_butler/design/static/icon.svg" alt="Logo" width="200">
+  </a>
 
-# immich-album-butler
+  <h3 align="center">immich-album-butler</h3>
 
-A butler that keeps your [Immich](https://immich.app) albums in order: by
-people, places and dates.
+  <p align="center">
+    A butler that keeps your Immich albums in order: by people, places and dates
+    <br />
+    <a href="https://immich.app/"><strong>Explore immich »</strong></a>
+    <br />
+    <br />
+    <a href="https://github.com/engelchrisi/immich-album-butler/issues">Report Bug</a>
+    ·
+    <a href="https://github.com/engelchrisi/immich-album-butler/issues">Request Feature</a>
+  </p>
+</div>
 
 > **Built entirely by [Claude](https://claude.com/claude-code).** Every line of
 > code, test and document in this repository was written by Claude, working
