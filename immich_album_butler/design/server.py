@@ -31,7 +31,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from ..config import DesignUser
 from ..immich import ImmichError
-from .api import ApiError, DesignApi
+from .api import ASSET_ID, ApiError, DesignApi
 from .auth import SESSION_COOKIE, Sessions, Throttle, User, Users
 
 log = logging.getLogger(__name__)
@@ -285,7 +285,10 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
             if path.startswith("/static/"):
                 return self._static(path[len("/static/"):])
             if path.startswith("/api/thumb/"):
-                return self._thumbnail(path.rsplit("/", 1)[-1])
+                return self._thumbnail(path.rsplit("/", 1)[-1], query.get("size"))
+            if path.startswith("/api/asset/"):
+                return self._call(
+                    lambda: api.asset_details(path.rsplit("/", 1)[-1]))
             if path == "/api/whoami":
                 return self._json({"user": self._user,
                                    "protected": bool(accounts)})
@@ -397,10 +400,17 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
                        CONTENT_TYPES.get(path.suffix, "application/octet-stream"),
                        {"Cache-Control": "no-cache"})
 
-        def _thumbnail(self, asset_id: str) -> None:
-            """Proxied so the page never needs the Immich key."""
+        def _thumbnail(self, asset_id: str, size: str | None = None) -> None:
+            """Proxied so the page never needs the Immich key.
+
+            `size=preview` is the larger picture the hover card shows; anything
+            else is the small thumbnail.
+            """
+            if not ASSET_ID.fullmatch(asset_id):
+                return self._error(400, "not an asset id")
             try:
-                body, content_type = api.client.thumbnail(asset_id)
+                body, content_type = api.client.thumbnail(
+                    asset_id, "preview" if size == "preview" else "thumbnail")
             except ImmichError as exc:
                 return self._error(exc.status or 502, str(exc))
             self._send(200, body, content_type,

@@ -139,8 +139,8 @@ def match(client: ImmichClient, rule: MatchRule,
     unlocated = sum(1 for a in kept if not a.located)
     if unlocated and rule.has_places and rule.include_unlocated:
         result.warnings.append(
-            f"{unlocated} of {len(kept)} matching assets carry no GPS and were "
-            f"included because include_unlocated is true")
+            f"{unlocated} of {len(kept)} matching media carry no GPS and were "
+            f"included because the rule allows media without GPS")
 
     result.assets = sorted(kept, key=lambda a: (a.taken_at or _EPOCH, a.id))
     survivors = {a.id for a in kept}

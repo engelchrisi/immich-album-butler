@@ -66,7 +66,7 @@ class Plan:
     def summary(self) -> str:
         if self.creates_album:
             return (f"create album {self.album.name!r} with "
-                    f"{len(self.to_add)} asset(s)")
+                    f"{len(self.to_add)} media")
         parts = [f"{len(self.matched)} match"]
         if self.to_add:
             parts.append(f"+{len(self.to_add)}")

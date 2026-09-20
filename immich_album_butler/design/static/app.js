@@ -469,21 +469,15 @@ const refreshPreview = debounce(async () => {
   const children = [
     el("div", { class: "count" }, String(data.matched),
        el("small", {}, data.creates_album
-          ? "assets — this album does not exist in Immich yet"
-          : `assets matched · ${data.already_in_album} already in the album · ` +
+          ? "media — this album does not exist in Immich yet"
+          : `media matched · ${data.already_in_album} already in the album · ` +
             `${data.to_add} to add` +
             (data.to_remove ? ` · ${data.to_remove} to remove` : ""))),
   ];
   for (const warning of data.warnings || []) {
     children.push(el("div", { class: "warn" }, warning));
   }
-  if (data.thumbnails.length) {
-    const strip = el("div", { class: "strip" });
-    for (const id of data.thumbnails) {
-      strip.append(el("img", { src: `/api/thumb/${id}`, loading: "lazy", alt: "" }));
-    }
-    children.push(strip);
-  }
+  children.push(...editStrips(data));
   if (data.cover_asset) {
     children.push(el("div", { class: "cover" },
       el("img", { src: `/api/thumb/${data.cover_asset}`, loading: "lazy", alt: "" }),
@@ -553,7 +547,7 @@ $("analyze").onclick = async () => {
   if (data.note) box.append(el("div", { class: "muted" }, data.note));
   if (!data.suggestions.length && !data.note) {
     box.append(el("div", { class: "muted good" },
-      "Nothing obvious is missing: no assets sit just outside this rule."));
+      "Nothing obvious is missing: no media sit just outside this rule."));
     return;
   }
 
@@ -585,7 +579,7 @@ function applyAdjust(adjust) {
 }
 
 async function addNow(group) {
-  if (!confirm(`Add ${group.count} asset(s) to “${state.draft.name}” now?\n\n` +
+  if (!confirm(`Add ${group.count} media to “${state.draft.name}” now?\n\n` +
                `This is a one-off: the rule is not changed, so a future run ` +
                `will not re-add them if they are removed.`)) return;
   try {
@@ -617,31 +611,28 @@ async function loadTrips(rescan) {
   catch (error) { note.textContent = ""; return banner(error.message); }
 
   note.textContent = data.scanned_at
-    ? `${data.assets} assets, scanned ${data.scanned_at.replace("T", " ")}`
+    ? `${data.assets} media, scanned ${data.scanned_at.replace("T", " ")}`
     : "no scan yet";
   list.replaceChildren();
 
   if (!data.trips.length) {
     list.append(el("div", { class: "muted" }, data.scanned_at
-      ? "No trips found. Try a smaller “away km” or fewer minimum assets."
+      ? "No trips found. Try a smaller “away km” or a lower minimum of media."
       : "Press “Scan the library” to look for trips."));
     return;
   }
 
   for (const trip of data.trips) {
-    const strip = el("div", { class: "strip" });
-    for (const id of trip.thumbnails.slice(0, 8)) {
-      strip.append(el("img", { src: `/api/thumb/${id}`, loading: "lazy", alt: "" }));
-    }
+    const strips = editStrips({ ...trip, matched: trip.total });
     const card = el("div", { class: "card" },
       el("h3", {}, trip.name, trip.covered_by
         ? el("span", { class: "pill on" }, `covered by ${trip.covered_by}`) : ""),
       el("div", { class: "meta" },
-        `${trip.start} → ${trip.end} · ${trip.days} days · ${trip.total} assets ` +
+        `${trip.start} → ${trip.end} · ${trip.days} days · ${trip.total} media ` +
         `(${trip.located} located, ${trip.unlocated} without GPS)`),
       el("div", { class: "meta" },
         [...trip.countries, ...trip.cities.slice(0, 3)].join(", ")),
-      strip,
+      ...strips,
       el("div", { class: "bar" }, button("Open in builder", () => fromTrip(trip))));
     list.append(card);
   }
@@ -659,6 +650,28 @@ function fromTrip(trip) {
 }
 
 /* -- small helpers ------------------------------------------------------ */
+
+/* The first and the last few pictures, labelled, so the start and the end of a
+ * date range can both be checked. A short list is one strip with no label. */
+function editStrips(data) {
+  const strip = (ids) => {
+    const box = el("div", { class: "strip" });
+    for (const id of ids) {
+      box.append(el("img", { src: `/api/thumb/${id}`, loading: "lazy", alt: "" }));
+    }
+    return box;
+  };
+  const first = data.thumbnails || [];
+  const last = data.thumbnails_last || [];
+  if (!first.length) return [];
+  if (!last.length) return [strip(first)];
+  return [
+    el("div", { class: "strip-label" }, `First ${first.length}, oldest first`),
+    strip(first),
+    el("div", { class: "strip-label" }, `Last ${last.length}, the end of the range`),
+    strip(last),
+  ];
+}
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -701,3 +714,122 @@ async function start() {
 }
 
 start();
+
+/* -- hover card: a large picture with everything Immich knows about it ---- */
+
+const hover = { timer: null, epoch: 0, card: null, details: new Map() };
+const THUMB = /^\/api\/thumb\/([A-Za-z0-9-]+)/;
+
+function hoverCard() {
+  if (!hover.card) {
+    hover.card = el("div", { id: "hover-card", hidden: "" });
+    document.body.append(hover.card);
+  }
+  return hover.card;
+}
+
+function hideHoverCard() {
+  clearTimeout(hover.timer);
+  hover.epoch += 1;
+  if (hover.card) hover.card.hidden = true;
+}
+
+function assetDetails(id) {
+  if (!hover.details.has(id)) {
+    const request = api(`/api/asset/${id}`);
+    request.catch(() => hover.details.delete(id));    // let a later hover retry
+    hover.details.set(id, request);
+  }
+  return hover.details.get(id);
+}
+
+const fmt = {
+  when: (v) => v && v.replace("T", " ").replace(/\.\d+Z?$|Z$/, ""),
+  size: (n) => n && (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB`
+                                  : `${Math.round(n / 1024)} kB`),
+  place: (d) => [d.city, d.state, d.country].filter(Boolean).join(", "),
+  gps: (d) => d.latitude != null && d.longitude != null
+    ? `${d.latitude.toFixed(5)}, ${d.longitude.toFixed(5)}` : "",
+  exposure: (d) => [
+    d.exposure && `${d.exposure} s`,
+    d.f_number && `f/${d.f_number}`,
+    d.focal_length && `${d.focal_length} mm`,
+    d.iso && `ISO ${d.iso}`,
+  ].filter(Boolean).join("  ·  "),
+  dimensions: (d) => d.width && d.height ? `${d.width} × ${d.height}` : "",
+};
+
+function detailRows(d) {
+  const rows = [
+    ["File", d.file_name],
+    ["Folder", d.folder],
+    ["Taken", [fmt.when(d.taken), d.time_zone].filter(Boolean).join("  ")],
+    ["Place", fmt.place(d)],
+    ["GPS", fmt.gps(d) || "none"],
+    ["Camera", d.camera],
+    ["Lens", d.lens],
+    ["Exposure", fmt.exposure(d)],
+    ["Size", [fmt.dimensions(d), fmt.size(d.size_bytes)].filter(Boolean).join("  ·  ")],
+    ["Duration", d.kind === "VIDEO" ? d.duration : ""],
+    ["People", d.people.join(", ")],
+    ["Note", d.description],
+  ];
+  const list = el("dl");
+  for (const [label, value] of rows) {
+    if (!value) continue;
+    list.append(el("dt", {}, label), el("dd", {}, String(value)));
+  }
+  return list;
+}
+
+function placeHoverCard(image) {
+  const card = hoverCard();
+  const anchor = image.getBoundingClientRect();
+  const { offsetWidth: w, offsetHeight: h } = card;
+  const gap = 12;
+  let left = anchor.right + gap;
+  if (left + w > innerWidth - 8) left = anchor.left - w - gap;
+  left = Math.max(8, Math.min(left, innerWidth - w - 8));
+  let top = anchor.top + anchor.height / 2 - h / 2;
+  top = Math.max(8, Math.min(top, innerHeight - h - 8));
+  card.style.left = `${left}px`;
+  card.style.top = `${top}px`;
+}
+
+async function showHoverCard(image, id) {
+  const epoch = ++hover.epoch;
+  const card = hoverCard();
+  const body = el("div", { class: "hover-details muted" }, "loading details…");
+  const big = el("img", { src: `/api/thumb/${id}?size=preview`, alt: "" });
+  big.onload = () => { if (epoch === hover.epoch) placeHoverCard(image); };
+  card.replaceChildren(el("div", { class: "hover-picture" }, big), body);
+  card.hidden = false;
+  placeHoverCard(image);
+  try {
+    const details = await assetDetails(id);
+    if (epoch !== hover.epoch) return;
+    body.className = "hover-details";
+    body.replaceChildren(detailRows(details));
+  } catch (error) {
+    if (epoch !== hover.epoch) return;
+    body.textContent = `No details: ${error.message}`;
+  }
+  placeHoverCard(image);
+}
+
+document.addEventListener("mouseover", (event) => {
+  const image = event.target instanceof Element ? event.target.closest("img") : null;
+  const match = image && THUMB.exec(image.getAttribute("src") || "");
+  if (!match || image.closest("#hover-card")) return;
+  clearTimeout(hover.timer);
+  hover.timer = setTimeout(() => showHoverCard(image, match[1]), 250);
+});
+
+document.addEventListener("mouseout", (event) => {
+  const image = event.target instanceof Element ? event.target.closest("img") : null;
+  if (image && THUMB.test(image.getAttribute("src") || "")) hideHoverCard();
+});
+document.addEventListener("scroll", hideHoverCard, true);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") hideHoverCard();
+});

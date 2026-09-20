@@ -42,6 +42,7 @@ def make_asset(number: int, *, when: str, lat: float | None = None,
         "type": kind,
         "localDateTime": when,
         "originalFileName": file_name or f"IMG_{number:04d}.jpg",
+        "originalPath": f"/photos/example-folder/{file_name or f'IMG_{number:04d}.jpg'}",
         "_people": list(people),          # stub-only, used for personIds filtering
         "exifInfo": {"latitude": lat, "longitude": lon, "city": city,
                      "state": state, "country": country,
@@ -265,6 +266,25 @@ def _make_handler(stub: StubImmich):
                 return self._send(200, {
                     "id": album["id"], "albumName": album["albumName"],
                     "description": "", "assetCount": stub.display_count(album)})
+
+            if path.startswith("/api/assets/") and path.count("/") == 3:
+                if not self._authorized("asset.read"):
+                    return
+                found = [a for a in stub.assets if a["id"] == path.split("/")[3]]
+                if not found:
+                    return self._send(404, {"message": "Not found"})
+                # Like the real record: EXIF a camera would write, and the
+                # people Immich recognised in it.
+                record = _public(found[0])
+                record["exifInfo"] = {
+                    **record["exifInfo"], "make": "ExampleCam", "model": "X100",
+                    "lensModel": "23mm f/2", "fNumber": 2.8, "focalLength": 23.0,
+                    "iso": 200, "exposureTime": "1/250", "exifImageWidth": 6000,
+                    "exifImageHeight": 4000, "fileSizeInByte": 5242880}
+                names = {p["id"]: p["name"] for p in stub.people}
+                record["people"] = [{"name": names.get(i, "")}
+                                    for i in found[0].get("_people", [])]
+                return self._send(200, record)
 
             if path.startswith("/api/assets/") and path.endswith("/thumbnail"):
                 if not self._authorized("asset.view"):

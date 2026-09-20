@@ -143,7 +143,7 @@ def _run(args) -> int:
             print(f"  !  {report.name}: {report.error}")
         elif report.created:
             print(f"  +  {prefix}create {report.name!r} "
-                  f"with {report.added} asset(s)")
+                  f"with {report.added} media")
         else:
             # An album can change without gaining or losing a single asset --
             # a rename or a new cover -- so "up to date" is only for an album

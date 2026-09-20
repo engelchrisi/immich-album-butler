@@ -38,7 +38,7 @@ MAX_IDS = 2000
 
 @dataclass
 class Suggestion:
-    """One group of assets that are not in the album but arguably could be."""
+    """One group of media that are not in the album but arguably could be."""
 
     key: str
     title: str
@@ -105,7 +105,7 @@ def _close_in_time(inside: Sequence[Point], outside: Sequence[Point],
     widened = {"from": min(dates).isoformat(), "to": max(dates).isoformat()}
     first, last = min(dates), max(dates)
 
-    detail = ("Taken just before or after the album's own assets -- usually "
+    detail = ("Taken just before or after the album's own media -- usually "
               "the journey there and back.")
     if rule.people:
         # Face data is not in the scan, so the people filter cannot be applied

@@ -310,6 +310,10 @@ class ImmichClient:
             page = int(next_page)
         log.debug("search/metadata returned %d assets over %d page(s)", seen, page)
 
+    def asset(self, asset_id: str) -> dict:
+        """One asset's full record, EXIF included. Needs `asset.read`."""
+        return self.request("GET", f"assets/{asset_id}") or {}
+
     def thumbnail(self, asset_id: str, size: str = "thumbnail") -> tuple[bytes, str]:
         """Fetch a thumbnail server-side, so the browser never sees the key."""
         url = f"{self.base_url}/api/assets/{asset_id}/thumbnail?size={size}"

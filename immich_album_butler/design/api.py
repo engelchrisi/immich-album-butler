@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import re
 from pathlib import Path
 
 from .. import analyze as analyze_module
@@ -37,9 +38,25 @@ from ..state import State
 
 log = logging.getLogger(__name__)
 
-# The preview ships thumbnails for the first few assets only; the count is what
-# the decision actually rests on.
-PREVIEW_THUMBS = 24
+# The preview ships thumbnails for the first and the last few media only; the
+# count is what the decision actually rests on. The last ones matter as much as
+# the first: they show whether the end of a trip is covered.
+PREVIEW_EDGE = 12
+
+# What an asset id looks like. Ids go into a URL path towards Immich, so
+# anything else is refused rather than passed on.
+ASSET_ID = re.compile(r"[A-Za-z0-9-]{1,64}")
+
+
+def _edges(ids: list[str]) -> dict:
+    """The first and the last few of a chronological list, without overlap.
+
+    A short list is all "first" and has no "last", so nothing shows twice.
+    """
+    if len(ids) <= 2 * PREVIEW_EDGE:
+        return {"thumbnails": ids, "thumbnails_last": []}
+    return {"thumbnails": ids[:PREVIEW_EDGE],
+            "thumbnails_last": ids[-PREVIEW_EDGE:]}
 
 
 class ApiError(Exception):
@@ -58,6 +75,48 @@ class DesignApi:
         self.state_dir = Path(state_dir)
         self._scan: list[trips_module.Point] | None = None
         self._scanned_at: dt.datetime | None = None
+
+    # -- one picture, for the hover card ----------------------------------
+
+    def asset_details(self, asset_id: str) -> dict:
+        """What the hover card shows for a picture: file, date, camera, place.
+
+        Curated on purpose -- the browser gets these fields and not Immich's
+        whole record, which carries paths and ids nobody needs there.
+        """
+        if not ASSET_ID.fullmatch(asset_id):
+            raise ApiError("not an asset id")
+        data = self.client.asset(asset_id)
+        exif = data.get("exifInfo") or {}
+        path = str(data.get("originalPath") or "")
+        return {
+            "id": asset_id,
+            "file_name": data.get("originalFileName") or "",
+            "folder": path.rsplit("/", 1)[0] if "/" in path else "",
+            "kind": str(data.get("type") or "IMAGE"),
+            "taken": data.get("localDateTime") or exif.get("dateTimeOriginal"),
+            "time_zone": exif.get("timeZone"),
+            "duration": data.get("duration") or None,
+            "size_bytes": exif.get("fileSizeInByte"),
+            "width": exif.get("exifImageWidth"),
+            "height": exif.get("exifImageHeight"),
+            "camera": " ".join(part for part in (exif.get("make"), exif.get("model"))
+                               if part) or None,
+            "lens": exif.get("lensModel"),
+            "f_number": exif.get("fNumber"),
+            "focal_length": exif.get("focalLength"),
+            "iso": exif.get("iso"),
+            "exposure": exif.get("exposureTime"),
+            "latitude": exif.get("latitude"),
+            "longitude": exif.get("longitude"),
+            "city": exif.get("city"),
+            "state": exif.get("state"),
+            "country": exif.get("country"),
+            "description": exif.get("description") or None,
+            "people": [p["name"] for p in data.get("people") or []
+                       if p.get("name")],
+            "favorite": bool(data.get("isFavorite")),
+        }
 
     # -- configuration ----------------------------------------------------
 
@@ -209,7 +268,7 @@ class DesignApi:
             "creates_album": plan.creates_album,
             "summary": plan.summary(),
             "warnings": plan.warnings,
-            "thumbnails": plan.matched[:PREVIEW_THUMBS],
+            **_edges(plan.matched),
             # The cover the rule picks, so the builder can show which picture
             # would end up on the front before anything is saved.
             "cover": album.cover,
@@ -251,7 +310,7 @@ class DesignApi:
         """
         asset_ids = [str(i) for i in (payload.get("asset_ids") or [])]
         if not asset_ids:
-            raise ApiError("no assets given")
+            raise ApiError("no media given")
         album = self._album_from(payload, require_name=False)
         config = self.config()
         info = self._butler(config).find_album(album)
@@ -292,6 +351,7 @@ class DesignApi:
         covered = self._covered_windows(config)
         found = trips_module.detect(points, away_km=away_km,
                                     min_assets=min_assets, min_days=min_days)
+        taken = {p.id: p.taken_at for p in points}
         rows = []
         for trip in found:
             rows.append({
@@ -303,7 +363,8 @@ class DesignApi:
                 "name": trip.suggested_name(),
                 "slug": slugify(trip.suggested_name()),
                 "covered_by": _covering(trip, covered),
-                "thumbnails": trip.asset_ids[:PREVIEW_THUMBS],
+                **_edges(sorted(trip.asset_ids,
+                                key=lambda i: (taken.get(i) or dt.datetime.min, i))),
             })
         return {"trips": rows, "assets": len(points),
                 "scanned_at": scanned_at.isoformat() if scanned_at else None}

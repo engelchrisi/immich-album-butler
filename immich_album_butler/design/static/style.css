@@ -140,6 +140,8 @@ button.link { background: none; border: none; color: var(--accent); padding: 0.2
 .count small { font-size: 0.85rem; font-weight: 400; color: var(--muted);
                display: block; }
 
+.strip-label { margin-top: 0.75rem; color: var(--muted); font-size: 0.8rem; }
+.strip-label + .strip { margin-top: 0.3rem; }
 .strip { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 0.75rem; }
 .strip img {
   width: 64px; height: 64px; object-fit: cover; border-radius: 4px;
@@ -192,3 +194,27 @@ body.login .message {
 }
 
 #whoami { margin-left: auto; display: flex; align-items: center; gap: 0.6rem; }
+
+/* -- the hover card ----------------------------------------------------- */
+
+#hover-card {
+  position: fixed; z-index: 50; pointer-events: none;
+  display: flex; gap: 0.9rem; align-items: flex-start;
+  width: min(64rem, calc(100vw - 1rem));
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 0.8rem; box-shadow: 0 10px 30px rgba(20, 30, 45, 0.25);
+}
+#hover-card .hover-picture {
+  flex: 0 0 min(36rem, 60%); height: min(27rem, calc(100vh - 5rem)); border-radius: 6px;
+  background: var(--thumb-bg); display: grid; place-items: center;
+}
+#hover-card .hover-picture img {
+  max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px;
+}
+#hover-card .hover-details { flex: 1 1 auto; min-width: 0; font-size: 0.86rem; }
+#hover-card dl {
+  display: grid; grid-template-columns: max-content 1fr;
+  gap: 0.25rem 0.75rem; margin: 0;
+}
+#hover-card dt { color: var(--muted); }
+#hover-card dd { margin: 0; overflow-wrap: anywhere; }

@@ -19,7 +19,7 @@ from pathlib import Path
 
 from immich_album_butler import config as config_module
 from immich_album_butler import trips as trips_module
-from immich_album_butler.design.api import ApiError, DesignApi
+from immich_album_butler.design.api import PREVIEW_EDGE, ApiError, DesignApi, _edges
 from immich_album_butler.design.server import _make_handler
 from immich_album_butler.immich import ImmichClient
 
@@ -92,6 +92,49 @@ class PickerTests(DesignTestCase):
     def test_an_unknown_place_type_is_refused(self):
         with self.assertRaises(ApiError):
             self.api.places("planet")
+
+
+class AssetDetailsTests(DesignTestCase):
+    def test_the_hover_card_gets_file_date_camera_and_place(self):
+        details = self.api.asset_details(fake_id(2))
+        self.assertEqual(details["file_name"], "IMG_0002.jpg")
+        self.assertEqual(details["folder"], "/photos/example-folder")
+        self.assertEqual(details["camera"], "ExampleCam X100")
+        self.assertEqual(details["exposure"], "1/250")
+        self.assertEqual((details["city"], details["country"]), ("Rome", "Italy"))
+        self.assertEqual((details["latitude"], details["longitude"]), (41.9, 12.5))
+        self.assertEqual(details["people"], ["Alex", "Sam"])
+        self.assertTrue(details["taken"].startswith("2019-07-02"))
+
+    def test_a_picture_without_gps_says_so_with_nulls(self):
+        details = self.api.asset_details(fake_id(3))
+        self.assertIsNone(details["latitude"])
+
+    def test_only_a_curated_set_of_fields_leaves_the_server(self):
+        self.assertNotIn("originalPath", self.api.asset_details(fake_id(1)))
+
+    def test_something_that_is_not_an_id_is_refused(self):
+        for bad in ("../users", "a/b", "x?size=1", ""):
+            with self.assertRaises(ApiError):
+                self.api.asset_details(bad)
+
+    def test_an_unknown_asset_is_an_immich_error(self):
+        from immich_album_butler.immich import ImmichError
+        with self.assertRaises(ImmichError):
+            self.api.asset_details(fake_id(99))
+
+
+class EdgeTests(unittest.TestCase):
+    def test_a_short_list_is_shown_whole_and_nothing_twice(self):
+        ids = [str(n) for n in range(2 * PREVIEW_EDGE)]
+        self.assertEqual(_edges(ids), {"thumbnails": ids, "thumbnails_last": []})
+
+    def test_a_long_list_shows_its_first_and_its_last(self):
+        ids = [str(n) for n in range(100)]
+        edges = _edges(ids)
+        self.assertEqual(edges["thumbnails"], ids[:PREVIEW_EDGE])
+        self.assertEqual(edges["thumbnails_last"], ids[-PREVIEW_EDGE:])
+        self.assertEqual(edges["thumbnails_last"][-1], "99")
 
 
 class PreviewTests(DesignTestCase):
@@ -675,6 +718,17 @@ class RoutingTests(ServerTestCase):
         self.assertEqual(response.headers["Content-Type"], "image/gif")
         self.assertTrue(body.startswith(b"GIF89a"))
         self.assertNotIn(API_KEY.encode(), body)
+
+    def test_asset_details_are_served_over_http(self):
+        details = self.fetch(f"/api/asset/{fake_id(1)}")
+        self.assertEqual(details["file_name"], "IMG_0001.jpg")
+        self.assertNotIn(API_KEY, json.dumps(details))
+
+    def test_the_large_preview_is_proxied_too(self):
+        body, response = self.fetch(f"/api/thumb/{fake_id(1)}?size=preview", raw=True)
+        self.assertEqual(response.headers["Content-Type"], "image/gif")
+        self.assertIn(("GET", f"/api/assets/{fake_id(1)}/thumbnail"),
+                      self.stub.requests)
 
     def test_a_missing_thumbnail_is_reported_not_crashed(self):
         with self.assertRaises(urllib.error.HTTPError) as caught:
