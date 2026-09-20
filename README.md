@@ -63,6 +63,7 @@ sudo systemctl start immich-album-butler-design
 ```
 
 It shuts itself down after `design_idle_minutes` (default 30) of nobody using it.
+It listens on the LAN, so make a login first — see [Starting it](#starting-it).
 
 ## Configuration
 
@@ -197,18 +198,66 @@ See [`examples/config.toml`](examples/config.toml) for a complete file.
 immich-album-butler run                     # daemon: follow every album's schedule
 immich-album-butler run --once --dry-run    # show what would change, change nothing
 immich-album-butler run --once italy-2019   # update one album now
-immich-album-butler design                  # web UI on http://127.0.0.1:8081 (default)
-immich-album-butler design --host 0.0.0.0 --port 9000  # listen on any interface, port 9000
+immich-album-butler design                  # web UI on http://127.0.0.1:8081 (this machine only)
+immich-album-butler design --host 0.0.0.0 --port 9000  # reachable from the LAN, port 9000 (needs a login)
 immich-album-butler passwd alex             # make a design-mode login
 ```
 
 Configuration directory: `--config-dir`. The API key comes from `IMMICH_KEY`,
-so it is never stored in a config file and never visible in `ps`.
+so it is never stored in a config file and never visible in `ps`. How to start
+design mode, on a server or by hand, is under [Design mode](#starting-it).
 
 ## Design mode
 
 A small web UI for building album rules, started when you want it and stopped
 again by itself after `design_idle_minutes` of nobody using it.
+
+### Starting it
+
+Design mode needs the same three things as a run: the config directory, the
+state directory, and `IMMICH_KEY` in the environment. Pick the way that matches
+how you installed the butler.
+
+**On a server installed with `deploy/install.sh`** — the unit already has all of
+that set up and listens on every interface (`--host 0.0.0.0`):
+
+```sh
+sudo systemctl start immich-album-butler-design     # then open http://<server>:8081
+sudo systemctl stop immich-album-butler-design      # when you are done
+journalctl -u immich-album-butler-design -n 20      # the log line names the address
+```
+
+**By hand** — on your own machine, or to try it without systemd. The install
+script copies the package but does not put an `immich-album-butler` command on
+the `PATH`, so call it as a module (global options such as `--config-dir` go
+*before* `design`):
+
+```sh
+export IMMICH_KEY=...                                # your Immich API key
+python3 -m immich_album_butler --config-dir ./cfg --state-dir ./state design
+```
+
+Once the package is pip-installed, `immich-album-butler` replaces
+`python3 -m immich_album_butler`.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--host` | `127.0.0.1` | Address to listen on. Loopback means only this machine can connect; `0.0.0.0` means anything that can reach it |
+| `--port` | `8081` | Port. Also settable as `design_port` in `config.toml`; the option wins |
+| `--config-dir` | `/etc/immich-album-butler` | Where `config.toml` lives (also `BUTLER_CONFIG_DIR`) |
+| `--state-dir` | `/var/lib/immich-album-butler` | Where `state.json` and the trip-scan cache live (also `BUTLER_STATE_DIR`) |
+
+The listening address is printed at startup. It stops by itself after
+`design_idle_minutes` (default 30, `0` = never) without a request, or on Ctrl+C.
+
+**Before you expose it beyond your own machine, make a login first.** Design
+mode refuses to listen on anything but loopback until `config.toml` has a
+`[[design.users]]` entry, since it can show your photos:
+
+```sh
+python3 -m immich_album_butler passwd alex      # asks twice, prints a block; needs a terminal
+# paste the printed [[design.users]] block into config.toml, then start design mode
+```
 
 - **Builder** — Who / When / Where pickers over one live preview: how many
   assets match, how many are already in the album, a thumbnail strip, and when
