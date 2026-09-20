@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img"
+     aria-label="Album Butler">
+  <!-- Five photo prints fanned out like a hand of cards, in the five colours
+       of the Immich logo and in the order they run around its pinwheel:
+       pink, blue, red, green, yellow. The outer prints are drawn first so
+       the fan layers symmetrically towards the one in front. -->
+  <g transform="translate(4.72 -0.93) scale(0.8525)">
+    <g stroke="#fff" stroke-width="2.5" stroke-linejoin="round">
+      <g transform="rotate(-48 32 56)"><rect x="24" y="18" width="16" height="34" rx="2.5" fill="#ed79b5"/></g>
+      <g transform="rotate(48 32 56)"><rect x="24" y="18" width="16" height="34" rx="2.5" fill="#ffb400"/></g>
+      <g transform="rotate(-24 32 56)"><rect x="24" y="18" width="16" height="34" rx="2.5" fill="#1e83f7"/></g>
+      <g transform="rotate(24 32 56)"><rect x="24" y="18" width="16" height="34" rx="2.5" fill="#18c249"/></g>
+      <rect x="24" y="18" width="16" height="34" rx="2.5" fill="#fa2921"/>
+    </g>
+  </g>
+</svg>

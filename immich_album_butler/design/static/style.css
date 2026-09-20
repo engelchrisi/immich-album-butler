@@ -42,7 +42,11 @@ header {
   background: var(--panel);
   position: sticky; top: 0; z-index: 5;
 }
-h1 { font-size: 1.05rem; margin: 0; font-weight: 600; letter-spacing: 0.02em; }
+h1 {
+  font-size: 1.05rem; margin: 0; font-weight: 600; letter-spacing: 0.02em;
+  display: flex; align-items: center; gap: 0.5rem;
+}
+h1 .logo { width: 1.6em; height: 1.6em; }
 
 nav { display: flex; gap: 0.25rem; }
 .tab {

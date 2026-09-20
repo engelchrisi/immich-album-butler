@@ -276,6 +276,8 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
                 return self._login_page()
             if path == "/static/style.css":
                 return self._static("style.css")
+            if path in ("/favicon.svg", "/static/icon.svg"):
+                return self._static("icon.svg")
 
             if not self._require_login(api_call=path.startswith("/api/")):
                 return
