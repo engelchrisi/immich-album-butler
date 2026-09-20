@@ -103,8 +103,7 @@
           </select>
         </label>
         <div class="muted" id="next-run"></div>
-        <label>
-          Cover picture
+        <label class="field"><span>Cover picture</span>
           <select id="cover">
             <option value="auto">leave Immich's own choice alone</option>
             <option value="everyone">the one with most of the people in it</option>
@@ -113,20 +112,17 @@
             <option value="named">a picture I name…</option>
           </select>
         </label>
-        <label id="cover-name-row" hidden>
-          Cover file name
+        <label id="cover-name-row" class="field" hidden><span>Cover file name</span>
           <input id="cover-name" type="text" placeholder="IMG_0042.jpg">
         </label>
-        <label>
-          Also visible to
+        <label class="field"><span>Also visible to</span>
           <select id="share-with" multiple size="3"></select>
           <span class="muted" id="share-note">
             other accounts on this server; access is only ever granted, never
             taken away
           </span>
         </label>
-        <label id="share-role-row" hidden>
-          They may
+        <label id="share-role-row" class="field" hidden><span>They may</span>
           <select id="share-role">
             <option value="viewer">look, and nothing else</option>
             <option value="editor">add and remove pictures too</option>

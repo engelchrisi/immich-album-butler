@@ -88,6 +88,8 @@ async function loadAlbums() {
   state.saved = data.albums;
   $("albums-note").textContent =
     `default schedule: ${data.default_schedule}`;
+  $("schedule").querySelector('option[value="inherit"]').textContent =
+    `inherit the global default: ${data.default_schedule}`;
   const list = $("album-list");
   list.replaceChildren();
 
