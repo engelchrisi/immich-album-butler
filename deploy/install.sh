@@ -32,7 +32,10 @@ rm -rf "$PREFIX/immich_album_butler"
 cp -r "$source_dir/immich_album_butler" "$PREFIX/"
 find "$PREFIX" -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
 
-install -d -m 750 -o root -g "$USER_NAME" "$CONFIG_DIR"
+# Group-writable: design mode saves config.toml by writing a temp file next to
+# it and renaming it over the original, which needs write access to the
+# directory (the file itself can stay 0640).
+install -d -m 770 -o root -g "$USER_NAME" "$CONFIG_DIR"
 install -d -m 750 -o "$USER_NAME" -g "$USER_NAME" "$STATE_DIR"
 
 if [ ! -f "$CONFIG_DIR/config.toml" ]; then
