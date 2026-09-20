@@ -138,7 +138,9 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
             self.send_header("Content-Security-Policy",
                              "default-src 'self'; img-src 'self' data:; "
                              "form-action 'self'; frame-ancestors 'none'")
-            self.send_header("Referrer-Policy", "no-referrer")
+            # "no-referrer" makes browsers send "Origin: null" on a same-site
+            # form POST, which _same_origin() then refuses -- the login itself.
+            self.send_header("Referrer-Policy", "same-origin")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("X-Frame-Options", "DENY")
             for key, value in (headers or {}).items():
