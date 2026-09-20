@@ -1,3 +1,5 @@
+<img src="immich_album_butler/design/static/icon.svg" alt="" width="120">
+
 # immich-album-butler
 
 A butler that keeps your [Immich](https://immich.app) albums in order: by
