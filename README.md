@@ -240,6 +240,18 @@ python3 -m immich_album_butler --config-dir ./cfg --state-dir ./state design
 Once the package is pip-installed, `immich-album-butler` replaces
 `python3 -m immich_album_butler`.
 
+**Opening it.** Opening the URL does not start design mode — start it first (the
+unit or the command above), then browse to it:
+
+| Started as | URL |
+|---|---|
+| the systemd unit | `http://<server-ip>:8081` |
+| by hand, defaults | `http://127.0.0.1:8081` (only from the same machine) |
+| by hand, `--host 0.0.0.0 --port 9000` | `http://<machine-ip>:9000` |
+
+The startup log line prints the exact address (`design mode on http://...`). If
+the page does not load, the process is not running or a firewall is in the way.
+
 | Option | Default | Meaning |
 |---|---|---|
 | `--host` | `127.0.0.1` | Address to listen on. Loopback means only this machine can connect; `0.0.0.0` means anything that can reach it |
