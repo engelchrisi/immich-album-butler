@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import random
 import re
 from pathlib import Path
 
@@ -43,6 +44,9 @@ log = logging.getLogger(__name__)
 # the first: they show whether the end of a trip is covered.
 PREVIEW_EDGE = 12
 
+# The Trips tab shows this many, drawn at random from the whole trip (3 x 4).
+TRIP_THUMBS = 12
+
 # What an asset id looks like. Ids go into a URL path towards Immich, so
 # anything else is refused rather than passed on.
 ASSET_ID = re.compile(r"[A-Za-z0-9-]{1,64}")
@@ -57,6 +61,17 @@ def _edges(ids: list[str]) -> dict:
         return {"thumbnails": ids, "thumbnails_last": []}
     return {"thumbnails": ids[:PREVIEW_EDGE],
             "thumbnails_last": ids[-PREVIEW_EDGE:]}
+
+
+def _sample(ids: list[str], taken: dict, seed: str) -> list[str]:
+    """A dozen pictures drawn at random from a whole trip, oldest first.
+
+    Random rather than the first few, so a card shows the whole trip and not
+    just its opening day. Seeded by the trip's dates, so a card does not
+    reshuffle every time the page is opened.
+    """
+    chosen = random.Random(seed).sample(ids, min(len(ids), TRIP_THUMBS))
+    return sorted(chosen, key=lambda i: (taken.get(i) or dt.datetime.min, i))
 
 
 class ApiError(Exception):
@@ -363,8 +378,8 @@ class DesignApi:
                 "name": trip.suggested_name(),
                 "slug": slugify(trip.suggested_name()),
                 "covered_by": _covering(trip, covered),
-                **_edges(sorted(trip.asset_ids,
-                                key=lambda i: (taken.get(i) or dt.datetime.min, i))),
+                "thumbnails": _sample(trip.asset_ids, taken,
+                                      seed=f"{trip.start}{trip.end}"),
             })
         return {"trips": rows, "assets": len(points),
                 "scanned_at": scanned_at.isoformat() if scanned_at else None}

@@ -5,6 +5,7 @@ auth, routing and the thumbnail proxy are exercised as a browser would.
 """
 
 import base64
+import datetime as dt
 import json
 import re
 import socket
@@ -19,7 +20,8 @@ from pathlib import Path
 
 from immich_album_butler import config as config_module
 from immich_album_butler import trips as trips_module
-from immich_album_butler.design.api import PREVIEW_EDGE, ApiError, DesignApi, _edges
+from immich_album_butler.design.api import (PREVIEW_EDGE, TRIP_THUMBS, ApiError,
+                                            DesignApi, _edges, _sample)
 from immich_album_butler.design.server import _make_handler
 from immich_album_butler.immich import ImmichClient
 
@@ -135,6 +137,27 @@ class EdgeTests(unittest.TestCase):
         self.assertEqual(edges["thumbnails"], ids[:PREVIEW_EDGE])
         self.assertEqual(edges["thumbnails_last"], ids[-PREVIEW_EDGE:])
         self.assertEqual(edges["thumbnails_last"][-1], "99")
+
+
+class SampleTests(unittest.TestCase):
+    IDS = [f"id{n:03d}" for n in range(200)]
+    TAKEN = {i: dt.datetime(2019, 7, 1) + dt.timedelta(hours=n)
+             for n, i in enumerate(IDS)}
+
+    def test_a_trip_shows_twelve_drawn_from_all_of_it_oldest_first(self):
+        picked = _sample(self.IDS, self.TAKEN, seed="trip")
+        self.assertEqual(len(picked), TRIP_THUMBS)
+        self.assertEqual(picked, sorted(picked))
+        self.assertEqual(len(set(picked)), TRIP_THUMBS)
+        self.assertGreater(self.IDS.index(picked[-1]), 12,
+                           "not just the opening picture run")
+
+    def test_the_same_trip_gives_the_same_pictures_each_time(self):
+        self.assertEqual(_sample(self.IDS, self.TAKEN, seed="a"),
+                         _sample(self.IDS, self.TAKEN, seed="a"))
+
+    def test_a_small_trip_shows_everything_it_has(self):
+        self.assertEqual(len(_sample(self.IDS[:5], self.TAKEN, seed="a")), 5)
 
 
 class PreviewTests(DesignTestCase):
