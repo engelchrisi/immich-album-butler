@@ -11,11 +11,6 @@
     A butler that keeps your Immich albums in order: by people, places and dates
     <br />
     <a href="https://immich.app/"><strong>Explore immich »</strong></a>
-    <br />
-    <br />
-    <a href="https://github.com/engelchrisi/immich-album-butler/issues">Report Bug</a>
-    ·
-    <a href="https://github.com/engelchrisi/immich-album-butler/issues">Request Feature</a>
   </p>
 </div>
 
