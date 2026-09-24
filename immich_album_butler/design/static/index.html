@@ -162,14 +162,18 @@
 
 <!-- ---------------------------------------------------------------- -->
 <section id="trips" class="panel">
-  <div class="bar">
+  <div class="toolbar">
     <button id="rescan">Scan the library</button>
-    <label class="field inline"><span>away km</span>
-      <input id="away-km" type="number" value="100" min="1" step="10"></label>
-    <label class="field inline"><span>min media</span>
+    <span class="divider"></span>
+    <label class="field inline"><span>Away</span>
+      <input id="away-km" type="number" value="100" min="1" step="10"><span>km</span></label>
+    <label class="field inline"><span>Min. media</span>
       <input id="min-assets" type="number" value="30" min="1"></label>
-    <span class="muted" id="scan-note"></span>
+    <span class="divider"></span>
+    <label class="toggle">
+      <input id="only-new" type="checkbox" checked> Only trips without an album</label>
   </div>
+  <div class="muted scan-note" id="scan-note"></div>
   <div id="trip-list" class="cards"></div>
 </section>
 

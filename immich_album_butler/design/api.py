@@ -22,6 +22,7 @@ import datetime as dt
 import logging
 import random
 import re
+import time
 from pathlib import Path
 
 from .. import analyze as analyze_module
@@ -46,6 +47,15 @@ PREVIEW_EDGE = 12
 
 # The Trips tab shows this many, drawn at random from the whole trip (3 x 4).
 TRIP_THUMBS = 12
+
+# When an Immich album counts as holding a trip: it has at least this share of
+# the trip's media, and more than this share of its own media falls within the
+# trip's dates (give or take the slack). The second test is what keeps an album
+# of one person, spanning years, from claiming every trip that person was on.
+ALBUM_HOLDS = 0.5
+ALBUM_WITHIN = 0.5
+ALBUM_SLACK = dt.timedelta(days=2)
+ALBUM_INDEX_TTL = 600               # seconds
 
 # What an asset id looks like. Ids go into a URL path towards Immich, so
 # anything else is refused rather than passed on.
@@ -90,6 +100,8 @@ class DesignApi:
         self.state_dir = Path(state_dir)
         self._scan: list[trips_module.Point] | None = None
         self._scanned_at: dt.datetime | None = None
+        self._albums: dict[str, set[str]] | None = None
+        self._albums_read: float = 0.0
 
     # -- one picture, for the hover card ----------------------------------
 
@@ -206,11 +218,14 @@ class DesignApi:
     def albums(self) -> dict:
         config = self.config()
         state = State.load(self.state_dir)
+        butler = Butler(self.client, config, state)
         rows = []
         for album in config.albums:
             record = state.albums.get(album.slug)
             rows.append({
                 "slug": album.slug, "name": album.name,
+                # What Immich calls it: the name plus the fixed/updating suffix.
+                "immich_name": butler.marked_name(album),
                 "enabled": album.enabled, "sync": album.sync,
                 "cover": album.cover,
                 "share_with": list(album.share_with),
@@ -276,6 +291,7 @@ class DesignApi:
             raise ApiError(str(exc)) from None
 
         return {
+            "immich_name": butler.marked_name(album) if album.name != "(draft)" else None,
             "matched": len(plan.matched),
             "to_add": len(plan.to_add),
             "to_remove": len(plan.to_remove),
@@ -328,12 +344,13 @@ class DesignApi:
             raise ApiError("no media given")
         album = self._album_from(payload, require_name=False)
         config = self.config()
-        info = self._butler(config).find_album(album)
+        butler = self._butler(config)
+        info = butler.find_album(album)
         if info is None:
-            raise ApiError(f"album {album.name!r} does not exist in Immich yet; "
-                           f"save and run it first")
+            raise ApiError(f"album {butler.marked_name(album)!r} does not exist "
+                           f"in Immich yet; save and run it first")
         added = self.client.add_assets(info.id, asset_ids)
-        return {"added": added, "requested": len(asset_ids), "album": album.name}
+        return {"added": added, "requested": len(asset_ids), "album": info.name}
 
     def run(self, payload: dict, dry_run: bool = False) -> dict:
         """Run one saved album now. Only saved albums: a run writes to Immich,
@@ -349,7 +366,7 @@ class DesignApi:
         report = butler.run_album(album, dry_run=dry_run)
         if not dry_run:
             state.save()
-        return {"album": report.name, "added": report.added,
+        return {"album": butler.marked_name(album), "added": report.added,
                 "removed": report.removed, "created": report.created,
                 "error": report.error, "dry_run": dry_run}
 
@@ -367,6 +384,11 @@ class DesignApi:
         found = trips_module.detect(points, away_km=away_km,
                                     min_assets=min_assets, min_days=min_days)
         taken = {p.id: p.taken_at for p in points}
+        albums_error = None
+        try:
+            index = self._album_index(refresh=rescan)
+        except ImmichError as exc:
+            index, albums_error = None, str(exc)
         rows = []
         for trip in found:
             rows.append({
@@ -378,28 +400,54 @@ class DesignApi:
                 "name": trip.suggested_name(),
                 "slug": slugify(trip.suggested_name()),
                 "covered_by": _covering(trip, covered),
+                "in_album": (_in_album(trip, index, taken)
+                             if index is not None else None),
                 "thumbnails": _sample(trip.asset_ids, taken,
                                       seed=f"{trip.start}{trip.end}"),
             })
         return {"trips": rows, "assets": len(points),
+                "albums_error": albums_error,
                 "scanned_at": scanned_at.isoformat() if scanned_at else None}
 
+    def _album_index(self, refresh: bool = False) -> dict[str, set[str]]:
+        """Every album in Immich and the media it holds, by album name.
+
+        One search per album, so it is kept for a while rather than read on
+        every visit to the Trips tab; a rescan reads it afresh.
+        """
+        stale = time.monotonic() - self._albums_read > ALBUM_INDEX_TTL
+        if self._albums is None or refresh or stale:
+            self._albums = {album.name: self.client.album_asset_ids(album.id)
+                            for album in self.client.albums()}
+            self._albums_read = time.monotonic()
+        return self._albums
+
     def _points(self, rescan: bool = False):
-        if rescan:
+        if self._scan is None and not rescan:
+            self._scan, self._scanned_at = trips_module.load_scan(self.state_dir)
+        # The first use each day refreshes an existing scan, so media deleted
+        # or added since do not linger as broken thumbnails or missing trips.
+        # With no scan at all it stays a button press: the first one is long.
+        stale = (self._scanned_at is not None
+                 and self._scanned_at.date() < dt.date.today())
+        if rescan or stale:
+            if stale and not rescan:
+                log.info("scan from %s is out of date; rescanning",
+                         self._scanned_at.isoformat(timespec="minutes"))
             points = trips_module.scan(self.client)
             trips_module.save_scan(self.state_dir, points)
             self._scan, self._scanned_at = points, dt.datetime.now()
-            return points, self._scanned_at
-        if self._scan is None:
-            self._scan, self._scanned_at = trips_module.load_scan(self.state_dir)
+            self._albums = None         # read the albums afresh as well
         return self._scan, self._scanned_at
 
     def _covered_windows(self, config) -> list[tuple[str, dt.date, dt.date]]:
+        butler = self._butler(config)
         windows = []
         for album in config.albums:
             rule = album.match
             if rule.from_date and rule.to_date:
-                windows.append((album.name, rule.from_date, rule.to_date))
+                windows.append((butler.marked_name(album), rule.from_date,
+                                rule.to_date))
         return windows
 
     # -- building an Album from the UI's JSON ------------------------------
@@ -531,3 +579,32 @@ def _covering(trip, windows) -> str | None:
         if overlap > 0 and overlap >= trip.days * 0.6:
             return name
     return None
+
+
+def _in_album(trip, index: dict[str, set[str]], taken: dict) -> dict | None:
+    """The Immich album that already holds this trip, if any.
+
+    Asset-based, so it finds albums made by hand or imported as well as the
+    butler's own. Media the scan has no date for count as outside the trip.
+    """
+    ids = set(trip.asset_ids)
+    if not ids:
+        return None
+    first = dt.datetime.combine(trip.start, dt.time.min) - ALBUM_SLACK
+    last = dt.datetime.combine(trip.end, dt.time.max) + ALBUM_SLACK
+    best = None
+    for name, members in index.items():
+        if not members:
+            continue
+        held = len(ids & members) / len(ids)
+        if held < ALBUM_HOLDS:
+            continue
+        within = sum(1 for i in members
+                     if (when := taken.get(i)) is not None and first <= when <= last)
+        if within / len(members) <= ALBUM_WITHIN:
+            continue
+        if best is None or held > best["share"]:
+            best = {"name": name, "share": held}
+    if best:
+        best["share"] = round(best["share"] * 100)
+    return best

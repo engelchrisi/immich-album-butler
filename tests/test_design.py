@@ -448,10 +448,61 @@ class TripTests(DesignTestCase):
                                                         "to": trip["end"]}})
         self.assertEqual(self.api.trips()["trips"][0]["covered_by"], "Japan")
 
+    def test_album_names_carry_their_suffix(self):
+        path = self.config_dir / "config.toml"
+        path.write_text(CONFIG_TOML + 'album_suffix_fixed = "◆"\n'
+                        'album_suffix_updating = "↻"\n', encoding="utf-8")
+        trip = self.api.trips(rescan=True)["trips"][0]
+        self.api.save_album({"name": "Japan", "auto-update-schedule": "manual",
+                             "match": {"from": trip["start"], "to": trip["end"]}})
+        self.assertEqual(self.api.trips()["trips"][0]["covered_by"], "Japan ◆")
+        self.assertEqual(self.api.albums()["albums"][0]["immich_name"], "Japan ◆")
+        preview = self.api.preview({"name": "Japan", "match": {"from": trip["start"],
+                                                               "to": trip["end"]}})
+        self.assertEqual(preview["immich_name"], "Japan ↻")
+
     def test_an_unrelated_album_does_not_mark_it(self):
         self.api.save_album({"name": "Other", "match": {"from": "2015-01-01",
                                                         "to": "2015-02-01"}})
         self.assertIsNone(self.api.trips(rescan=True)["trips"][0]["covered_by"])
+
+    def test_an_immich_album_holding_the_trip_marks_it(self):
+        """Any album counts, not just the butler's: this one was made by hand."""
+        self.stub.add_album("Tokyo by hand", [fake_id(50 + n) for n in range(30)])
+        trip = self.api.trips(rescan=True)["trips"][0]
+        self.assertEqual(trip["in_album"], {"name": "Tokyo by hand", "share": 75})
+
+    def test_a_long_running_album_does_not_mark_it(self):
+        """An album of everything, Rome included, holds the trip but is not it."""
+        self.stub.add_album("Everyone", [fake_id(n) for n in range(40)] +
+                            [fake_id(50 + n) for n in range(40)])
+        trip = self.api.trips(rescan=True)["trips"][0]
+        self.assertIsNone(trip["in_album"])
+
+    def test_an_album_with_a_small_part_of_the_trip_does_not_mark_it(self):
+        self.stub.add_album("Tokyo highlights", [fake_id(50 + n) for n in range(10)])
+        trip = self.api.trips(rescan=True)["trips"][0]
+        self.assertIsNone(trip["in_album"])
+
+    def test_no_album_leaves_the_trip_unmarked(self):
+        self.assertIsNone(self.api.trips(rescan=True)["trips"][0]["in_album"])
+
+    def test_a_scan_from_an_earlier_day_is_refreshed_on_first_use(self):
+        self.api.trips(rescan=True)
+        path = self.state_dir / trips_module.SCAN_FILE
+        data = json.loads(path.read_text(encoding="utf-8"))
+        yesterday = dt.datetime.now() - dt.timedelta(days=1)
+        data["scanned_at"] = yesterday.isoformat(timespec="seconds")
+        path.write_text(json.dumps(data), encoding="utf-8")
+
+        fresh = DesignApi(self.client, self.config_dir, self.state_dir)
+        result = fresh.trips()
+        self.assertEqual(result["scanned_at"][:10], dt.date.today().isoformat())
+        before = len(self.stub.requests)
+        fresh.trips()                   # the same day: no second scan
+        searches = sum(1 for _, p in self.stub.requests[before:]
+                       if p == "/api/search/metadata")
+        self.assertEqual(searches, 0)
 
     def test_the_second_call_uses_the_cache(self):
         self.api.trips(rescan=True)

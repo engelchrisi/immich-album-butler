@@ -105,7 +105,7 @@ async function loadAlbums() {
            album.enabled ? "enabled" : "disabled");
 
     const card = el("div", { class: "card" },
-      el("h3", {}, album.name, " ", status),
+      el("h3", {}, album.immich_name || album.name, " ", status),
       el("div", { class: "meta" },
         describe(album.match), el("br"),
         `${album.schedule}${album.schedule_inherited ? " (inherited)" : ""}`,
@@ -447,6 +447,7 @@ function renderChosenPlaces() {
 const refreshPreview = debounce(async () => {
   const box = $("preview");
   const { match } = state.draft;
+  state.immichName = null;
   const empty = !match.from && !match.to && !match.people.length &&
     !match.countries.length && !match.states.length && !match.cities.length;
   if (empty) {
@@ -466,7 +467,10 @@ const refreshPreview = debounce(async () => {
   }
   if (token !== state.previewToken) return;   // a newer preview already won
 
+  state.immichName = data.immich_name;
   const children = [
+    ...(data.immich_name
+      ? [el("div", { class: "muted" }, `In Immich as “${data.immich_name}”`)] : []),
     el("div", { class: "count" }, String(data.matched),
        el("small", {}, data.creates_album
           ? "media — this album does not exist in Immich yet"
@@ -518,7 +522,7 @@ function requireSaved(work) {
 }
 
 $("delete-config").onclick = async () => {
-  if (!confirm(`Delete the config for “${state.draft.name}”?\n\n` +
+  if (!confirm(`Delete the config for “${state.immichName || state.draft.name}”?\n\n` +
                `The album in Immich is not touched.`)) return;
   try {
     const result = await api(`/api/albums/${encodeURIComponent(state.draft.slug)}`,
@@ -579,7 +583,7 @@ function applyAdjust(adjust) {
 }
 
 async function addNow(group) {
-  if (!confirm(`Add ${group.count} media to “${state.draft.name}” now?\n\n` +
+  if (!confirm(`Add ${group.count} media to “${state.immichName || state.draft.name}” now?\n\n` +
                `This is a one-off: the rule is not changed, so a future run ` +
                `will not re-add them if they are removed.`)) return;
   try {
@@ -594,12 +598,25 @@ async function addNow(group) {
 
 $("rescan").onclick = () => loadTrips(true);
 
+/* Hiding trips that already have an album is a per-viewer preference. */
+const ONLY_NEW = "butler.trips.onlyNew";
+try { $("only-new").checked = localStorage.getItem(ONLY_NEW) !== "0"; } catch {}
+function applyOnlyNew() {
+  $("trip-list").classList.toggle("only-new", $("only-new").checked);
+}
+$("only-new").onchange = () => {
+  try { localStorage.setItem(ONLY_NEW, $("only-new").checked ? "1" : "0"); } catch {}
+  applyOnlyNew();
+};
+applyOnlyNew();
+
 async function loadTrips(rescan) {
   const list = $("trip-list");
   const note = $("scan-note");
   note.textContent = rescan
     ? "Scanning the whole library — this takes a while…" : "";
-  if (rescan) list.replaceChildren(el("div", { class: "spin" }, "Scanning…"));
+  list.replaceChildren(el("div", { class: "spin" }, rescan ? "Scanning…"
+    : "Loading… the first visit each day rescans the library, which takes a few minutes."));
 
   const query = new URLSearchParams({
     rescan: rescan ? "1" : "0",
@@ -610,9 +627,15 @@ async function loadTrips(rescan) {
   try { data = await api(`/api/trips?${query}`); }
   catch (error) { note.textContent = ""; return banner(error.message); }
 
-  note.textContent = data.scanned_at
-    ? `${data.assets} media, scanned ${data.scanned_at.replace("T", " ")}`
-    : "no scan yet";
+  const fresh = data.trips.filter((trip) => !trip.in_album).length;
+  if (data.scanned_at) {
+    note.replaceChildren(`${data.assets} media · scanned `,
+      el("b", {}, data.scanned_at.replace("T", " ").slice(0, 16)),
+      data.albums_error ? ` · albums not checked: ${data.albums_error}`
+        : ` · ${fresh} of ${data.trips.length} trips have no album`);
+  } else {
+    note.textContent = "no scan yet";
+  }
   list.replaceChildren();
 
   if (!data.trips.length) {
@@ -624,9 +647,16 @@ async function loadTrips(rescan) {
 
   for (const trip of data.trips) {
     const strips = editStrips({ ...trip, matched: trip.total });
-    const card = el("div", { class: "card" },
-      el("h3", {}, trip.name, trip.covered_by
-        ? el("span", { class: "pill on" }, `covered by ${trip.covered_by}`) : ""),
+    const known = !!trip.in_album;
+    const card = el("div", {
+        class: `card ${data.albums_error ? "" : known ? "has-album" : "no-album"}` },
+      el("h3", {}, trip.name, " ",
+        known
+          ? el("span", { class: "pill on" },
+              `in Immich: ${trip.in_album.name} (${trip.in_album.share}%)`)
+          : "",
+        trip.covered_by
+          ? el("span", { class: "pill on" }, `covered by ${trip.covered_by}`) : ""),
       el("div", { class: "meta" },
         `${trip.start} → ${trip.end} · ${trip.days} days · ${trip.total} media ` +
         `(${trip.located} located, ${trip.unlocated} without GPS)`),
