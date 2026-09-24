@@ -20,7 +20,8 @@ from pathlib import Path
 
 from immich_album_butler import config as config_module
 from immich_album_butler import trips as trips_module
-from immich_album_butler.design.api import (PREVIEW_EDGE, TRIP_THUMBS, ApiError,
+from immich_album_butler.design.api import (PREVIEW_EDGE, PREVIEW_SCROLL,
+                                            TRIP_THUMBS, ApiError,
                                             DesignApi, _edges, _sample)
 from immich_album_butler.design.server import _make_handler
 from immich_album_butler.immich import ImmichClient
@@ -134,9 +135,16 @@ class EdgeTests(unittest.TestCase):
     def test_a_long_list_shows_its_first_and_its_last(self):
         ids = [str(n) for n in range(100)]
         edges = _edges(ids)
-        self.assertEqual(edges["thumbnails"], ids[:PREVIEW_EDGE])
-        self.assertEqual(edges["thumbnails_last"], ids[-PREVIEW_EDGE:])
+        # Split in halves, both scrolling strips, nothing shown twice.
+        self.assertEqual(edges["thumbnails"], ids[:50])
+        self.assertEqual(edges["thumbnails_last"], ids[50:])
         self.assertEqual(edges["thumbnails_last"][-1], "99")
+
+    def test_a_very_long_list_caps_both_scrolling_strips(self):
+        ids = [str(n) for n in range(3 * PREVIEW_SCROLL)]
+        edges = _edges(ids)
+        self.assertEqual(edges["thumbnails"], ids[:PREVIEW_SCROLL])
+        self.assertEqual(edges["thumbnails_last"], ids[-PREVIEW_SCROLL:])
 
 
 class SampleTests(unittest.TestCase):

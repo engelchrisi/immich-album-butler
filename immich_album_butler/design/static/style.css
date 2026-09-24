@@ -170,6 +170,19 @@ button.link { background: none; border: none; color: var(--accent); padding: 0.2
   background: var(--thumb-bg);
 }
 
+/* A long strip: one row that scrolls sideways, with the full-size scrollbar and
+   its arrow buttons, so it is easy to see and to hit. */
+.scroll-wrap { position: relative; margin-top: 0.3rem; }
+.strip.scroll { flex-wrap: nowrap; overflow-x: auto; margin-top: 0;
+                padding-bottom: 6px; scrollbar-width: auto; }
+.strip.scroll img { flex: 0 0 auto; }
+.scroll-bubble {
+  position: absolute; left: 4px; top: 4px; z-index: 2; pointer-events: none;
+  background: rgba(20, 30, 45, 0.85); color: #fff; font-size: 0.8rem;
+  padding: 0.15rem 0.5rem; border-radius: 4px; white-space: nowrap;
+}
+.scroll-bubble.end { left: auto; right: 4px; }
+
 #exact-bounds:empty { display: none; }
 
 .cover { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.75rem; }

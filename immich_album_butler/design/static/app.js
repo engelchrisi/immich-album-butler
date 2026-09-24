@@ -733,12 +733,70 @@ function editStrips(data, taken = null) {
   const last = data.thumbnails_last || [];
   if (!first.length) return [];
   if (!last.length) return [strip(first)];
+  const long = first.length > PREVIEW_EDGE;
+  if (!long) {
+    return [
+      el("div", { class: "strip-label" }, `First ${first.length}, oldest first`),
+      strip(first),
+      el("div", { class: "strip-label" }, `Last ${last.length}, the end of the range`),
+      strip(last),
+    ];
+  }
+  const total = data.matched || first.length + last.length;
   return [
-    el("div", { class: "strip-label" }, `First ${first.length}, oldest first`),
-    strip(first),
-    el("div", { class: "strip-label" }, `Last ${last.length}, the end of the range`),
-    strip(last),
+    el("div", { class: "strip-label" },
+       `First ${first.length} of ${total}, oldest first — scroll →`),
+    scroller(strip(first)),
+    el("div", { class: "strip-label" },
+       `Last ${last.length} of ${total}, the end of the range — ← scroll`),
+    scroller(strip(last), { fromEnd: true, offset: total - last.length }),
   ];
+}
+
+const PREVIEW_EDGE = 12;     // below this the preview's strips do not scroll
+
+/* A strip in one scrolling row, to look for where an album really begins or
+ * ends. The wheel scrolls it sideways, and while it moves a bubble names the
+ * time of the picture at the edge that matters: the first one in view, or for
+ * the end of the album (`fromEnd`, which starts scrolled right) the last one. */
+function scroller(box, { fromEnd = false, offset = 0 } = {}) {
+  box.classList.add("scroll");
+  const bubble = el("div", { class: `scroll-bubble${fromEnd ? " end" : ""}`, hidden: "" });
+  let fade = null;
+  let placed = !fromEnd;
+  const atEdge = () => {
+    const { left, right } = box.getBoundingClientRect();
+    const images = [...box.querySelectorAll("img")];
+    const index = fromEnd
+      ? images.findLastIndex((img) => img.getBoundingClientRect().left < right - 1)
+      : images.findIndex((img) => img.getBoundingClientRect().right > left + 1);
+    return index < 0 ? null : { img: images[index], number: offset + index + 1 };
+  };
+  if (fromEnd) {
+    requestAnimationFrame(() => {
+      if (box.scrollWidth <= box.clientWidth) placed = true;   // nothing to jump
+      box.scrollLeft = box.scrollWidth;
+    });
+  }
+  box.addEventListener("scroll", () => {
+    if (!placed) { placed = true; return; }   // the jump to the end, not the user
+    const seen = atEdge();
+    if (!seen) return;
+    bubble.textContent = [fmt.when(seen.img.dataset.taken) || "time unknown",
+                          `#${seen.number}`].join(" · ");
+    bubble.hidden = false;
+    clearTimeout(fade);
+    fade = setTimeout(() => { bubble.hidden = true; }, 1000);
+  });
+  box.addEventListener("wheel", (event) => {
+    if (!event.deltaY || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+    const end = box.scrollWidth - box.clientWidth;
+    const moves = event.deltaY < 0 ? box.scrollLeft > 0 : box.scrollLeft < end - 1;
+    if (!moves) return;            // at an end the page scrolls on as usual
+    event.preventDefault();
+    box.scrollLeft += event.deltaY;
+  }, { passive: false });
+  return el("div", { class: "scroll-wrap" }, bubble, box);
 }
 
 function el(tag, attrs = {}, ...children) {

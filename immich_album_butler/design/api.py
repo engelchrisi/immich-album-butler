@@ -45,6 +45,10 @@ log = logging.getLogger(__name__)
 # the first: they show whether the end of a trip is covered.
 PREVIEW_EDGE = 12
 
+# The first strip scrolls, so the real start of a trip can be found in it. It
+# holds at most this many; the thumbnails themselves load only when seen.
+PREVIEW_SCROLL = 500
+
 # The Trips tab shows this many, drawn at random from the whole trip (3 x 4).
 TRIP_THUMBS = 12
 
@@ -65,12 +69,15 @@ ASSET_ID = re.compile(r"[A-Za-z0-9-]{1,64}")
 def _edges(ids: list[str]) -> dict:
     """The first and the last few of a chronological list, without overlap.
 
-    A short list is all "first" and has no "last", so nothing shows twice.
+    A short list is all "first" and has no "last", so nothing shows twice. A
+    long one is split in halves, each of up to PREVIEW_SCROLL: the first strip
+    is scrolled to find the real start, the last one to find the real end.
     """
     if len(ids) <= 2 * PREVIEW_EDGE:
         return {"thumbnails": ids, "thumbnails_last": []}
-    return {"thumbnails": ids[:PREVIEW_EDGE],
-            "thumbnails_last": ids[-PREVIEW_EDGE:]}
+    half = min(PREVIEW_SCROLL, (len(ids) + 1) // 2)
+    return {"thumbnails": ids[:half],
+            "thumbnails_last": ids[max(half, len(ids) - PREVIEW_SCROLL):]}
 
 
 def _sample(ids: list[str], taken: dict, seed: str) -> list[str]:
