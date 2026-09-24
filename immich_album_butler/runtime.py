@@ -43,6 +43,9 @@ class Plan:
     to_remove: list[str] = field(default_factory=list)
     existing: int = 0
     album_id: str | None = None
+    # The Immich album the rule was matched to, as it is now: the builder
+    # tells an album the butler already keeps from one it is about to extend.
+    album_info: AlbumInfo | None = None
     creates_album: bool = False
     warnings: list[str] = field(default_factory=list)
     # The asset the cover should point at, set only when the album asks for a
@@ -225,6 +228,7 @@ class Butler:
             return plan
 
         plan.album_id = info.id
+        plan.album_info = info
         wanted_name = self.marked_name(album)
         if info.name != wanted_name:
             plan.rename_to = wanted_name

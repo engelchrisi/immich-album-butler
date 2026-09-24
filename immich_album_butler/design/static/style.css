@@ -194,6 +194,19 @@ button.link { background: none; border: none; color: var(--accent); padding: 0.2
   background: var(--thumb-bg); outline: 2px solid var(--good);
 }
 
+/* The rule would take over an album the butler has never kept. */
+.notice.extend {
+  display: flex; gap: 0.8rem; align-items: center; margin-bottom: 0.75rem;
+  padding: 0.7rem 0.8rem; border: 1px solid var(--chosen-line);
+  border-left: 4px solid var(--accent); border-radius: 6px;
+  background: var(--chosen-bg);
+}
+.notice.extend img, .notice.extend .album-cover {
+  flex: 0 0 auto; float: none; margin: 0;
+  width: 64px; height: 64px; object-fit: cover; border-radius: 4px;
+  background: var(--thumb-bg);
+}
+
 .warn { color: var(--warn); font-size: 0.88rem; margin-top: 0.5rem; }
 .bad { color: var(--bad); }
 .good { color: var(--good); }

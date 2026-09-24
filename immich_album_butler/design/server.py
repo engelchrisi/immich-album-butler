@@ -345,6 +345,8 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
                 return api.albums()
             if path == "/api/accounts":
                 return api.accounts()
+            if path == "/api/immich-albums":
+                return api.existing_albums()
             if path == "/api/groups":
                 return api.groups()
             if path == "/api/trips":

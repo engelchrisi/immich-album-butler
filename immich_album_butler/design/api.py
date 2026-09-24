@@ -317,6 +317,7 @@ class DesignApi:
             "to_remove": len(plan.to_remove),
             "already_in_album": plan.existing,
             "creates_album": plan.creates_album,
+            "extends": self._extends(butler, plan),
             "summary": plan.summary(),
             "warnings": plan.warnings,
             **edges,
@@ -329,6 +330,58 @@ class DesignApi:
             "to_share": len(plan.to_share),
             "next_run": self._next_run(album, config),
         }
+
+    @staticmethod
+    def _extends(butler: Butler, plan) -> dict | None:
+        """The Immich album a run would take over, or None.
+
+        An album found by name that the butler has never kept -- no remembered
+        id, no marker -- is somebody else's, an import say: a run renames it
+        and adds to it. The builder says so loudly rather than in a count.
+        """
+        info = plan.album_info
+        if info is None:
+            return None
+        if butler.state.for_album(plan.album.slug).album_id == info.id:
+            return None
+        if butler.unmarked(info.name) != info.name:
+            return None
+        return {"name": info.name, "asset_count": plan.existing,
+                "cover_asset": info.cover_asset_id,
+                "rename_to": plan.rename_to}
+
+    def existing_albums(self) -> dict:
+        """The user's own Immich albums no rule keeps, for the name picker.
+
+        Picking one makes the rule extend that album instead of building a new
+        one; typing its name exactly by hand is too easy to get wrong. Only
+        owned albums: the butler renames what it adopts, and only the owner
+        may. An unreadable album list is an empty picker, not an error.
+        """
+        config = self.config()
+        butler = self._butler(config)
+        try:
+            # Without `user.read` there is no telling whose an album is; the
+            # picker then offers them all rather than none.
+            me_id = self.client.me().id
+        except ImmichError:
+            me_id = None
+        try:
+            everything = butler.albums()
+            claimed = set()
+            for album in config.albums:
+                info = butler.find_album(album)
+                if info is not None:
+                    claimed.add(info.id)
+        except ImmichError as exc:
+            return {"albums": [], "unavailable": str(exc)}
+        rows = [{"name": info.name, "asset_count": info.asset_count,
+                 "cover_asset": info.cover_asset_id}
+                for info in everything
+                if info.id not in claimed
+                and (me_id is None or info.owner_id in (None, me_id))]
+        rows.sort(key=lambda row: row["name"].casefold())
+        return {"albums": rows}
 
     def analyze(self, payload: dict) -> dict:
         """Near-misses for a rule: what it almost, but does not, include."""

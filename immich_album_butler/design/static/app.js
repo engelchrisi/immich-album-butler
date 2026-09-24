@@ -17,6 +17,7 @@ const state = {
   previewToken: 0,
   accounts: [],         // other accounts on this server, for sharing
   accountsNote: "",
+  extends: null,        // the unmanaged Immich album the preview would take over
 };
 
 function emptyDraft() {
@@ -226,7 +227,8 @@ function setBound(key, taken) {
 }
 
 function bindDraft() {
-  $("album-name").oninput = (e) => { state.draft.name = e.target.value; };
+  // The name decides which Immich album a run fills, so the preview follows it.
+  $("album-name").oninput = (e) => { state.draft.name = e.target.value; refreshPreview(); };
   $("date-from").onchange = (e) => setBound("from", e.target.value || null);
   $("date-to").onchange = (e) => setBound("to", e.target.value || null);
   $("people-mode").onchange = (e) => set("people_mode", e.target.value);
@@ -273,6 +275,17 @@ async function loadAccounts() {
     state.accountsNote = "the account list could not be read";
   }
   fillSharing(state.draft.share_with || [], state.draft.share_role || "viewer");
+}
+
+/* The user's own Immich albums that no rule keeps yet, offered as album names:
+   picking one makes the rule extend it, and typing it by hand is error-prone. */
+async function loadImmichAlbums() {
+  let albums = [];
+  try { albums = (await api("/api/immich-albums")).albums || []; }
+  catch (_) { /* the picker is a convenience; a plain name still works */ }
+  $("immich-albums").replaceChildren(...albums.map(album =>
+    el("option", { value: album.name, label: `${album.name} — ${album.asset_count} media` })));
+  $("album-name-hint").hidden = !albums.length;
 }
 
 function fillSharing(chosen, role) {
@@ -506,7 +519,9 @@ const refreshPreview = debounce(async () => {
   if (token !== state.previewToken) return;   // a newer preview already won
 
   state.immichName = data.immich_name;
+  state.extends = data.extends ? { ...data.extends, to_add: data.to_add } : null;
   const children = [
+    ...(data.extends ? [extendNotice(data)] : []),
     ...(data.immich_name
       ? [el("div", { class: "muted" }, `In Immich as “${data.immich_name}”`)] : []),
     el("div", { class: "count" }, String(data.matched),
@@ -535,6 +550,24 @@ const refreshPreview = debounce(async () => {
   box.replaceChildren(...children);
 }, 350);
 
+/* A run on this rule takes over an album the butler has never kept -- an
+   import, say. That is worth more than a count in small print. */
+function extendNotice(data) {
+  const ext = data.extends;
+  return el("div", { class: "notice extend" },
+    ext.cover_asset
+      ? el("img", { src: `/api/thumb/${ext.cover_asset}`, loading: "lazy", alt: "" })
+      : el("div", { class: "album-cover none" }),
+    el("div", {},
+      el("strong", {}, `Extends your existing Immich album “${ext.name}” ` +
+                       `(${ext.asset_count} media)`),
+      el("div", {}, `Its own media stay; ${data.to_add} are added.` +
+        (ext.rename_to ? ` It is renamed to “${ext.rename_to}”.` : "")),
+      ...(data.to_remove
+        ? [el("div", { class: "bad" }, `${data.to_remove} of its media lie outside ` +
+              "the first/last photo and will be taken out of it.")] : [])));
+}
+
 /* -- builder: actions --------------------------------------------------- */
 
 $("save").onclick = async () => {
@@ -549,7 +582,17 @@ $("save").onclick = async () => {
 };
 
 $("dry-run").onclick = () => requireSaved(() => runAlbum(state.draft.slug, true));
-$("run-now").onclick = () => requireSaved(() => runAlbum(state.draft.slug, false));
+$("run-now").onclick = () => requireSaved(async () => {
+  const ext = state.extends;
+  if (ext && !confirm(`This adds ${ext.to_add} media to your existing Immich album ` +
+                      `“${ext.name}”` + (ext.rename_to ? ` and renames it to “${ext.rename_to}”` : "") +
+                      ".\n\nContinue?")) return;
+  await runAlbum(state.draft.slug, false);
+  if (ext) {   // it is the butler's now: no longer on offer, no longer "extends"
+    loadImmichAlbums();
+    refreshPreview();
+  }
+});
 
 function requireSaved(work) {
   if (!state.saved.some(a => a.slug === state.draft.slug)) {
@@ -847,6 +890,7 @@ async function start() {
   try { state.groups = (await api("/api/groups")).groups; }
   catch (error) { banner(error.message); }
   await loadAccounts();
+  loadImmichAlbums();
   fillPlaces("country");
   fillForm();
 }

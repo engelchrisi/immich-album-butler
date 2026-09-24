@@ -41,7 +41,12 @@
     <div class="column">
       <label class="field">
         <span>Album name</span>
-        <input id="album-name" type="text" placeholder="Italy 2019" autocomplete="off">
+        <input id="album-name" type="text" placeholder="Italy 2019" autocomplete="off"
+               list="immich-albums">
+        <datalist id="immich-albums"></datalist>
+        <span class="muted" id="album-name-hint" hidden>
+          pick one of your existing Immich albums to extend it, or type a new name
+        </span>
       </label>
 
       <fieldset>

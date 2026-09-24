@@ -355,6 +355,53 @@ class SaveTests(DesignTestCase):
         self.assertEqual(self.api.albums()["albums"][0]["cover_asset"], fake_id(1))
 
 
+class ExistingAlbumTests(DesignTestCase):
+    """Extending an Immich album the butler has never kept, e.g. an import."""
+
+    def names(self):
+        return [a["name"] for a in self.api.existing_albums()["albums"]]
+
+    def test_the_picker_offers_only_my_albums_no_rule_keeps(self):
+        self.stub.add_album("Holiday import", [fake_id(1)])
+        self.stub.add_album("Italy 2019", [fake_id(2)])
+        theirs = self.stub.add_album("Their album")
+        theirs["albumUsers"] = [{"user": {"id": "user-other"}, "role": "owner"}]
+        self.api.save_album(ITALY)
+        self.assertEqual(self.names(), ["Holiday import"])
+        entry = self.api.existing_albums()["albums"][0]
+        self.assertEqual(entry["asset_count"], 1)
+
+    def test_without_user_read_the_picker_still_offers_them(self):
+        self.stub.missing_permissions = {"user.read"}
+        self.stub.add_album("Holiday import")
+        self.assertEqual(self.names(), ["Holiday import"])
+
+    def test_an_unreadable_album_list_is_an_empty_picker(self):
+        self.stub.missing_permissions = {"album.read"}
+        result = self.api.existing_albums()
+        self.assertEqual(result["albums"], [])
+        self.assertIn("unavailable", result)
+
+    def test_the_preview_says_loudly_that_an_existing_album_is_extended(self):
+        self.stub.add_album("Italy 2019", [fake_id(1)])
+        extends = self.api.preview(ITALY)["extends"]
+        self.assertEqual(extends["name"], "Italy 2019")
+        self.assertEqual(extends["asset_count"], 1)
+
+    def test_a_new_album_extends_nothing(self):
+        self.assertIsNone(self.api.preview(ITALY)["extends"])
+
+    def test_an_album_the_butler_keeps_already_is_not_extended(self):
+        self.stub.add_album("Italy 2019", [fake_id(1)])
+        self.api.save_album(ITALY)
+        self.api.run({"slug": "italy-2019"})
+        self.assertIsNone(self.api.preview(ITALY)["extends"])
+
+    def test_an_album_carrying_a_marker_is_not_extended(self):
+        self.stub.add_album("Italy 2019 [AB]", [fake_id(1)])
+        self.assertIsNone(self.api.preview(ITALY)["extends"])
+
+
 class GroupTests(DesignTestCase):
     def test_a_group_is_saved_and_read_back(self):
         result = self.api.save_group("Family Example", ["Alex", "Sam"])
