@@ -347,6 +347,13 @@ class SaveTests(DesignTestCase):
         self.assertTrue(listed["albums"][0]["schedule_inherited"])
         self.assertEqual(listed["default_schedule"], "daily 03:30")
 
+    def test_the_album_list_shows_the_cover_the_album_has_in_immich(self):
+        self.api.save_album(ITALY)
+        self.assertIsNone(self.api.albums()["albums"][0]["cover_asset"])  # no album yet
+        album = self.stub.add_album("Italy 2019", [fake_id(1)])
+        album["albumThumbnailAssetId"] = fake_id(1)
+        self.assertEqual(self.api.albums()["albums"][0]["cover_asset"], fake_id(1))
+
 
 class GroupTests(DesignTestCase):
     def test_a_group_is_saved_and_read_back(self):

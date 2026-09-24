@@ -263,8 +263,11 @@ class ImmichClient:
         than this -- it collapses stacked assets and live-photo pairs -- so it
         must not be used to decide whether anything is missing.
         """
-        return {asset.id for asset in self.search_metadata(album_ids=[album_id],
-                                                           with_exif=False)}
+        return {asset.id for asset in self.album_assets(album_id)}
+
+    def album_assets(self, album_id: str) -> list[Asset]:
+        """An album's assets with when each was taken (see album_asset_ids)."""
+        return list(self.search_metadata(album_ids=[album_id], with_exif=False))
 
     def search_metadata(self, *, taken_after: dt.date | None = None,
                         taken_before: dt.date | None = None,

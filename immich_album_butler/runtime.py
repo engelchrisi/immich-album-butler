@@ -228,12 +228,20 @@ class Butler:
         wanted_name = self.marked_name(album)
         if info.name != wanted_name:
             plan.rename_to = wanted_name
-        current = self.client.album_asset_ids(info.id)
+        in_album = self.client.album_assets(info.id)
+        current = {asset.id for asset in in_album}
         plan.existing = len(current)
         plan.to_add = [asset_id for asset_id in matched if asset_id not in current]
         if album.mirrors:
             wanted = set(matched)
             plan.to_remove = sorted(current - wanted)
+        else:
+            # A picked first or last photo is a correction of the album's ends:
+            # moved in, it takes out what now lies before or after it, even in
+            # an album that otherwise only adds. Media added by hand within the
+            # ends stay.
+            plan.to_remove = sorted(a.id for a in in_album
+                                    if not rule.time_allows(a.taken_at))
         plan.cover_asset_id = self._cover(album, result, info.cover_asset_id, plan)
         plan.current_shares = dict(info.shared_with)
         plan.to_share = self._sharing(album, plan.current_shares, plan)

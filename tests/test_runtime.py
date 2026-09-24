@@ -162,6 +162,32 @@ class SyncModeTests(unittest.TestCase):
                 run_once(fx.client, config, state)
         self.assertIn(fake_id(3), {a["id"] for a in album["assets"]})
 
+    def test_moving_the_first_photo_in_and_out_removes_and_adds_in_add_mode(self):
+        with StubImmich(assets(), people=PEOPLE, page_size=2) as stub:
+            with Fixture({"italy-2019": ITALY}, stub) as fx:
+                config, state = fx.load()
+                run_once(fx.client, config, state)
+                album = stub.album_named("Italy 2019")
+                album["assets"].append({"id": fake_id(3)})   # a person added this
+                path = fx.config_dir / "config.toml"
+                text = path.read_text(encoding="utf-8")
+                path.write_text(text.replace("from = 2019-07-01",
+                                             "from = 2019-07-03T00:00:00"),
+                                encoding="utf-8")
+                config, state = fx.load()
+                trimmed = run_once(fx.client, config, state)
+                after_trim = {a["id"] for a in album["assets"]}
+                path.write_text(text, encoding="utf-8")
+                config, state = fx.load()
+                widened = run_once(fx.client, config, state)
+                after_widen = {a["id"] for a in album["assets"]}
+        # Moved in: the photo before the new first one goes; the one added by
+        # hand, within the ends, stays. Moved back out: it returns.
+        self.assertEqual(trimmed[0].removed, 1)
+        self.assertEqual(after_trim, {fake_id(2), fake_id(3)})
+        self.assertEqual(widened[0].added, 1)
+        self.assertEqual(after_widen, {fake_id(1), fake_id(2), fake_id(3)})
+
     def test_mirror_mode_removes_what_no_longer_matches(self):
         with StubImmich(assets(), people=PEOPLE, page_size=2) as stub:
             with Fixture({"photos-of-alex": ALEX_ALBUM}, stub) as fx:

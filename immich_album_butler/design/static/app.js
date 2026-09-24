@@ -101,10 +101,13 @@ async function loadAlbums() {
   for (const album of data.albums) {
     const status = album.last_error
       ? el("span", { class: "pill err" }, "last run failed")
-      : el("span", { class: album.enabled ? "pill on" : "pill off" },
-           album.enabled ? "enabled" : "disabled");
+      : album.enabled ? "" : el("span", { class: "pill off" }, "disabled");
 
-    const card = el("div", { class: "card" },
+    const card = el("div", { class: "card album" },
+      album.cover_asset
+        ? el("img", { class: "album-cover", src: `/api/thumb/${album.cover_asset}`,
+                      loading: "lazy", alt: "" })
+        : el("div", { class: "album-cover none" }),
       el("h3", {}, album.immich_name || album.name, " ", status),
       el("div", { class: "meta" },
         describe(album.match), el("br"),
@@ -242,6 +245,15 @@ function bindDraft() {
   $("cover").onchange = () => { readCover(); refreshPreview(); };
   $("cover-name").oninput = debounce(() => { readCover(); refreshPreview(); }, 350);
   $("share-with").onchange = () => { readSharing(); refreshPreview(); };
+  // A plain click toggles an account, so one can be taken off the list again
+  // without knowing about Ctrl-click.
+  $("share-with").onmousedown = (event) => {
+    if (!(event.target instanceof HTMLOptionElement)) return;
+    event.preventDefault();
+    event.target.selected = !event.target.selected;
+    $("share-with").focus();
+    $("share-with").dispatchEvent(new Event("change"));
+  };
   $("share-role").onchange = () => { readSharing(); refreshPreview(); };
 }
 

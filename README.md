@@ -318,7 +318,7 @@ run on every update; the **optional** ones depend on which features you use:
 | `user.read` | optional | Resolve account names for `share_with` |
 | `albumUser.create` | optional | Share albums with other accounts |
 | `albumUser.update` | optional | Change a shared account's role later |
-| `albumAsset.delete` | optional | Remove assets when `sync = "mirror"` |
+| `albumAsset.delete` | optional | Remove assets when `sync = "mirror"`, or outside an exact first/last photo |
 
 Without an optional permission, that feature fails gracefully: the album still
 fills correctly, and the run reports what is missing.
@@ -348,8 +348,10 @@ refuses to listen on anything but `127.0.0.1`.
 The butler writes **albums only**. It never touches your originals, never
 deletes assets, and never deletes an album. It only *adds* assets to albums —
 unless an album is explicitly set to `sync = "mirror"`, which also removes
-assets from **that album** when they stop matching. Nothing ever leaves your
-library.
+assets from **that album** when they stop matching — and unless the album's
+`from` or `to` is an exact first or last photo: then media taken before the
+first or after the last are removed from the album, so moving either end in or
+out trims or extends it. Nothing ever leaves your library.
 
 ## License
 

@@ -229,10 +229,17 @@ class DesignApi:
         rows = []
         for album in config.albums:
             record = state.albums.get(album.slug)
+            # The cover the album has in Immich now; the list is a nicety, so
+            # an unreachable server leaves it out rather than failing the page.
+            try:
+                info = butler.find_album(album)
+            except ImmichError:
+                info = None
             rows.append({
                 "slug": album.slug, "name": album.name,
                 # What Immich calls it: the name plus the fixed/updating suffix.
                 "immich_name": butler.marked_name(album),
+                "cover_asset": info.cover_asset_id if info else None,
                 "enabled": album.enabled, "sync": album.sync,
                 "cover": album.cover,
                 "share_with": list(album.share_with),
