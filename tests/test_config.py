@@ -138,6 +138,12 @@ class BrokenAlbumTests(unittest.TestCase):
                                             "from = 2019-07-21\nto = 2019-07-01\n"}) as d:
             self.assertIn("is after", cfg.load(d.path).errors[0])
 
+    def test_a_backwards_first_and_last_photo_on_one_day_is_refused(self):
+        with ConfigDir(albums={"backwards": 'name = "B"\n[match]\n'
+                                            "from = 2019-07-01T18:00:00\n"
+                                            "to = 2019-07-01T09:00:00\n"}) as d:
+            self.assertIn("is after", cfg.load(d.path).errors[0])
+
     def test_an_unknown_sync_mode_is_refused(self):
         with ConfigDir(albums={"odd": 'name = "O"\nsync = "delete"\n'
                                       '[match]\npeople = ["Alex"]\n'}) as d:
@@ -205,6 +211,21 @@ class WritingTests(unittest.TestCase):
         self.assertEqual(original.match, reloaded.match)
         self.assertEqual(str(original.schedule), str(reloaded.schedule))
         self.assertEqual(original.sync, reloaded.sync)
+
+    def test_a_first_and_last_photo_round_trip(self):
+        album = ITALY.replace("from = 2019-07-01", "from = 2019-07-01T14:32:10") \
+                     .replace("to   = 2019-07-21", 'to   = "2019-07-21T18:05:44"')
+        with ConfigDir(albums={"italy-2019": album}, groups=GROUPS) as d:
+            config = cfg.load(d.path)
+            original = config.albums[0]
+            cfg.write_config(d.path, config)
+            text = (d.path / "config.toml").read_text(encoding="utf-8")
+            reloaded = cfg.load(d.path).albums[0]
+        self.assertEqual(original.match.from_date, dt.date(2019, 7, 1))
+        self.assertEqual(original.match.from_time, dt.datetime(2019, 7, 1, 14, 32, 10))
+        self.assertEqual(original.match.to_time, dt.datetime(2019, 7, 21, 18, 5, 44))
+        self.assertIn("from = 2019-07-01T14:32:10", text)
+        self.assertEqual(original.match, reloaded.match)
 
     def test_a_mirror_person_album_round_trips(self):
         with ConfigDir(albums={"photos-of-alex": PERSON_ALBUM}) as d:

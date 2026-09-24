@@ -290,8 +290,14 @@ class DesignApi:
         except (MatchError, ImmichError) as exc:
             raise ApiError(str(exc)) from None
 
+        edges = _edges(plan.matched)
+        shown = edges["thumbnails"] + edges["thumbnails_last"]
         return {
             "immich_name": butler.marked_name(album) if album.name != "(draft)" else None,
+            # When each shown picture was taken, to the second: picking one as
+            # the album's first or last photo sets the rule's bound to it.
+            "taken": {i: plan.taken[i].replace(microsecond=0).isoformat()
+                      for i in shown if plan.taken.get(i)},
             "matched": len(plan.matched),
             "to_add": len(plan.to_add),
             "to_remove": len(plan.to_remove),
@@ -299,7 +305,7 @@ class DesignApi:
             "creates_album": plan.creates_album,
             "summary": plan.summary(),
             "warnings": plan.warnings,
-            **_edges(plan.matched),
+            **edges,
             # The cover the rule picks, so the builder can show which picture
             # would end up on the front before anything is saved.
             "cover": album.cover,
@@ -506,9 +512,11 @@ class DesignApi:
         return tuple(dict.fromkeys(names)), role
 
     def _rule_from(self, data: dict) -> MatchRule:
+        from_date, from_time = _as_bound(data.get("from"), "from")
+        to_date, to_time = _as_bound(data.get("to"), "to")
         rule = MatchRule(
-            from_date=_as_date(data.get("from"), "from"),
-            to_date=_as_date(data.get("to"), "to"),
+            from_date=from_date, to_date=to_date,
+            from_time=from_time, to_time=to_time,
             countries=_as_names(data.get("countries")),
             states=_as_names(data.get("states")),
             cities=_as_names(data.get("cities")),
@@ -519,9 +527,12 @@ class DesignApi:
         if rule.people_mode not in config_module.PEOPLE_MODES:
             raise ApiError(f"people_mode must be any or all, "
                            f"got {rule.people_mode!r}")
-        if rule.from_date and rule.to_date and rule.from_date > rule.to_date:
-            raise ApiError(f"the start ({rule.from_date}) is after the "
-                           f"end ({rule.to_date})")
+        first = rule.from_time or rule.from_date
+        last = rule.to_time or rule.to_date
+        if rule.from_date and rule.to_date and (
+                rule.from_date > rule.to_date
+                or (rule.from_time and rule.to_time and rule.from_time > rule.to_time)):
+            raise ApiError(f"the start ({first}) is after the end ({last})")
         if rule.is_empty:
             raise ApiError("this rule is empty, which would match the whole "
                            "library. Pick a date range, a place or a person.")
@@ -539,8 +550,8 @@ class DesignApi:
 
 def rule_to_json(rule: MatchRule) -> dict:
     return {
-        "from": rule.from_date.isoformat() if rule.from_date else None,
-        "to": rule.to_date.isoformat() if rule.to_date else None,
+        "from": _bound_json(rule.from_date, rule.from_time),
+        "to": _bound_json(rule.to_date, rule.to_time),
         "countries": list(rule.countries), "states": list(rule.states),
         "cities": list(rule.cities), "people": list(rule.people),
         "people_mode": rule.people_mode,
@@ -548,13 +559,27 @@ def rule_to_json(rule: MatchRule) -> dict:
     }
 
 
-def _as_date(value, key: str) -> dt.date | None:
+def _bound_json(day: dt.date | None, exact: dt.datetime | None) -> str | None:
+    if exact:
+        return exact.isoformat()
+    return day.isoformat() if day else None
+
+
+def _as_bound(value, key: str) -> tuple[dt.date | None, dt.datetime | None]:
+    """A day, or the moment a picked first or last photo was taken."""
     if value in (None, ""):
-        return None
+        return None, None
+    if isinstance(value, dt.datetime):
+        exact = value.replace(microsecond=0, tzinfo=None)
+        return exact.date(), exact
     if isinstance(value, dt.date):
-        return value
+        return value, None
+    text = str(value)
     try:
-        return dt.date.fromisoformat(str(value))
+        if "T" in text:
+            exact = dt.datetime.fromisoformat(text).replace(microsecond=0, tzinfo=None)
+            return exact.date(), exact
+        return dt.date.fromisoformat(text), None
     except ValueError:
         raise ApiError(f"{key} is not a date: {value!r} (use 2019-07-01)") from None
 

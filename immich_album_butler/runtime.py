@@ -57,6 +57,9 @@ class Plan:
     # Who can see the album now (user id -> role), so applying can tell a new
     # grant from a role change: Immich refuses to re-add an existing member.
     current_shares: dict[str, str] = field(default_factory=dict)
+    # When each matched asset was taken (wall clock), for the builder, which
+    # sets an album's first or last photo from these.
+    taken: dict[str, dt.datetime | None] = field(default_factory=dict)
 
     @property
     def changes(self) -> bool:
@@ -211,7 +214,8 @@ class Butler:
         matched = result.ids
 
         info = self.find_album(album)
-        plan = Plan(album=album, matched=matched, warnings=problems + result.warnings)
+        plan = Plan(album=album, matched=matched, warnings=problems + result.warnings,
+                    taken={a.id: a.taken_at for a in result.assets})
 
         if info is None:
             plan.creates_album = True

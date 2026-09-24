@@ -252,7 +252,7 @@ def _within_window(point: Point, rule: MatchRule) -> bool:
         return False
     if rule.to_date and day > rule.to_date:
         return False
-    return True
+    return rule.time_allows(point.taken_at)
 
 
 def _nearest_gap(stamps: Sequence[dt.datetime], moment: dt.datetime) -> dt.timedelta:

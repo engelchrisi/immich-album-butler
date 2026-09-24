@@ -73,6 +73,26 @@ class MatchRule:
     people: tuple[str, ...] = ()
     people_mode: str = "any"
     include_unlocated: bool = True
+    # Exact bounds within the first and the last day, to the second, when the
+    # album starts or ends at a picked photo rather than at midnight. Wall
+    # clock, like Asset.taken_at; the dates above still hold the days.
+    from_time: dt.datetime | None = None
+    to_time: dt.datetime | None = None
+
+    def time_allows(self, taken: dt.datetime | None) -> bool:
+        """Whether a timestamp lies within the exact bounds, if there are any.
+
+        Media without a timestamp are let through: the day filter already
+        placed them, and there is nothing finer to judge them by.
+        """
+        if taken is None:
+            return True
+        second = taken.replace(microsecond=0)
+        if self.from_time and second < self.from_time:
+            return False
+        if self.to_time and second > self.to_time:
+            return False
+        return True
 
     @property
     def has_places(self) -> bool:
@@ -514,10 +534,14 @@ def _load_match(data: object, groups: dict[str, tuple[str, ...]]) -> MatchRule:
     if not isinstance(data, dict):
         raise ConfigError("[match] must be a table")
 
-    from_date = _as_date(data.get("from"), "from")
-    to_date = _as_date(data.get("to"), "to")
+    from_date, from_time = _as_bound(data.get("from"), "from")
+    to_date, to_time = _as_bound(data.get("to"), "to")
     if from_date and to_date and from_date > to_date:
         raise ConfigError(f"[match] from ({from_date}) is after to ({to_date})")
+    first = from_time or (from_date and dt.datetime.combine(from_date, dt.time.min))
+    last = to_time or (to_date and dt.datetime.combine(to_date, dt.time.max))
+    if first and last and first > last:
+        raise ConfigError(f"[match] from ({first}) is after to ({last})")
 
     people = _as_names(data.get("people"), "people")
     for name in people:
@@ -536,6 +560,7 @@ def _load_match(data: object, groups: dict[str, tuple[str, ...]]) -> MatchRule:
 
     rule = MatchRule(
         from_date=from_date, to_date=to_date,
+        from_time=from_time, to_time=to_time,
         countries=_as_names(data.get("countries"), "countries"),
         states=_as_names(data.get("states"), "states"),
         cities=_as_names(data.get("cities"), "cities"),
@@ -547,19 +572,26 @@ def _load_match(data: object, groups: dict[str, tuple[str, ...]]) -> MatchRule:
     return rule
 
 
-def _as_date(value: object, key: str) -> dt.date | None:
+def _as_bound(value: object, key: str) -> tuple[dt.date | None, dt.datetime | None]:
+    """A date, or a date and time -- the moment a picked first or last photo
+    was taken. Returns the day and, when one was given, the exact time."""
     if value is None:
-        return None
-    if isinstance(value, dt.datetime):
-        return value.date()
-    if isinstance(value, dt.date):
-        return value
+        return None, None
     if isinstance(value, str):
         try:
-            return dt.date.fromisoformat(value)
+            value = (dt.datetime.fromisoformat(value) if "T" in value
+                     else dt.date.fromisoformat(value))
         except ValueError:
-            raise ConfigError(f"[match] {key} is not a date: {value!r} "
-                              f"(use 2019-07-01)") from None
+            raise ConfigError(f"[match] {key} is not a date: {value!r} (use "
+                              f"2019-07-01, or 2019-07-01T14:30:00)") from None
+    if isinstance(value, dt.datetime):
+        if value.tzinfo is not None:
+            raise ConfigError(f"[match] {key} must be a local time, without an "
+                              f"offset: {value.isoformat()}")
+        exact = value.replace(microsecond=0)
+        return exact.date(), exact
+    if isinstance(value, dt.date):
+        return value, None
     raise ConfigError(f"[match] {key} must be a date, got {type(value).__name__}")
 
 
@@ -675,9 +707,13 @@ def dump_album(album: Album) -> str:
 
     match = album.match
     lines.append(f"\n  [albums.{_toml_key(album.slug)}.match]\n")
-    if match.from_date:
+    if match.from_time:
+        lines.append(f"  from = {match.from_time.isoformat()}   # the first photo\n")
+    elif match.from_date:
         lines.append(f"  from = {match.from_date.isoformat()}\n")
-    if match.to_date:
+    if match.to_time:
+        lines.append(f"  to   = {match.to_time.isoformat()}   # the last photo\n")
+    elif match.to_date:
         lines.append(f"  to   = {match.to_date.isoformat()}\n")
     for key, values in (("countries", match.countries), ("states", match.states),
                         ("cities", match.cities)):

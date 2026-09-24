@@ -93,6 +93,17 @@ class MatchAgainstStubTests(unittest.TestCase):
             found = match(self.client(stub), rule, PEOPLE)
         self.assertEqual(set(found.ids), {fake_id(1), fake_id(2), fake_id(3)})
 
+    def test_a_first_and_last_photo_cut_the_edge_days_to_the_second(self):
+        assets = [make_asset(n, when=day(2019, 7, 2 + n // 3, 9 + 3 * (n % 3)))
+                  for n in range(9)]          # 2nd-4th July at 09, 12 and 15h
+        rule = MatchRule(from_date=dt.date(2019, 7, 2), to_date=dt.date(2019, 7, 4),
+                         from_time=dt.datetime(2019, 7, 2, 12, 0, 0),
+                         to_time=dt.datetime(2019, 7, 4, 12, 0, 0))
+        with StubImmich(assets, page_size=4) as stub:
+            found = match(self.client(stub), rule, PEOPLE)
+        # Out: 2nd at 09h, before the first photo; 4th at 15h, after the last.
+        self.assertEqual(found.ids, [fake_id(n) for n in (1, 2, 3, 4, 5, 6, 7)])
+
     def test_a_place_rule_keeps_unlocated_photos_in_the_window(self):
         rule = MatchRule(from_date=dt.date(2019, 7, 1), to_date=dt.date(2019, 7, 31),
                          countries=("Italy",), include_unlocated=True)

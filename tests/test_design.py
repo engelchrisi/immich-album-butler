@@ -208,6 +208,37 @@ class PreviewTests(DesignTestCase):
         self.assertIn("daily HH:MM", str(caught.exception))
 
 
+class FirstLastPhotoTests(DesignTestCase):
+    """Picking an album's first or last photo in the builder preview."""
+
+    RANGE = {"from": "2019-07-01", "to": "2019-07-03", "include_unlocated": True}
+
+    def test_the_preview_says_when_each_shown_picture_was_taken(self):
+        result = self.api.preview({"name": "Italy", "match": self.RANGE})
+        self.assertEqual(result["taken"][fake_id(2)], "2019-07-02T12:00:00")
+        self.assertEqual(set(result["taken"]), set(result["thumbnails"]))
+
+    def test_a_picked_first_photo_leaves_out_everything_before_it(self):
+        match = dict(self.RANGE, **{"from": "2019-07-02T12:00:00"})
+        result = self.api.preview({"name": "Italy", "match": match})
+        self.assertEqual(result["matched"], 2)
+        self.assertEqual(result["thumbnails"][0], fake_id(2))
+
+    def test_the_picked_photos_survive_a_save(self):
+        match = dict(self.RANGE, **{"from": "2019-07-01T12:00:00",
+                                    "to": "2019-07-02T12:00:00"})
+        self.api.save_album({"name": "Italy", "match": match})
+        saved = self.api.albums()["albums"][0]["match"]
+        self.assertEqual(saved["from"], "2019-07-01T12:00:00")
+        self.assertEqual(saved["to"], "2019-07-02T12:00:00")
+
+    def test_a_last_photo_before_the_first_is_refused(self):
+        match = dict(self.RANGE, **{"from": "2019-07-02T12:00:00",
+                                    "to": "2019-07-02T09:00:00"})
+        with self.assertRaises(ApiError):
+            self.api.preview({"name": "Italy", "match": match})
+
+
 class SaveTests(DesignTestCase):
     def test_saving_writes_a_readable_toml_file(self):
         result = self.api.save_album(ITALY)

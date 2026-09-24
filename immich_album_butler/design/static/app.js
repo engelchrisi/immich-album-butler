@@ -129,7 +129,8 @@ async function loadAlbums() {
 
 function describe(match) {
   const parts = [];
-  if (match.from || match.to) parts.push(`${match.from || "…"} → ${match.to || "…"}`);
+  const bound = (v) => v ? v.replace("T", " ").slice(0, 16) : "…";
+  if (match.from || match.to) parts.push(`${bound(match.from)} → ${bound(match.to)}`);
   const places = [...match.countries, ...match.states, ...match.cities];
   if (places.length) parts.push(places.join(", "));
   if (match.people.length) {
@@ -180,8 +181,7 @@ function editAlbum(album) {
 function fillForm() {
   const { draft } = state;
   $("album-name").value = draft.name;
-  $("date-from").value = draft.match.from || "";
-  $("date-to").value = draft.match.to || "";
+  fillDates();
   $("people-mode").value = draft.match.people_mode;
   $("include-unlocated").checked = draft.match.include_unlocated;
   $("enabled").checked = draft.enabled;
@@ -196,10 +196,36 @@ function fillForm() {
   refreshPreview();
 }
 
+/* From and To hold a day, or the moment a picked first/last photo was taken
+ * ("2023-05-28T14:32:10"). The date inputs show the day; an exact time shows
+ * as a chip underneath, and removing it widens back to the whole day. */
+function fillDates() {
+  const { match } = state.draft;
+  $("date-from").value = (match.from || "").slice(0, 10);
+  $("date-to").value = (match.to || "").slice(0, 10);
+  const box = $("exact-bounds");
+  box.replaceChildren();
+  const time = (v) => v && v.includes("T") ? v.slice(11, 19) : null;
+  if (time(match.from)) {
+    box.append(removableChip(`From photo at ${time(match.from)}`,
+      () => setBound("from", match.from.slice(0, 10))));
+  }
+  if (time(match.to)) {
+    box.append(removableChip(`To photo at ${time(match.to)}`,
+      () => setBound("to", match.to.slice(0, 10))));
+  }
+}
+
+function setBound(key, taken) {
+  state.draft.match[key] = taken;
+  fillDates();
+  refreshPreview();
+}
+
 function bindDraft() {
   $("album-name").oninput = (e) => { state.draft.name = e.target.value; };
-  $("date-from").onchange = (e) => set("from", e.target.value || null);
-  $("date-to").onchange = (e) => set("to", e.target.value || null);
+  $("date-from").onchange = (e) => setBound("from", e.target.value || null);
+  $("date-to").onchange = (e) => setBound("to", e.target.value || null);
   $("people-mode").onchange = (e) => set("people_mode", e.target.value);
   $("include-unlocated").onchange = (e) => set("include_unlocated", e.target.checked);
   $("enabled").onchange = (e) => { state.draft.enabled = e.target.checked; };
@@ -386,11 +412,11 @@ document.querySelectorAll("[data-preset]").forEach((button) => {
       match.to = new Date(Number(year), Number(month), 0).toISOString().slice(0, 10);
     }
     if (button.dataset.preset === "pad") {
-      if (match.from) match.from = shiftDays(match.from, -1);
-      if (match.to) match.to = shiftDays(match.to, +1);
+      // Whole days again: widening drops a picked first or last photo.
+      if (match.from) match.from = shiftDays(match.from.slice(0, 10), -1);
+      if (match.to) match.to = shiftDays(match.to.slice(0, 10), +1);
     }
-    $("date-from").value = match.from || "";
-    $("date-to").value = match.to || "";
+    fillDates();
     refreshPreview();
   };
 });
@@ -481,7 +507,7 @@ const refreshPreview = debounce(async () => {
   for (const warning of data.warnings || []) {
     children.push(el("div", { class: "warn" }, warning));
   }
-  children.push(...editStrips(data));
+  children.push(...editStrips(data, data.taken));
   if (data.cover_asset) {
     children.push(el("div", { class: "cover" },
       el("img", { src: `/api/thumb/${data.cover_asset}`, loading: "lazy", alt: "" }),
@@ -650,13 +676,14 @@ async function loadTrips(rescan) {
     const known = !!trip.in_album;
     const card = el("div", {
         class: `card ${data.albums_error ? "" : known ? "has-album" : "no-album"}` },
-      el("h3", {}, trip.name, " ",
-        known
-          ? el("span", { class: "pill on" },
-              `in Immich: ${trip.in_album.name} (${trip.in_album.share}%)`)
-          : "",
-        trip.covered_by
-          ? el("span", { class: "pill on" }, `covered by ${trip.covered_by}`) : ""),
+      el("h3", {}, trip.name),
+      // "covered by" is a saved rule whose dates span the trip. Worth its own
+      // tag only when it is not the album already shown: a rule not run yet.
+      (known || coveredElsewhere(trip)) ? el("div", { class: "pills" },
+        known ? el("span", { class: "pill on" },
+                   `in Immich: ${trip.in_album.name} (${trip.in_album.share}%)`) : "",
+        coveredElsewhere(trip) ? el("span", { class: "pill" },
+                   `rule: ${trip.covered_by}`) : "") : "",
       el("div", { class: "meta" },
         `${trip.start} → ${trip.end} · ${trip.days} days · ${trip.total} media ` +
         `(${trip.located} located, ${trip.unlocated} without GPS)`),
@@ -666,6 +693,10 @@ async function loadTrips(rescan) {
       el("div", { class: "bar" }, button("Open in builder", () => fromTrip(trip))));
     list.append(card);
   }
+}
+
+function coveredElsewhere(trip) {
+  return trip.covered_by && trip.covered_by !== (trip.in_album && trip.in_album.name);
 }
 
 function fromTrip(trip) {
@@ -682,13 +713,20 @@ function fromTrip(trip) {
 /* -- small helpers ------------------------------------------------------ */
 
 /* The first and the last few pictures, labelled, so the start and the end of a
- * date range can both be checked. A short list is one strip with no label. */
-function editStrips(data) {
+ * date range can both be checked. A short list is one strip with no label.
+ * With `taken` (the builder preview), each picture can be made the album's
+ * first or last photo: everything taken before or after it is left out. */
+function editStrips(data, taken = null) {
+  // The hover card offers the picks, on the large picture: the thumbnail
+  // only carries the time they would set.
+  const picture = (id) => {
+    const img = el("img", { src: `/api/thumb/${id}`, loading: "lazy", alt: "" });
+    if (taken && taken[id]) img.dataset.taken = taken[id];
+    return img;
+  };
   const strip = (ids) => {
     const box = el("div", { class: "strip" });
-    for (const id of ids) {
-      box.append(el("img", { src: `/api/thumb/${id}`, loading: "lazy", alt: "" }));
-    }
+    for (const id of ids) box.append(picture(id));
     return box;
   };
   const first = data.thumbnails || [];
@@ -760,8 +798,32 @@ function hoverCard() {
 
 function hideHoverCard() {
   clearTimeout(hover.timer);
+  clearTimeout(hover.hideTimer);
   hover.epoch += 1;
   if (hover.card) hover.card.hidden = true;
+}
+
+/* A card with buttons has to survive the trip from the thumbnail to the card,
+ * so leaving the thumbnail hides it only after a moment, which entering the
+ * card cancels. */
+function hideHoverCardSoon() {
+  clearTimeout(hover.hideTimer);
+  const interactive = hover.card && hover.card.classList.contains("interactive");
+  if (!interactive) return hideHoverCard();
+  hover.hideTimer = setTimeout(hideHoverCard, 300);
+}
+
+function pickActions(taken) {
+  const pick = (label, key) => {
+    const node = el("button", { type: "button" }, label);
+    node.onclick = () => { hideHoverCard(); setBound(key, taken); };
+    return node;
+  };
+  return el("div", { class: "hover-actions" },
+    pick("⇤ Set as first photo", "from"),
+    pick("Set as last photo ⇥", "to"),
+    el("div", { class: "muted" },
+       "Media taken before the first or after the last are left out."));
 }
 
 function assetDetails(id) {
@@ -832,7 +894,11 @@ async function showHoverCard(image, id) {
   const body = el("div", { class: "hover-details muted" }, "loading details…");
   const big = el("img", { src: `/api/thumb/${id}?size=preview`, alt: "" });
   big.onload = () => { if (epoch === hover.epoch) placeHoverCard(image); };
-  card.replaceChildren(el("div", { class: "hover-picture" }, big), body);
+  const taken = image.dataset.taken;
+  const actions = taken ? pickActions(taken) : "";
+  card.classList.toggle("interactive", !!taken);
+  card.replaceChildren(el("div", { class: "hover-picture" }, big),
+                       el("div", { class: "hover-side" }, actions, body));
   card.hidden = false;
   placeHoverCard(image);
   try {
@@ -852,13 +918,23 @@ document.addEventListener("mouseover", (event) => {
   const match = image && THUMB.exec(image.getAttribute("src") || "");
   if (!match || image.closest("#hover-card")) return;
   clearTimeout(hover.timer);
+  clearTimeout(hover.hideTimer);
   hover.timer = setTimeout(() => showHoverCard(image, match[1]), 250);
 });
 
 document.addEventListener("mouseout", (event) => {
   const image = event.target instanceof Element ? event.target.closest("img") : null;
-  if (image && THUMB.test(image.getAttribute("src") || "")) hideHoverCard();
+  if (image && !image.closest("#hover-card")
+      && THUMB.test(image.getAttribute("src") || "")) hideHoverCardSoon();
 });
+
+// On its way to the card the pointer may cross a neighbouring thumbnail;
+// reaching the card cancels both that one's card and the pending hide.
+hoverCard().addEventListener("mouseenter", () => {
+  clearTimeout(hover.timer);
+  clearTimeout(hover.hideTimer);
+});
+hoverCard().addEventListener("mouseleave", hideHoverCard);
 document.addEventListener("scroll", hideHoverCard, true);
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") hideHoverCard();

@@ -96,7 +96,7 @@ members = ["Alex", "Sam", "Robin"]
 name = "Italy 2019"
 
   [albums.italy-2019.match]
-  from = 2019-07-01
+  from = 2019-07-01T14:32:10                # the first photo; a plain date = whole day
   to   = 2019-07-21
   countries = ["Italy"]
   people = ["Family Example"]               # person names and/or group names
