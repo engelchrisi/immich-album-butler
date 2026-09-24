@@ -164,6 +164,11 @@ class Settings:
     # worth marking, so the name is the only place a marker shows up in the UI.
     # Empty (the default) means no marker at all.
     album_suffix: str = ""
+    # Optional refinements of `album_suffix`: one for albums that never update
+    # by themselves (schedule "manual") and one for albums on a schedule. Each
+    # falls back to `album_suffix` when empty.
+    album_suffix_fixed: str = ""
+    album_suffix_updating: str = ""
     log_level: str = "info"
     design_idle_minutes: int = 30
     design_port: int = DEFAULT_PORT
@@ -298,13 +303,24 @@ def _load_settings(data: dict, filename: str) -> Settings:
         raise ConfigError(f"{filename}: album_suffix must be a string, "
                           f'e.g. album_suffix = "[AB]"')
     suffix = suffix.strip()
+    suffix_fixed = _load_suffix(data, "album_suffix_fixed", "●", filename)
+    suffix_updating = _load_suffix(data, "album_suffix_updating", "↻", filename)
 
     return Settings(server=server, schedule=schedule, timezone=timezone,
-                    album_suffix=suffix,
+                    album_suffix=suffix, album_suffix_fixed=suffix_fixed,
+                    album_suffix_updating=suffix_updating,
                     log_level=str(data.get("log_level", "info")).lower(),
                     design_idle_minutes=idle, design_port=port,
                     design_users=_load_users(data.get("design"), filename),
                     shares=_load_shares(data.get("shares"), filename))
+
+
+def _load_suffix(data: dict, key: str, example: str, filename: str) -> str:
+    value = data.get(key, "")
+    if not isinstance(value, str):
+        raise ConfigError(f"{filename}: {key} must be a string, "
+                          f'e.g. {key} = "{example}"')
+    return value.strip()
 
 
 def _load_shares(raw: object, filename: str) -> tuple[ShareRule, ...]:
@@ -583,6 +599,14 @@ def dump_config(config: Config) -> str:
         out.append(f"album_suffix = {_toml_str(settings.album_suffix)}"
                    f"   # appended to every album name, to mark it as this "
                    f"tool's\n")
+    if settings.album_suffix_fixed:
+        out.append(f"album_suffix_fixed = "
+                   f"{_toml_str(settings.album_suffix_fixed)}"
+                   f"   # albums with schedule \"manual\"\n")
+    if settings.album_suffix_updating:
+        out.append(f"album_suffix_updating = "
+                   f"{_toml_str(settings.album_suffix_updating)}"
+                   f"   # albums that update on a schedule\n")
     out.append(f"log_level = {_toml_str(settings.log_level)}\n")
     out.append(f"design_port = {settings.design_port}\n")
     out.append(f"design_idle_minutes = {settings.design_idle_minutes}\n")

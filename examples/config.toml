@@ -32,6 +32,12 @@ timezone = "Europe/Rome"
 # second copy of an album.
 album_suffix = "[AB]"
 
+# Or one marker per kind of album; each falls back to album_suffix when unset.
+# "fixed" = schedule "manual", "updating" = any automatic schedule. Changing an
+# album's schedule renames it to the other marker, never duplicates it.
+# album_suffix_fixed    = "◆"
+# album_suffix_updating = "↻"
+
 log_level = "info"
 
 # Design mode: which port it listens on, and how long it stays up with nobody

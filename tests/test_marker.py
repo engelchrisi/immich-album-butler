@@ -164,5 +164,55 @@ class NamingTests(unittest.TestCase):
         self.assertIsNone(stub.album_named("Photos of Alex [AB] [AB]"))
 
 
+SPLIT_SETTINGS = ('auto-update-schedule = "daily 03:30"\n'
+                  'album_suffix_fixed = "●"\n'
+                  'album_suffix_updating = "↻"')
+
+
+class SplitFixture(Fixture):
+    """Fixture with separate suffixes for fixed and updating albums."""
+
+    def __init__(self, albums, stub):
+        super().__init__(albums, stub)
+        path = self.config_dir / "config.toml"
+        text = path.read_text(encoding="utf-8")
+        path.write_text(text.replace('auto-update-schedule = "daily 03:30"',
+                                     SPLIT_SETTINGS), encoding="utf-8")
+
+
+FIXED_ALBUM = ALEX_ALBUM.replace('name = "Photos of Alex"',
+                                 'name = "Photos of Alex"\n'
+                                 'auto-update-schedule = "manual"')
+
+
+class SplitSuffixTests(unittest.TestCase):
+    def test_fixed_and_updating_albums_get_their_own_suffix(self):
+        with StubImmich(assets(), people=PEOPLE, page_size=2) as stub:
+            with SplitFixture({"alex": ALEX_ALBUM,
+                               "fixed": FIXED_ALBUM.replace("Photos of Alex", "Photos of Fixed")},
+                              stub) as fx:
+                config, state = fx.load()
+                run_once(fx.client, config, state)
+        self.assertIsNotNone(stub.album_named("Photos of Alex ↻"))
+        self.assertIsNotNone(stub.album_named("Photos of Fixed ●"))
+
+    def test_switching_kind_renames_instead_of_duplicating(self):
+        with StubImmich(assets(), people=PEOPLE, page_size=2) as stub:
+            stub.add_album("Photos of Alex ●", [fake_id(1)])
+            with SplitFixture({"alex": ALEX_ALBUM}, stub) as fx:
+                config, state = fx.load()
+                reports = run_once(fx.client, config, state)
+        self.assertEqual(len(stub.albums), 1)
+        self.assertTrue(reports[0].renamed)
+        self.assertIsNotNone(stub.album_named("Photos of Alex ↻"))
+
+    def test_the_common_suffix_is_the_fallback(self):
+        with StubImmich(assets(), people=PEOPLE, page_size=2) as stub:
+            with MarkedFixture({"alex": FIXED_ALBUM}, stub) as fx:
+                config, state = fx.load()
+                run_once(fx.client, config, state)
+        self.assertIsNotNone(stub.album_named("Photos of Alex [AB]"))
+
+
 if __name__ == "__main__":
     unittest.main()

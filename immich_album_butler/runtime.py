@@ -145,10 +145,28 @@ class Butler:
 
     def marked_name(self, album: Album) -> str:
         """The album's name in Immich, with the marker suffix if one is set."""
-        suffix = self.config.settings.album_suffix
+        suffix = self.suffix_for(album)
         if not suffix or album.name.endswith(suffix):
             return album.name
-        return f"{album.name} {suffix}"
+        # A name that carries the other kind's suffix gets it swapped, not
+        # stacked.
+        return f"{self.unmarked(album.name)} {suffix}"
+
+    def suffix_for(self, album: Album) -> str:
+        """The suffix this album should carry: fixed, updating, or the common one."""
+        settings = self.config.settings
+        specific = (settings.album_suffix_updating if album.schedule.automatic
+                    else settings.album_suffix_fixed)
+        return specific or settings.album_suffix
+
+    def unmarked(self, name: str) -> str:
+        """A name without any configured suffix or a trailing marker token."""
+        settings = self.config.settings
+        for suffix in (settings.album_suffix, settings.album_suffix_fixed,
+                       settings.album_suffix_updating):
+            if suffix and name.endswith(suffix) and len(name) > len(suffix):
+                return name[:-len(suffix)].rstrip()
+        return _without_marker(name)
 
     def find_album(self, album: Album) -> AlbumInfo | None:
         """By remembered id first, then by name -- so a lost state file recovers.
@@ -175,7 +193,7 @@ class Butler:
         # turned off -- and on a container with no state file the name is all
         # there is to go on. So a trailing bracketed word is allowed to differ.
         for info in existing:
-            if _without_marker(info.name) == album.name:
+            if self.unmarked(info.name) == album.name:
                 log.info("album %r: adopting %r, which carries an old marker",
                          album.name, info.name)
                 return info
@@ -490,7 +508,7 @@ class Butler:
         for wanted in rule.albums:
             matches = [info for info in existing
                        if info.name == wanted
-                       or _without_marker(info.name) == wanted]
+                       or self.unmarked(info.name) == wanted]
             if not matches:
                 report.warnings.append(f"no album named {wanted!r} in Immich")
                 continue
@@ -591,7 +609,7 @@ def _share_problem(exc: ImmichError, names) -> str:
     return f"not shared with {who}: {exc}"
 
 
-_MARKER = re.compile(r"\s*\[[^\[\]]{1,16}\]$")
+_MARKER = re.compile(r"\s*(?:\[[^\[\]]{1,16}\]|[●◆↻])$")
 
 
 def _without_marker(name: str) -> str:

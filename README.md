@@ -135,6 +135,16 @@ Albums are found by remembered id first, then by name **with or without** the
 suffix, so turning the marker on or off never produces a second copy of an
 album, and a rebuilt machine with no state file still finds them.
 
+Two optional settings mark fixed and self-updating albums differently:
+
+```toml
+album_suffix_fixed    = "◆"   # schedule "manual":      "Italy 2019 ◆"
+album_suffix_updating = "↻"   # any automatic schedule: "Photos of Alex ↻"
+```
+
+Each falls back to `album_suffix` when unset. Changing an album's schedule
+renames it to the other marker; it is never duplicated.
+
 ### Album covers
 
 The picture on the front of an album is a rule too, so the config still holds
