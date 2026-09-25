@@ -290,3 +290,4 @@ body.login .message {
 .dup-title { margin: 0; font-size: 1rem; flex: 1; }
 .dup-group { padding-bottom: 0.6rem; border-bottom: 1px solid var(--line); }
 .pill.warn-pill { color: var(--warn); }
+.card .pills .pill.warn-pill { white-space: normal; border-radius: 0.6rem; }
