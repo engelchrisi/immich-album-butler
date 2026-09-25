@@ -261,15 +261,6 @@ python3 -m immich_album_butler --config-dir ./cfg --state-dir ./state design
 Once the package is pip-installed, `immich-album-butler` replaces
 `python3 -m immich_album_butler`.
 
-### Duplicates
-
-The **Duplicates** tab lists every album you own that holds two or more members
-of one of Immich's duplicate groups (Utilities → Duplicates in Immich). Per
-group it preselects the earliest-taken copy to keep; pick another with its
-**keep** radio. **Remove N duplicates from album** takes the others out of that
-album only; they stay in your library and in any other album. Needs
-`duplicate.read` and `albumAsset.delete` on the key.
-
 **Opening it.** Opening the URL does not start design mode — start it first (the
 unit or the command above), then browse to it:
 
@@ -352,6 +343,20 @@ The session is an HttpOnly, SameSite=Strict cookie, so you sign in once rather
 than on every visit — for the working day, or a month with "stay signed in".
 Repeated wrong guesses are locked out. With no accounts configured, design mode
 refuses to listen on anything but `127.0.0.1`.
+
+### Duplicates
+
+The **Duplicates** tab starts with an overview: every album you own that holds
+two or more members of one of Immich's duplicate groups (Utilities → Duplicates
+in Immich), with how many copies could go, most first. The scan is cached in
+the state directory and redone on the first visit each day or with **Rescan**.
+
+Opening an album lists its groups. Each preselects the earliest-taken copy to
+keep; pick another with its **keep** radio. **Remove N duplicates from album**
+takes the others out of that album only; they stay in your library and in any
+other album. An album a scheduled rule keeps filling (↻) is flagged: its rule
+still matches the removed copies, so the next run adds them back. Needs
+`duplicate.read` and `albumAsset.delete` on the key.
 
 ## Safety
 

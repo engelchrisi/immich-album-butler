@@ -19,6 +19,7 @@ Two rules this layer keeps:
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
 import random
 import re
@@ -91,6 +92,37 @@ def _sample(ids: list[str], taken: dict, seed: str) -> list[str]:
     return sorted(chosen, key=lambda i: (taken.get(i) or dt.datetime.min, i))
 
 
+DUPLICATES_FILE = "duplicates.json"
+DUPLICATES_VERSION = 1
+
+
+def _save_duplicates(directory: Path, albums: list[dict],
+                     scanned_at: dt.datetime | None) -> None:
+    path = Path(directory) / DUPLICATES_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"version": DUPLICATES_VERSION,
+               "scanned_at": scanned_at.isoformat() if scanned_at else None,
+               "albums": albums}
+    temp = path.with_suffix(".json.tmp")
+    temp.write_text(json.dumps(payload), encoding="utf-8")
+    temp.replace(path)
+
+
+def _load_duplicates(directory: Path) -> tuple[list[dict] | None, dt.datetime | None]:
+    """The cached duplicates scan; (None, None) when there is none to trust."""
+    path = Path(directory) / DUPLICATES_FILE
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if data.get("version") != DUPLICATES_VERSION:
+            return None, None
+        return data["albums"], dt.datetime.fromisoformat(data["scanned_at"])
+    except FileNotFoundError:
+        return None, None
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        log.warning("ignoring unreadable duplicates cache: %s", exc)
+        return None, None
+
+
 class ApiError(Exception):
     """Something the user should see, with the HTTP status to answer with."""
 
@@ -109,6 +141,8 @@ class DesignApi:
         self._scanned_at: dt.datetime | None = None
         self._albums: dict[str, set[str]] | None = None
         self._albums_read: float = 0.0
+        self._dups: list[dict] | None = None
+        self._dups_at: dt.datetime | None = None
 
     # -- one picture, for the hover card ----------------------------------
 
@@ -445,17 +479,68 @@ class DesignApi:
 
     # -- duplicates -------------------------------------------------------
 
-    def duplicates(self) -> dict:
-        """Owned albums holding two or more members of one Immich duplicate group.
+    def duplicates(self, rescan: bool = False) -> dict:
+        """The overview: every owned album holding duplicates, most first.
 
-        Read only. Each group names the copy to keep by default: the earliest
-        taken, ties broken by id.
+        Read from a cached scan (see _duplicate_scan), like the Trips tab.
         """
+        albums, scanned_at = self._duplicate_scan(rescan=rescan)
+        managed = self._rule_managed_ids()
+        rows = [{"album_id": a["album_id"], "name": a["name"],
+                 "groups": len(a["groups"]), "removable": a["removable"],
+                 "cover": a["groups"][0]["keep"],
+                 "rule_managed": a["album_id"] in managed}
+                for a in albums]
+        rows.sort(key=lambda r: (-r["removable"], r["name"].casefold()))
+        return {"albums": rows,
+                "scanned_at": scanned_at.isoformat() if scanned_at else None}
+
+    def duplicate_album(self, album_id: str) -> dict:
+        """One album's duplicate groups, from the cached scan."""
+        if not ASSET_ID.fullmatch(album_id or ""):
+            raise ApiError("bad album id")
+        albums, scanned_at = self._duplicate_scan()
+        for album in albums:
+            if album["album_id"] == album_id:
+                return {**album,
+                        "rule_managed": album_id in self._rule_managed_ids(),
+                        "scanned_at": scanned_at.isoformat() if scanned_at else None}
+        raise ApiError("that album has no duplicates (any more)", status=404)
+
+    def _duplicate_scan(self, rescan: bool = False):
+        """Albums with duplicates, cached in the state dir.
+
+        Scanned when there is no cache, when asked, and on the first use each
+        day -- the same rhythm as the Trips tab's library scan. Unlike that one
+        it takes seconds, so a missing cache is scanned without asking.
+        """
+        if self._dups is None and not rescan:
+            self._dups, self._dups_at = _load_duplicates(self.state_dir)
+        stale = (self._dups_at is not None
+                 and self._dups_at.date() < dt.date.today())
+        if rescan or stale or self._dups is None:
+            try:
+                albums = self._duplicates_by_album(self.client.duplicates())
+            except ImmichError as exc:
+                raise ApiError(str(exc), status=502) from None
+            self._dups, self._dups_at = albums, dt.datetime.now().replace(microsecond=0)
+            _save_duplicates(self.state_dir, self._dups, self._dups_at)
+        return self._dups, self._dups_at
+
+    def _rule_managed_ids(self) -> set[str]:
+        """Albums a scheduled rule keeps filling: removed copies come back."""
         try:
-            found = self._duplicates_by_album(self.client.duplicates())
-        except ImmichError as exc:
-            raise ApiError(str(exc), status=502) from None
-        return {"albums": found}
+            config = self.config()
+            butler = self._butler(config)
+            ids = set()
+            for album in config.albums:
+                if album.schedule.automatic:
+                    info = butler.find_album(album)
+                    if info is not None:
+                        ids.add(info.id)
+            return ids
+        except (ImmichError, config_module.ConfigError):
+            return set()
 
     def _owned_albums(self):
         try:
@@ -496,9 +581,9 @@ class DesignApi:
     def remove_duplicates(self, payload: dict) -> dict:
         """Take the chosen extras out of one album. Never deletes from the library.
 
-        The request is checked against Immich's groups afresh: every id must be
-        in a group with two or more members in that album, and one member of
-        each group must be left.
+        The request is checked against Immich's groups afresh, not the cache:
+        every id must be in a group with two or more members in that album, and
+        one member of each group must be left.
         """
         album_id = str(payload.get("album_id") or "")
         asset_ids = [str(i) for i in (payload.get("asset_ids") or [])]
@@ -525,7 +610,29 @@ class DesignApi:
         except ImmichError as exc:
             raise ApiError(str(exc), status=502) from None
         self._albums = None
+        self._forget_removed(album_id, wanted)
         return {"removed": removed, "requested": len(wanted)}
+
+    def _forget_removed(self, album_id: str, removed: set[str]) -> None:
+        """Update the cached scan after a removal, rather than rescanning."""
+        albums, scanned_at = self._duplicate_scan()
+        kept = []
+        for album in albums:
+            if album["album_id"] == album_id:
+                groups = []
+                for group in album["groups"]:
+                    assets = [a for a in group["assets"] if a["id"] not in removed]
+                    if len(assets) > 1:
+                        keep = (group["keep"] if group["keep"] not in removed
+                                else assets[0]["id"])
+                        groups.append({**group, "assets": assets, "keep": keep})
+                if not groups:
+                    continue
+                album = {**album, "groups": groups,
+                         "removable": sum(len(g["assets"]) - 1 for g in groups)}
+            kept.append(album)
+        self._dups = kept
+        _save_duplicates(self.state_dir, kept, scanned_at)
 
     # -- trips ------------------------------------------------------------
 

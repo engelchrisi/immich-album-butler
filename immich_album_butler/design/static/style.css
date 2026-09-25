@@ -283,3 +283,10 @@ body.login .message {
 #hover-card dd { margin: 0; overflow-wrap: anywhere; }
 
 .dup-pick { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; }
+.dup-album-card { display: flex; gap: 0.8rem; align-items: center; cursor: pointer; }
+.dup-album-card:hover { border-color: var(--accent); }
+.dup-cover { width: 72px; height: 72px; object-fit: cover; border-radius: 6px;
+             background: var(--thumb-bg); flex: none; }
+.dup-title { margin: 0; font-size: 1rem; flex: 1; }
+.dup-group { padding-bottom: 0.6rem; border-bottom: 1px solid var(--line); }
+.pill.warn-pill { color: var(--warn); }

@@ -5,6 +5,8 @@ Run against the fake Immich copied from PyImmichFrame, over a real socket.
 
 from __future__ import annotations
 
+import datetime as dt
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,7 +27,7 @@ class DuplicatesTestCase(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
-        root = Path(temp.name)
+        root = self.root = Path(temp.name)
         (root / "config").mkdir()
         (root / "config" / "config.toml").write_text(CONFIG_TOML, encoding="utf-8")
 
@@ -51,10 +53,23 @@ class ListingTests(DuplicatesTestCase):
     def test_only_albums_holding_two_group_members_are_listed(self):
         albums = self.api.duplicates()["albums"]
         self.assertEqual([a["name"] for a in albums], ["Italy 2019"])
-        group = albums[0]["groups"][0]
+        self.assertEqual(albums[0]["removable"], 1)
+        self.assertEqual(albums[0]["groups"], 1)
+        self.assertEqual(albums[0]["cover"], self.ids[0])
+        self.assertFalse(albums[0]["rule_managed"])
+
+    def test_the_album_page_lists_its_groups(self):
+        album = self.api.duplicate_album(self.italy)
+        group = album["groups"][0]
         self.assertEqual([a["id"] for a in group["assets"]], self.ids[:2])
         self.assertEqual(group["keep"], self.ids[0])        # the earliest taken
-        self.assertEqual(albums[0]["removable"], 1)
+
+    def test_an_album_without_duplicates_has_no_page(self):
+        with self.assertRaises(ApiError) as caught:
+            self.api.duplicate_album(self.fake.album_id("Spain"))
+        self.assertEqual(caught.exception.status, 404)
+        with self.assertRaises(ApiError):
+            self.api.duplicate_album("../x")
 
     def test_no_groups_means_nothing_listed(self):
         for asset in self.fake.assets:
@@ -65,6 +80,48 @@ class ListingTests(DuplicatesTestCase):
         self.fake.denied.add("/api/duplicates")
         with self.assertRaises(ApiError):
             self.api.duplicates()
+
+
+class CacheTests(DuplicatesTestCase):
+    def scans(self):
+        return self.fake.count_requests("/api/duplicates")
+
+    def test_the_scan_is_cached_on_disk_and_in_memory(self):
+        self.api.duplicates()
+        self.assertTrue((self.root / "state" / "duplicates.json").exists())
+        self.api.duplicates()
+        self.api.duplicate_album(self.italy)
+        self.assertEqual(self.scans(), 1)
+
+    def test_a_new_session_reads_the_file(self):
+        self.api.duplicates()
+        fresh = DesignApi(self.api.client, self.root / "config", self.root / "state")
+        self.assertEqual(len(fresh.duplicates()["albums"]), 1)
+        self.assertEqual(self.scans(), 1)
+
+    def test_rescan_asks_immich_again(self):
+        self.api.duplicates()
+        self.fake.mark_duplicates([3, 4])
+        albums = self.api.duplicates(rescan=True)["albums"]
+        self.assertEqual(self.scans(), 2)
+        self.assertEqual(len(albums), 2)
+
+    def test_a_scan_from_yesterday_is_redone(self):
+        self.api.duplicates()
+        path = self.root / "state" / "duplicates.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["scanned_at"] = (dt.datetime.now() - dt.timedelta(days=1)).isoformat()
+        path.write_text(json.dumps(data), encoding="utf-8")
+        fresh = DesignApi(self.api.client, self.root / "config", self.root / "state")
+        fresh.duplicates()
+        self.assertEqual(self.scans(), 2)
+
+    def test_a_removal_updates_the_cache(self):
+        self.api.duplicates()
+        self.remove(1)
+        self.assertEqual(self.api.duplicates()["albums"], [])
+        fresh = DesignApi(self.api.client, self.root / "config", self.root / "state")
+        self.assertEqual(fresh.duplicates()["albums"], [])
 
 
 class RemovalTests(DuplicatesTestCase):

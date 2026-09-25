@@ -678,63 +678,105 @@ async function addNow(group) {
 
 /* -- duplicates tab ----------------------------------------------------- */
 
-$("dup-rescan").onclick = () => loadDuplicates();
+/* Two pages in one panel: the overview of albums with duplicates, and one
+ * album's groups to remove copies from. Both read the server's cached scan;
+ * only "Rescan" asks Immich afresh. */
 
-async function loadDuplicates() {
+$("dup-rescan").onclick = () => loadDuplicates(true);
+
+const RULE_MANAGED = "rule-managed: removed copies return on the next run";
+
+function showDupPage(page) {
+  $("dup-list").hidden = page !== "list";
+  $("dup-album").hidden = page !== "album";
+}
+
+async function loadDuplicates(rescan = false) {
   const list = $("dup-list");
   const note = $("dup-note");
+  showDupPage("list");
   note.textContent = "";
-  list.replaceChildren(el("div", { class: "spin" }, "Looking for duplicates…"));
+  list.replaceChildren(el("div", { class: "spin" },
+    rescan ? "Scanning Immich for duplicates…" : "Loading…"));
   let data;
-  try { data = await api("/api/duplicates"); }
+  try { data = await api(`/api/duplicates${rescan ? "?rescan=1" : ""}`); }
   catch (error) { list.replaceChildren(); return banner(error.message); }
 
+  const total = data.albums.reduce((sum, a) => sum + a.removable, 0);
+  note.replaceChildren(`${data.albums.length} albums · ${total} duplicates · scanned `,
+    el("b", {}, (data.scanned_at || "").replace("T", " ").slice(0, 16)));
   list.replaceChildren();
   if (!data.albums.length) {
     list.append(el("div", { class: "muted" }, "No album contains duplicates."));
     return;
   }
-  note.textContent = `${data.albums.length} albums with duplicates. ` +
-    "Removing takes a copy out of the album only; it stays in the library.";
-  for (const album of data.albums) list.append(duplicateCard(album));
+  for (const album of data.albums) {
+    const card = el("div", { class: "card dup-album-card", title: "Open" },
+      el("img", { class: "dup-cover", src: `/api/thumb/${album.cover}`,
+                  loading: "lazy", alt: "" }),
+      el("div", {},
+        el("h3", {}, album.name),
+        el("div", { class: "meta" },
+          `${album.removable} duplicate${album.removable === 1 ? "" : "s"} · ` +
+          `${album.groups} group${album.groups === 1 ? "" : "s"}`),
+        album.rule_managed
+          ? el("div", { class: "pills" }, el("span", { class: "pill warn-pill" }, RULE_MANAGED))
+          : ""));
+    card.onclick = () => openDupAlbum(album.album_id);
+    list.append(card);
+  }
 }
 
-function duplicateCard(album) {
+async function openDupAlbum(albumId) {
+  const box = $("dup-album");
+  showDupPage("album");
+  box.replaceChildren(el("div", { class: "spin" }, "Loading…"));
+  let album;
+  try { album = await api(`/api/duplicates/album?id=${encodeURIComponent(albumId)}`); }
+  catch (error) { banner(error.message); return loadDuplicates(); }
+
   const keep = {};                       // duplicate id -> asset id to keep
-  const card = el("div", { class: "card" },
-    el("h3", {}, album.name),
-    el("div", { class: "meta" },
-      `${album.groups.length} group${album.groups.length === 1 ? "" : "s"}`));
-  for (const group of album.groups) {
-    keep[group.duplicate_id] = group.keep;
-    const row = el("div", { class: "strip" });
-    for (const asset of group.assets) {
-      const radio = el("input", { type: "radio",
-        name: `keep-${album.album_id}-${group.duplicate_id}` });
-      radio.checked = asset.id === group.keep;
-      radio.onchange = () => { keep[group.duplicate_id] = asset.id; };
-      row.append(el("label", { class: "dup-pick", title: asset.file_name },
-        el("img", { src: `/api/thumb/${asset.id}`, loading: "lazy", alt: "" }),
-        el("span", { class: "muted" }, radio, " keep")));
-    }
-    card.append(row);
-  }
   const n = album.removable;
   const remove = button(`Remove ${n} duplicate${n === 1 ? "" : "s"} from album`, async () => {
     const ids = album.groups.flatMap((g) =>
       g.assets.map((a) => a.id).filter((id) => id !== keep[g.duplicate_id]));
     if (!confirm(`Remove ${ids.length} duplicate(s) from “${album.name}”?\n\n` +
-                 "They are only taken out of the album, not deleted from Immich.")) return;
+                 "They are only taken out of the album, not deleted from Immich." +
+                 (album.rule_managed ? `\n\nNote: ${RULE_MANAGED}.` : ""))) return;
+    remove.disabled = true;
     try {
       const result = await post("/api/duplicates/remove",
         { album_id: album.album_id, asset_ids: ids });
       banner(`Removed ${result.removed} from ${album.name}.`, true);
       loadDuplicates();
-    } catch (error) { banner(error.message); }
+    } catch (error) { remove.disabled = false; banner(error.message); }
   });
   remove.classList.add("danger");
-  card.append(el("div", { class: "bar" }, remove));
-  return card;
+
+  box.replaceChildren(
+    el("div", { class: "toolbar" },
+      button("← All albums", () => loadDuplicates()),
+      el("h3", { class: "dup-title" }, album.name),
+      remove),
+    el("div", { class: "muted scan-note" },
+      `${album.groups.length} group${album.groups.length === 1 ? "" : "s"} · ` +
+      "the earliest copy of each is kept unless you pick another."),
+    album.rule_managed ? el("div", { class: "warn" }, RULE_MANAGED) : "");
+
+  for (const group of album.groups) {
+    keep[group.duplicate_id] = group.keep;
+    const row = el("div", { class: "strip dup-group" });
+    for (const asset of group.assets) {
+      const radio = el("input", { type: "radio", name: `keep-${group.duplicate_id}` });
+      radio.checked = asset.id === group.keep;
+      radio.onchange = () => { keep[group.duplicate_id] = asset.id; };
+      row.append(el("label", { class: "dup-pick",
+          title: [asset.file_name, fmt.when(asset.taken_at)].filter(Boolean).join(" · ") },
+        el("img", { src: `/api/thumb/${asset.id}`, loading: "lazy", alt: "" }),
+        el("span", { class: "muted" }, radio, " keep")));
+    }
+    box.append(row);
+  }
 }
 
 /* -- trips tab ---------------------------------------------------------- */
