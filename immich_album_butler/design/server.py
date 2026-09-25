@@ -349,6 +349,8 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
                 return api.existing_albums()
             if path == "/api/groups":
                 return api.groups()
+            if path == "/api/duplicates":
+                return api.duplicates()
             if path == "/api/trips":
                 return api.trips(rescan=query.get("rescan") == "1",
                                  away_km=float(query.get("away_km") or 100),
@@ -370,6 +372,8 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
                 return api.run(body, dry_run=bool(body.get("dry_run")))
             if path == "/api/add-assets":
                 return api.add_assets(body)
+            if path == "/api/duplicates/remove":
+                return api.remove_duplicates(body)
             raise ApiError(f"no route {path}", status=404)
 
         def _call(self, work) -> None:

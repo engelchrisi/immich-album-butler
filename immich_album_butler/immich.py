@@ -237,6 +237,17 @@ class ImmichClient:
         data = self.request("GET", "albums") or []
         return [AlbumInfo.from_api(a) for a in data]
 
+    def duplicates(self) -> list[tuple[str, list[str]]]:
+        """Immich's duplicate groups as (duplicate id, asset ids).
+
+        Needs `duplicate.read` on the key. Immich decides what counts as a
+        duplicate (its own near-identical detection); the butler only reads it.
+        """
+        data = self.request("GET", "duplicates") or []
+        return [(str(group.get("duplicateId") or ""),
+                 [a["id"] for a in group.get("assets") or [] if a.get("id")])
+                for group in data]
+
     def users(self) -> list[User]:
         """The other accounts on this server, for `share_with`.
 

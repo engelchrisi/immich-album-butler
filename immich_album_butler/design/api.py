@@ -443,6 +443,90 @@ class DesignApi:
                 "removed": report.removed, "created": report.created,
                 "error": report.error, "dry_run": dry_run}
 
+    # -- duplicates -------------------------------------------------------
+
+    def duplicates(self) -> dict:
+        """Owned albums holding two or more members of one Immich duplicate group.
+
+        Read only. Each group names the copy to keep by default: the earliest
+        taken, ties broken by id.
+        """
+        try:
+            found = self._duplicates_by_album(self.client.duplicates())
+        except ImmichError as exc:
+            raise ApiError(str(exc), status=502) from None
+        return {"albums": found}
+
+    def _owned_albums(self):
+        try:
+            me_id = self.client.me().id
+        except ImmichError:
+            me_id = None
+        return [a for a in self.client.albums()
+                if me_id is None or a.owner_id in (None, me_id)]
+
+    def _duplicates_by_album(self, groups, only_album: str | None = None) -> list[dict]:
+        multi = [(gid, ids) for gid, ids in groups if len(ids) > 1]
+        rows = []
+        if not multi:
+            return rows
+        for album in self._owned_albums():
+            if only_album is not None and album.id != only_album:
+                continue
+            assets = {a.id: a for a in self.client.album_assets(album.id)}
+            shown = []
+            for gid, ids in multi:
+                members = [assets[i] for i in ids if i in assets]
+                if len(members) < 2:
+                    continue
+                members.sort(key=lambda a: (a.taken_at is None,
+                                            a.taken_at or dt.datetime.min, a.id))
+                shown.append({
+                    "duplicate_id": gid, "keep": members[0].id,
+                    "assets": [{"id": a.id, "file_name": a.file_name,
+                                "taken_at": a.taken_at.isoformat() if a.taken_at else None}
+                               for a in members]})
+            if shown:
+                rows.append({"album_id": album.id, "name": album.name,
+                             "removable": sum(len(g["assets"]) - 1 for g in shown),
+                             "groups": shown})
+        rows.sort(key=lambda r: r["name"].casefold())
+        return rows
+
+    def remove_duplicates(self, payload: dict) -> dict:
+        """Take the chosen extras out of one album. Never deletes from the library.
+
+        The request is checked against Immich's groups afresh: every id must be
+        in a group with two or more members in that album, and one member of
+        each group must be left.
+        """
+        album_id = str(payload.get("album_id") or "")
+        asset_ids = [str(i) for i in (payload.get("asset_ids") or [])]
+        if not ASSET_ID.fullmatch(album_id) or not asset_ids:
+            raise ApiError("no album or no media given")
+        if not all(ASSET_ID.fullmatch(i) for i in asset_ids):
+            raise ApiError("bad media id")
+        try:
+            rows = self._duplicates_by_album(self.client.duplicates(),
+                                             only_album=album_id)
+            if not rows:
+                raise ApiError("that album has no duplicates (any more)", status=404)
+            wanted = set(asset_ids)
+            allowed = set()
+            for group in rows[0]["groups"]:
+                members = {a["id"] for a in group["assets"]}
+                doomed = members & wanted
+                if len(doomed) >= len(members):
+                    raise ApiError("at least one copy of each group must stay")
+                allowed |= doomed
+            if wanted - allowed:
+                raise ApiError("some media are not duplicates in that album")
+            removed = self.client.remove_assets(album_id, sorted(wanted))
+        except ImmichError as exc:
+            raise ApiError(str(exc), status=502) from None
+        self._albums = None
+        return {"removed": removed, "requested": len(wanted)}
+
     # -- trips ------------------------------------------------------------
 
     def trips(self, rescan: bool = False, away_km: float = trips_module.AWAY_KM,

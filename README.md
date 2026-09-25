@@ -261,6 +261,15 @@ python3 -m immich_album_butler --config-dir ./cfg --state-dir ./state design
 Once the package is pip-installed, `immich-album-butler` replaces
 `python3 -m immich_album_butler`.
 
+### Duplicates
+
+The **Duplicates** tab lists every album you own that holds two or more members
+of one of Immich's duplicate groups (Utilities → Duplicates in Immich). Per
+group it preselects the earliest-taken copy to keep; pick another with its
+**keep** radio. **Remove N duplicates from album** takes the others out of that
+album only; they stay in your library and in any other album. Needs
+`duplicate.read` and `albumAsset.delete` on the key.
+
 **Opening it.** Opening the URL does not start design mode — start it first (the
 unit or the command above), then browse to it:
 
@@ -318,7 +327,8 @@ run on every update; the **optional** ones depend on which features you use:
 | `user.read` | optional | Resolve account names for `share_with` |
 | `albumUser.create` | optional | Share albums with other accounts |
 | `albumUser.update` | optional | Change a shared account's role later |
-| `albumAsset.delete` | optional | Remove assets when `sync = "mirror"`, or outside an exact first/last photo |
+| `albumAsset.delete` | optional | Remove assets when `sync = "mirror"`, or outside an exact first/last photo, or duplicates from the Duplicates tab |
+| `duplicate.read` | optional | List Immich's duplicate groups for the Duplicates tab |
 
 Without an optional permission, that feature fails gracefully: the album still
 fills correctly, and the run reports what is missing.
@@ -351,7 +361,9 @@ unless an album is explicitly set to `sync = "mirror"`, which also removes
 assets from **that album** when they stop matching — and unless the album's
 `from` or `to` is an exact first or last photo: then media taken before the
 first or after the last are removed from the album, so moving either end in or
-out trims or extends it. Nothing ever leaves your library.
+out trims or extends it. The design UI's **Duplicates** tab removes extra
+copies of an Immich duplicate group from an album, only when you confirm it and
+always keeping one. Nothing ever leaves your library.
 
 ## License
 

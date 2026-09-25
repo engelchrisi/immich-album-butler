@@ -15,6 +15,7 @@
     <button class="tab active" data-tab="albums">Albums</button>
     <button class="tab" data-tab="builder">Builder</button>
     <button class="tab" data-tab="trips">Trips</button>
+    <button class="tab" data-tab="duplicates">Duplicates</button>
   </nav>
   <div id="whoami">
     <span class="muted" id="whoami-name"></span>
@@ -181,6 +182,15 @@
   </div>
   <div class="muted scan-note" id="scan-note"></div>
   <div id="trip-list" class="cards"></div>
+</section>
+
+<!-- ---------------------------------------------------------------- -->
+<section id="duplicates" class="panel">
+  <div class="toolbar">
+    <button id="dup-rescan">Rescan</button>
+  </div>
+  <div class="muted scan-note" id="dup-note"></div>
+  <div id="dup-list" class="cards"></div>
 </section>
 
 <script src="/static/app.js"></script>

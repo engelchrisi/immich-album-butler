@@ -281,3 +281,5 @@ body.login .message {
 }
 #hover-card dt { color: var(--muted); }
 #hover-card dd { margin: 0; overflow-wrap: anywhere; }
+
+.dup-pick { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; }

@@ -73,6 +73,7 @@ $("tabs").addEventListener("click", (event) => {
   }
   if (button.dataset.tab === "albums") loadAlbums();
   if (button.dataset.tab === "trips") loadTrips(false);
+  if (button.dataset.tab === "duplicates") loadDuplicates();
 });
 
 function showTab(name) {
@@ -673,6 +674,67 @@ async function addNow(group) {
     banner(`Added ${result.added} of ${result.requested} to ${result.album}.`, true);
     refreshPreview();
   } catch (error) { banner(error.message); }
+}
+
+/* -- duplicates tab ----------------------------------------------------- */
+
+$("dup-rescan").onclick = () => loadDuplicates();
+
+async function loadDuplicates() {
+  const list = $("dup-list");
+  const note = $("dup-note");
+  note.textContent = "";
+  list.replaceChildren(el("div", { class: "spin" }, "Looking for duplicates…"));
+  let data;
+  try { data = await api("/api/duplicates"); }
+  catch (error) { list.replaceChildren(); return banner(error.message); }
+
+  list.replaceChildren();
+  if (!data.albums.length) {
+    list.append(el("div", { class: "muted" }, "No album contains duplicates."));
+    return;
+  }
+  note.textContent = `${data.albums.length} albums with duplicates. ` +
+    "Removing takes a copy out of the album only; it stays in the library.";
+  for (const album of data.albums) list.append(duplicateCard(album));
+}
+
+function duplicateCard(album) {
+  const keep = {};                       // duplicate id -> asset id to keep
+  const card = el("div", { class: "card" },
+    el("h3", {}, album.name),
+    el("div", { class: "meta" },
+      `${album.groups.length} group${album.groups.length === 1 ? "" : "s"}`));
+  for (const group of album.groups) {
+    keep[group.duplicate_id] = group.keep;
+    const row = el("div", { class: "strip" });
+    for (const asset of group.assets) {
+      const radio = el("input", { type: "radio",
+        name: `keep-${album.album_id}-${group.duplicate_id}` });
+      radio.checked = asset.id === group.keep;
+      radio.onchange = () => { keep[group.duplicate_id] = asset.id; };
+      row.append(el("label", { class: "dup-pick", title: asset.file_name },
+        el("img", { src: `/api/thumb/${asset.id}`, loading: "lazy", alt: "" }),
+        el("span", { class: "muted" }, radio, " keep")));
+    }
+    card.append(row);
+  }
+  const n = album.removable;
+  const remove = button(`Remove ${n} duplicate${n === 1 ? "" : "s"} from album`, async () => {
+    const ids = album.groups.flatMap((g) =>
+      g.assets.map((a) => a.id).filter((id) => id !== keep[g.duplicate_id]));
+    if (!confirm(`Remove ${ids.length} duplicate(s) from “${album.name}”?\n\n` +
+                 "They are only taken out of the album, not deleted from Immich.")) return;
+    try {
+      const result = await post("/api/duplicates/remove",
+        { album_id: album.album_id, asset_ids: ids });
+      banner(`Removed ${result.removed} from ${album.name}.`, true);
+      loadDuplicates();
+    } catch (error) { banner(error.message); }
+  });
+  remove.classList.add("danger");
+  card.append(el("div", { class: "bar" }, remove));
+  return card;
 }
 
 /* -- trips tab ---------------------------------------------------------- */

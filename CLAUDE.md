@@ -55,4 +55,6 @@ it can be unpacked onto a minimal host that has no pip.
 
 The tool writes **albums only**. It never deletes assets, never modifies
 originals, and never deletes an album. Removing assets *from* an album happens
-only for an album explicitly configured with `sync = "mirror"`.
+only for an album explicitly configured with `sync = "mirror"`, or from the
+design UI's Duplicates tab: on an explicit, confirmed request, never the last
+copy of a duplicate group, and never `DELETE /assets`.
