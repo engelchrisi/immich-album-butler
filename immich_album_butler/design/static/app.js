@@ -718,10 +718,7 @@ async function loadDuplicates(rescan = false) {
         el("h3", {}, album.name),
         el("div", { class: "meta" },
           `${album.removable} duplicate${album.removable === 1 ? "" : "s"} · ` +
-          `${album.groups} group${album.groups === 1 ? "" : "s"}`),
-        album.rule_managed
-          ? el("div", { class: "pills" }, el("span", { class: "pill warn-pill" }, RULE_MANAGED))
-          : ""));
+          `${album.groups} group${album.groups === 1 ? "" : "s"}`)));
     card.onclick = () => openDupAlbum(album.album_id);
     list.append(card);
   }
