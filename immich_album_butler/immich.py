@@ -55,6 +55,8 @@ class Asset:
     city: str | None = None
     state: str | None = None
     country: str | None = None
+    original_path: str = ""             # where the file sits, for grouping by folder
+    camera: str | None = None           # EXIF make and model, when read with exif
 
     @property
     def located(self) -> bool:
@@ -82,6 +84,9 @@ class Asset:
             city=exif.get("city") or None,
             state=exif.get("state") or None,
             country=exif.get("country") or None,
+            original_path=str(data.get("originalPath") or ""),
+            camera=" ".join(part for part in (exif.get("make"), exif.get("model"))
+                            if part) or None,
         )
 
 

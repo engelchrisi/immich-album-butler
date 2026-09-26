@@ -358,6 +358,16 @@ other album. An album a scheduled rule keeps filling (↻) is flagged: its rule
 still matches the removed copies, so the next run adds them back. Needs
 `duplicate.read` and `albumAsset.delete` on the key.
 
+### Browse
+
+The **Browse** tab looks into any Immich album the key can see — the butler's,
+your own hand-made ones, and those shared with you. Opening one shows all its
+media, grouped by folder (where the original file is stored), day, month,
+year, camera, place or photo/video; the choice is remembered in the browser.
+Hovering a thumbnail shows the large picture with its details; clicking opens
+it full-screen, and ←/→ step through the album in the order shown. Browsing is
+view-only: it changes nothing.
+
 ## Safety
 
 The butler writes **albums only**. It never touches your originals, never

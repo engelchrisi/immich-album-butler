@@ -891,6 +891,13 @@ class RoutingTests(ServerTestCase):
         self.assertEqual(details["file_name"], "IMG_0001.jpg")
         self.assertNotIn(API_KEY, json.dumps(details))
 
+    def test_the_browse_tab_is_served_over_http(self):
+        albums = self.fetch("/api/browse")["albums"]
+        self.assertIsInstance(albums, list)
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            self.fetch("/api/browse/album?id=not/an/id")
+        self.assertEqual(caught.exception.code, 400)
+
     def test_the_large_preview_is_proxied_too(self):
         body, response = self.fetch(f"/api/thumb/{fake_id(1)}?size=preview", raw=True)
         self.assertEqual(response.headers["Content-Type"], "image/gif")

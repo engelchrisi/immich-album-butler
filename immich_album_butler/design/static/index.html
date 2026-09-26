@@ -16,6 +16,7 @@
     <button class="tab" data-tab="builder">Builder</button>
     <button class="tab" data-tab="trips">Trips</button>
     <button class="tab" data-tab="duplicates">Duplicates</button>
+    <button class="tab" data-tab="browse">Browse</button>
   </nav>
   <div id="whoami">
     <span class="muted" id="whoami-name"></span>
@@ -193,6 +194,48 @@
   <div id="dup-list" class="cards"></div>
   <div id="dup-album" hidden></div>
 </section>
+
+<!-- ---------------------------------------------------------------- -->
+<section id="browse" class="panel">
+  <div id="browse-list-page">
+    <div class="toolbar">
+      <input id="browse-filter" type="search" placeholder="Filter albums…" autocomplete="off">
+      <button id="browse-reload">Reload</button>
+    </div>
+    <div class="muted scan-note" id="browse-note"></div>
+    <div id="browse-list" class="cards"></div>
+  </div>
+  <div id="browse-album" hidden>
+    <div class="toolbar">
+      <button id="browse-back">← All albums</button>
+      <h3 class="dup-title" id="browse-title"></h3>
+      <label class="field inline"><span>Group by</span>
+        <select id="browse-group">
+          <option value="none">nothing</option>
+          <option value="folder">folder</option>
+          <option value="day">day</option>
+          <option value="month">month</option>
+          <option value="year">year</option>
+          <option value="camera">camera</option>
+          <option value="place">place</option>
+          <option value="kind">photo / video</option>
+        </select></label>
+      <button id="browse-fold" class="link">collapse all</button>
+    </div>
+    <div class="muted scan-note" id="browse-album-note"></div>
+    <div id="browse-groups"></div>
+  </div>
+</section>
+
+<div id="lightbox" hidden>
+  <button class="lb-close" title="Close (Esc)">×</button>
+  <button class="lb-prev" title="Previous (←)">‹</button>
+  <figure>
+    <img alt="">
+    <figcaption></figcaption>
+  </figure>
+  <button class="lb-next" title="Next (→)">›</button>
+</div>
 
 <script src="/static/app.js"></script>
 </body>

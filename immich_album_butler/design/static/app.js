@@ -74,6 +74,7 @@ $("tabs").addEventListener("click", (event) => {
   if (button.dataset.tab === "albums") loadAlbums();
   if (button.dataset.tab === "trips") loadTrips(false);
   if (button.dataset.tab === "duplicates") loadDuplicates();
+  if (button.dataset.tab === "browse" && !browse.albums) loadBrowse();
 });
 
 function showTab(name) {
@@ -776,6 +777,206 @@ async function openDupAlbum(albumId) {
   }
 }
 
+/* -- browse tab --------------------------------------------------------- */
+
+/* Every Immich album, the butler's or not, and one album's media grouped by
+ * folder, date, camera, place or kind. View only. The server sends the whole
+ * album once; regrouping happens here. */
+
+const browse = { albums: null, album: null, order: [] };
+const BROWSE_GROUP = "butler.browse.groupBy";
+try { $("browse-group").value = localStorage.getItem(BROWSE_GROUP) || "folder"; } catch {}
+if (!$("browse-group").value) $("browse-group").value = "folder";
+
+$("browse-reload").onclick = () => loadBrowse();
+$("browse-back").onclick = () => showBrowsePage("list");
+$("browse-filter").oninput = () => renderBrowseList();
+$("browse-group").onchange = () => {
+  try { localStorage.setItem(BROWSE_GROUP, $("browse-group").value); } catch {}
+  renderBrowseAlbum();
+};
+$("browse-fold").onclick = () => {
+  const sections = [...$("browse-groups").querySelectorAll("details")];
+  const open = !sections.some((d) => d.open);
+  for (const d of sections) d.open = open;
+  $("browse-fold").textContent = open ? "collapse all" : "expand all";
+};
+
+function showBrowsePage(page) {
+  $("browse-list-page").hidden = page !== "list";
+  $("browse-album").hidden = page !== "album";
+}
+
+async function loadBrowse() {
+  showBrowsePage("list");
+  $("browse-note").textContent = "";
+  $("browse-list").replaceChildren(el("div", { class: "spin" }, "Loading…"));
+  try { browse.albums = (await api("/api/browse")).albums; }
+  catch (error) { $("browse-list").replaceChildren(); return banner(error.message); }
+  renderBrowseList();
+}
+
+function renderBrowseList() {
+  const list = $("browse-list");
+  const all = browse.albums || [];
+  const needle = $("browse-filter").value.trim().toLocaleLowerCase();
+  const shown = all.filter((a) => !needle || a.name.toLocaleLowerCase().includes(needle));
+  $("browse-note").textContent = `${shown.length} of ${all.length} albums`;
+  list.replaceChildren();
+  for (const album of shown) {
+    const card = el("div", { class: "card dup-album-card", title: "Open" },
+      album.cover ? el("img", { class: "dup-cover", src: `/api/thumb/${album.cover}`,
+                                loading: "lazy", alt: "" })
+                  : el("div", { class: "dup-cover" }),
+      el("div", {},
+        el("h3", {}, album.name),
+        el("div", { class: "meta" },
+          `${album.asset_count} item${album.asset_count === 1 ? "" : "s"}`),
+        album.butler || album.shared
+          ? el("div", { class: "pills" },
+              album.butler ? el("span", { class: "pill on" }, "butler") : "",
+              album.shared ? el("span", { class: "pill" }, "shared with me") : "")
+          : ""));
+    card.onclick = () => openBrowseAlbum(album.album_id);
+    list.append(card);
+  }
+}
+
+async function openBrowseAlbum(albumId) {
+  showBrowsePage("album");
+  $("browse-title").textContent = "";
+  $("browse-album-note").textContent = "";
+  $("browse-groups").replaceChildren(el("div", { class: "spin" }, "Loading…"));
+  try { browse.album = await api(`/api/browse/album?id=${encodeURIComponent(albumId)}`); }
+  catch (error) { banner(error.message); return showBrowsePage("list"); }
+  $("browse-title").textContent = browse.album.name;
+  renderBrowseAlbum();
+}
+
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July",
+                "August", "September", "October", "November", "December"];
+
+/* What each "group by" files a picture under, and how the groups are ordered:
+ * by key (folders, dates) or biggest first (camera, place). */
+const GROUPINGS = {
+  none:   { key: () => "", byKey: true },
+  folder: { key: (a) => a.folder || "(no folder)", byKey: true },
+  day:    { key: (a) => (a.taken_at || "").slice(0, 10) || "(no date)", byKey: true },
+  month:  { key: (a) => (a.taken_at || "").slice(0, 7) || "(no date)", byKey: true,
+            label: (k) => /^\d{4}-\d{2}$/.test(k)
+              ? `${MONTHS[Number(k.slice(5)) - 1]} ${k.slice(0, 4)}` : k },
+  year:   { key: (a) => (a.taken_at || "").slice(0, 4) || "(no date)", byKey: true },
+  camera: { key: (a) => a.camera || "(unknown camera)" },
+  place:  { key: (a) => [a.city, a.country].filter(Boolean).join(", ") || "(no place)" },
+  kind:   { key: (a) => (a.kind === "VIDEO" ? "Videos" : "Photos") },
+};
+
+function renderBrowseAlbum() {
+  const album = browse.album;
+  if (!album) return;
+  const by = $("browse-group").value;
+  const how = GROUPINGS[by] || GROUPINGS.folder;
+  const groups = new Map();
+  for (const asset of album.assets) {
+    const key = how.key(asset);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(asset);
+  }
+  // Placeholders like "(no date)" always go last.
+  const odd = (k) => k.startsWith("(");
+  const keys = [...groups.keys()].sort((a, b) =>
+    odd(a) - odd(b)
+    || (how.byKey ? a.localeCompare(b, undefined, { numeric: true })
+                  : groups.get(b).length - groups.get(a).length || a.localeCompare(b)));
+
+  const n = album.assets.length;
+  $("browse-album-note").textContent = `${n} item${n === 1 ? "" : "s"}` +
+    (by === "none" ? "" : ` · ${keys.length} group${keys.length === 1 ? "" : "s"}`);
+  $("browse-fold").hidden = by === "none";
+  $("browse-fold").textContent = "collapse all";
+
+  const box = $("browse-groups");
+  box.replaceChildren();
+  browse.order = [];                     // what the lightbox steps through
+  if (!n) box.append(el("div", { class: "muted" }, "This album is empty."));
+  for (const key of keys) {
+    const members = groups.get(key);
+    const grid = el("div", { class: "browse-grid" });
+    for (const asset of members) {
+      const index = browse.order.push(asset) - 1;
+      const cell = el("div", { class: `browse-cell${asset.kind === "VIDEO" ? " video" : ""}` },
+        el("img", { src: `/api/thumb/${asset.id}`, loading: "lazy", alt: "" }));
+      cell.onclick = () => openLightbox(index);
+      grid.append(cell);
+    }
+    if (by === "none") { box.append(grid); continue; }
+    box.append(el("details", { class: "browse-group", open: "" },
+      el("summary", {},
+        how.label ? how.label(key) : key,
+        el("span", { class: "muted" }, ` · ${members.length}`)),
+      grid));
+  }
+}
+
+/* -- lightbox: one large picture, stepped through with the arrow keys ----- */
+
+const lightbox = { index: -1, epoch: 0 };
+
+function openLightbox(index) {
+  hideHoverCard();
+  lightbox.index = index;
+  $("lightbox").hidden = false;
+  showLightbox();
+}
+
+function closeLightbox() {
+  $("lightbox").hidden = true;
+  lightbox.index = -1;
+}
+
+function stepLightbox(delta) {
+  const total = browse.order.length;
+  if (!total || lightbox.index < 0) return;
+  lightbox.index = (lightbox.index + delta + total) % total;
+  showLightbox();
+}
+
+async function showLightbox() {
+  const asset = browse.order[lightbox.index];
+  if (!asset) return closeLightbox();
+  const epoch = ++lightbox.epoch;
+  const box = $("lightbox");
+  box.querySelector("img").src = `/api/thumb/${asset.id}?size=preview`;
+  const details = el("div", { class: "muted" }, "loading details…");
+  box.querySelector("figcaption").replaceChildren(
+    el("div", { class: "lb-head" },
+      el("b", {}, asset.file_name || ""),
+      asset.kind === "VIDEO" ? el("span", { class: "pill" }, "video") : "",
+      el("span", { class: "muted" }, `${lightbox.index + 1} / ${browse.order.length}`)),
+    details);
+  try {
+    const data = await assetDetails(asset.id);
+    if (epoch === lightbox.epoch) details.replaceWith(detailRows(data));
+  } catch (error) {
+    if (epoch === lightbox.epoch) details.textContent = `No details: ${error.message}`;
+  }
+}
+
+$("lightbox").querySelector(".lb-close").onclick = closeLightbox;
+$("lightbox").querySelector(".lb-prev").onclick = () => stepLightbox(-1);
+$("lightbox").querySelector(".lb-next").onclick = () => stepLightbox(1);
+$("lightbox").addEventListener("click", (event) => {
+  if (event.target === $("lightbox")) closeLightbox();
+});
+document.addEventListener("keydown", (event) => {
+  if ($("lightbox").hidden) return;
+  if (event.key === "Escape") closeLightbox();
+  else if (event.key === "ArrowLeft") stepLightbox(-1);
+  else if (event.key === "ArrowRight") stepLightbox(1);
+  else return;
+  event.preventDefault();
+});
+
 /* -- trips tab ---------------------------------------------------------- */
 
 $("rescan").onclick = () => loadTrips(true);
@@ -1131,7 +1332,7 @@ async function showHoverCard(image, id) {
 document.addEventListener("mouseover", (event) => {
   const image = event.target instanceof Element ? event.target.closest("img") : null;
   const match = image && THUMB.exec(image.getAttribute("src") || "");
-  if (!match || image.closest("#hover-card")) return;
+  if (!match || image.closest("#hover-card") || !$("lightbox").hidden) return;
   clearTimeout(hover.timer);
   clearTimeout(hover.hideTimer);
   hover.timer = setTimeout(() => showHoverCard(image, match[1]), 250);

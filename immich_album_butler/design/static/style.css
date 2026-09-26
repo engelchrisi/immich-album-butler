@@ -289,3 +289,55 @@ body.login .message {
              background: var(--thumb-bg); flex: none; }
 .dup-title { margin: 0; font-size: 1rem; flex: 1; }
 .dup-group { padding-bottom: 0.6rem; border-bottom: 1px solid var(--line); }
+
+/* -- the browse tab ------------------------------------------------------ */
+
+#browse-filter { min-width: 16rem; height: 2.2rem; }
+#browse-album .toolbar select { height: 2.2rem; }
+div.dup-cover { background: var(--thumb-bg); }
+.browse-group { margin-top: 0.6rem; padding-bottom: 0.6rem;
+                border-bottom: 1px solid var(--line); }
+.browse-group > summary { cursor: pointer; font-weight: 600; padding: 0.3rem 0;
+                          overflow-wrap: anywhere; }
+.browse-grid { display: grid; gap: 4px; margin-top: 0.4rem;
+               grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+.browse-cell { position: relative; aspect-ratio: 1; cursor: zoom-in; overflow: hidden;
+               background: var(--thumb-bg); border-radius: 4px; }
+.browse-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.browse-cell.video::after {
+  content: "\25B6"; position: absolute; right: 5px; bottom: 2px;
+  color: #fff; font-size: 0.8rem; text-shadow: 0 0 3px rgba(0, 0, 0, 0.8);
+}
+
+/* -- the lightbox -------------------------------------------------------- */
+
+#lightbox {
+  position: fixed; inset: 0; z-index: 60; display: flex; align-items: center;
+  gap: 0.5rem; padding: 3rem 1rem 1rem; background: rgba(12, 16, 22, 0.94);
+}
+#lightbox figure {
+  flex: 1 1 auto; min-width: 0; height: 100%; margin: 0;
+  display: flex; gap: 1rem; align-items: stretch;
+}
+#lightbox figure img { flex: 1 1 auto; min-width: 0; height: 100%; object-fit: contain; }
+#lightbox figcaption {
+  flex: 0 0 20rem; overflow-y: auto; background: var(--panel); color: var(--ink);
+  border-radius: 8px; padding: 0.8rem; font-size: 0.86rem;
+}
+#lightbox .lb-head { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;
+                     margin-bottom: 0.7rem; overflow-wrap: anywhere; }
+#lightbox dl { display: grid; grid-template-columns: max-content 1fr;
+               gap: 0.25rem 0.75rem; margin: 0; }
+#lightbox dt { color: var(--muted); }
+#lightbox dd { margin: 0; overflow-wrap: anywhere; }
+#lightbox > button {
+  background: rgba(255, 255, 255, 0.12); color: #fff; border: none;
+  font-size: 2rem; line-height: 1; padding: 0.4rem 0.7rem; flex: none;
+}
+#lightbox > button:hover { background: rgba(255, 255, 255, 0.25); }
+#lightbox .lb-close { position: absolute; top: 0.6rem; right: 0.6rem; font-size: 1.6rem;
+                      z-index: 1; }
+@media (max-width: 800px) {
+  #lightbox figure { flex-direction: column; }
+  #lightbox figcaption { flex: 0 0 35%; }
+}

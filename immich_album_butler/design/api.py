@@ -634,6 +634,75 @@ class DesignApi:
         self._dups = kept
         _save_duplicates(self.state_dir, kept, scanned_at)
 
+    # -- browse -----------------------------------------------------------
+
+    def browse_albums(self) -> dict:
+        """Every Immich album this key can see, the butler's or not.
+
+        Albums shared with this account are listed too: looking is all the
+        Browse tab does, and anyone who may see an album may look into it.
+        """
+        try:
+            everything = self.client.albums()
+        except ImmichError as exc:
+            raise ApiError(str(exc), status=502) from None
+        try:
+            me_id = self.client.me().id
+        except ImmichError:
+            me_id = None
+        managed = self._rule_ids()
+        rows = [{"album_id": info.id, "name": info.name,
+                 "asset_count": info.asset_count, "cover": info.cover_asset_id,
+                 "shared": (me_id is not None and info.owner_id is not None
+                            and info.owner_id != me_id),
+                 "butler": info.id in managed}
+                for info in everything]
+        rows.sort(key=lambda row: row["name"].casefold())
+        return {"albums": rows}
+
+    def browse_album(self, album_id: str) -> dict:
+        """One album's media with what the Browse tab groups them by.
+
+        The grouping itself happens in the browser, so switching between
+        folder, date, camera and place needs no second trip to Immich.
+        """
+        if not ASSET_ID.fullmatch(album_id or ""):
+            raise ApiError("bad album id")
+        try:
+            info = next((a for a in self.client.albums() if a.id == album_id), None)
+            if info is None:
+                raise ApiError("no such album", status=404)
+            assets = list(self.client.search_metadata(album_ids=[album_id]))
+        except ImmichError as exc:
+            raise ApiError(str(exc), status=502) from None
+        assets.sort(key=lambda a: (a.taken_at is None,
+                                   a.taken_at or dt.datetime.min, a.id))
+        return {
+            "album_id": album_id, "name": info.name,
+            "assets": [{
+                "id": a.id,
+                "taken_at": a.taken_at.isoformat() if a.taken_at else None,
+                "kind": a.kind, "file_name": a.file_name,
+                "folder": (a.original_path.rsplit("/", 1)[0]
+                           if "/" in a.original_path else ""),
+                "camera": a.camera, "city": a.city, "country": a.country,
+            } for a in assets],
+        }
+
+    def _rule_ids(self) -> set[str]:
+        """Albums some rule of the butler keeps, scheduled or not."""
+        try:
+            config = self.config()
+            butler = self._butler(config)
+            ids = set()
+            for album in config.albums:
+                info = butler.find_album(album)
+                if info is not None:
+                    ids.add(info.id)
+            return ids
+        except (ImmichError, config_module.ConfigError):
+            return set()
+
     # -- trips ------------------------------------------------------------
 
     def trips(self, rescan: bool = False, away_km: float = trips_module.AWAY_KM,

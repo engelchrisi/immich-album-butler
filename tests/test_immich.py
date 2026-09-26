@@ -21,6 +21,18 @@ class AssetParsingTests(unittest.TestCase):
         asset = Asset.from_api({"id": fake_id(1), "localDateTime": day(2019, 7, 4)})
         self.assertIsNone(asset.country)
 
+    def test_the_folder_and_camera_are_read(self):
+        asset = Asset.from_api({"id": fake_id(1), "localDateTime": day(2019, 7, 4),
+                                "originalPath": "/photos/Italy 2019/IMG_0001.jpg",
+                                "exifInfo": {"make": "Canon", "model": "EOS R"}})
+        self.assertEqual(asset.original_path, "/photos/Italy 2019/IMG_0001.jpg")
+        self.assertEqual(asset.camera, "Canon EOS R")
+
+    def test_no_exif_means_no_camera(self):
+        asset = Asset.from_api({"id": fake_id(1), "localDateTime": day(2019, 7, 4)})
+        self.assertIsNone(asset.camera)
+        self.assertEqual(asset.original_path, "")
+
     def test_videos_are_recognised(self):
         asset = Asset.from_api({"id": fake_id(1), "type": "VIDEO",
                                 "localDateTime": day(2019, 7, 4)})

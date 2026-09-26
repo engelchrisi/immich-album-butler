@@ -353,6 +353,10 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
                 return api.duplicates(rescan=query.get("rescan") == "1")
             if path == "/api/duplicates/album":
                 return api.duplicate_album(query.get("id", ""))
+            if path == "/api/browse":
+                return api.browse_albums()
+            if path == "/api/browse/album":
+                return api.browse_album(query.get("id", ""))
             if path == "/api/trips":
                 return api.trips(rescan=query.get("rescan") == "1",
                                  away_km=float(query.get("away_km") or 100),
