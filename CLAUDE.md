@@ -56,6 +56,11 @@ it can be unpacked onto a minimal host that has no pip.
 Always `python scripts/run-tests.py` — it prints `OK (<n> tests)` or the failures and nothing
 else. The private-data check runs inside the suite. Do not run `python -m unittest` directly.
 
+The files in `scripts/` are shared with the sibling repos PyImmichFrame,
+immich-album-butler and immich-dup-butler and are meant to stay identical there.
+Fix one, port it to the other two in the same session, and say so in the commit
+message; if they already differ, ask before aligning them.
+
 ## Safety toward Immich
 
 The tool writes **albums only**. It never deletes assets, never modifies
