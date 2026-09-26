@@ -1,6 +1,6 @@
 # immich-album-butler — operating rules
 
-## This is a PUBLIC repository
+## No private data or secrets in tracked files — this is a PUBLIC repository
 
 Everything committed here is world-readable, permanently. **Nothing secret and
 nothing personal may ever enter this repo** — not in code, tests, fixtures,
@@ -51,6 +51,11 @@ line. It targets **Python 3.11+ using the standard library only** (`tomllib`,
 `urllib`, `http.server`, `zoneinfo`) — no third-party runtime dependencies, so
 it can be unpacked onto a minimal host that has no pip.
 
+## Tests
+
+Always `python scripts/run-tests.py` — it prints `OK (<n> tests)` or the failures and nothing
+else. The private-data check runs inside the suite. Do not run `python -m unittest` directly.
+
 ## Safety toward Immich
 
 The tool writes **albums only**. It never deletes assets, never modifies
@@ -58,3 +63,13 @@ originals, and never deletes an album. Removing assets *from* an album happens
 only for an album explicitly configured with `sync = "mirror"`, or from the
 design UI's Duplicates tab: on an explicit, confirmed request, never the last
 copy of a duplicate group, and never `DELETE /assets`.
+
+## Deployment is not automatic
+
+Never deploy, restart a remote service or touch the Proxmox host on your own initiative — only when
+explicitly instructed for that specific step.
+
+## Docs
+
+Read `docs/requirements.md` before changing behaviour and `docs/design.md` before adding a module;
+update them in the same change. Shared conventions for all my repos: `~/.claude/CLAUDE.md`.

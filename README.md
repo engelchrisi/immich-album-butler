@@ -368,6 +368,19 @@ Hovering a thumbnail shows the large picture with its details; clicking opens
 it full-screen, and ←/→ step through the album in the order shown. Browsing is
 view-only: it changes nothing.
 
+## Development
+
+```sh
+python scripts/run-tests.py        # OK (<n> tests), or the failures
+python scripts/run-tests.py -v     # full unittest output
+scripts/install-hooks.sh           # privacy-check git hooks, once per clone
+```
+
+## Documentation
+
+- [docs/requirements.md](docs/requirements.md) — what the butler must do
+- [docs/design.md](docs/design.md) — modules, data flow, configuration, HTTP surface
+
 ## Safety
 
 The butler writes **albums only**. It never touches your originals, never
