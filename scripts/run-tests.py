@@ -16,6 +16,7 @@ Exit status is 0 on success and 1 otherwise, so it can gate a commit.
 
 from __future__ import annotations
 
+import contextlib
 import io
 import sys
 import unittest
@@ -39,13 +40,24 @@ def main(argv: list[str]) -> int:
         suite = loader.loadTestsFromNames([f"tests.{m}" for m in modules])
     else:
         suite = loader.discover(str(ROOT / "tests"), top_level_dir=str(ROOT))
-    result = unittest.TextTestRunner(stream=stream, verbosity=2 if verbose
-                                     else 1).run(suite)
+    runner = unittest.TextTestRunner(stream=stream, verbosity=2 if verbose else 1)
+    # Some tests print what the code under test reports -- a request log, a
+    # warning about a key or an album. That is useful when something failed and
+    # noise when nothing did, so stdout and stderr are caught here and only
+    # shown on a failure.
+    chatter = io.StringIO()
+    if verbose:
+        result = runner.run(suite)
+    else:
+        with contextlib.redirect_stdout(chatter), contextlib.redirect_stderr(chatter):
+            result = runner.run(suite)
 
     if result.wasSuccessful():
         print(f"OK ({result.testsRun} tests)")
         return 0
 
+    if chatter.getvalue().strip():
+        print(chatter.getvalue().rstrip())
     for label, cases in (("FAIL", result.failures), ("ERROR", result.errors)):
         for test, output in cases:
             print(f"{label}: {test}\n{output}")
