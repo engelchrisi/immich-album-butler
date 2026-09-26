@@ -795,12 +795,11 @@ $("browse-group").onchange = () => {
   try { localStorage.setItem(BROWSE_GROUP, $("browse-group").value); } catch {}
   renderBrowseAlbum();
 };
-$("browse-fold").onclick = () => {
-  const sections = [...$("browse-groups").querySelectorAll("details")];
-  const open = !sections.some((d) => d.open);
-  for (const d of sections) d.open = open;
-  $("browse-fold").textContent = open ? "collapse all" : "expand all";
-};
+function foldGroups(open) {
+  for (const d of $("browse-groups").querySelectorAll("details")) d.open = open;
+}
+$("browse-collapse").onclick = () => foldGroups(false);
+$("browse-expand").onclick = () => foldGroups(true);
 
 function showBrowsePage(page) {
   $("browse-list-page").hidden = page !== "list";
@@ -893,7 +892,6 @@ function renderBrowseAlbum() {
   $("browse-album-note").textContent = `${n} item${n === 1 ? "" : "s"}` +
     (by === "none" ? "" : ` · ${keys.length} group${keys.length === 1 ? "" : "s"}`);
   $("browse-fold").hidden = by === "none";
-  $("browse-fold").textContent = "collapse all";
 
   const box = $("browse-groups");
   box.replaceChildren();

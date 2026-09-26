@@ -341,3 +341,4 @@ div.dup-cover { background: var(--thumb-bg); }
   #lightbox figure { flex-direction: column; }
   #lightbox figcaption { flex: 0 0 35%; }
 }
+.fold { display: inline-flex; gap: 0.4rem; }
