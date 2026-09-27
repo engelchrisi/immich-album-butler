@@ -57,6 +57,8 @@ class Asset:
     country: str | None = None
     original_path: str = ""             # where the file sits, for grouping by folder
     camera: str | None = None           # EXIF make and model, when read with exif
+    is_favorite: bool = False           # for pick = "best"
+    rating: int | None = None           # EXIF stars 1-5, for pick = "best"
 
     @property
     def located(self) -> bool:
@@ -87,6 +89,8 @@ class Asset:
             original_path=str(data.get("originalPath") or ""),
             camera=" ".join(part for part in (exif.get("make"), exif.get("model"))
                             if part) or None,
+            is_favorite=bool(data.get("isFavorite")),
+            rating=_as_int(exif.get("rating")),
         )
 
 
@@ -133,6 +137,9 @@ class AlbumInfo:
     name: str
     asset_count: int = 0
     cover_asset_id: str | None = None
+    # The album's description, as a person (or the butler's hint line, N31) may
+    # have written it. Returned by the album listing, so no extra call reads it.
+    description: str = ""
     # Who else can see this album: user id -> role ("viewer" or "editor").
     # The owner is left out; an album is not shared with the person who owns it.
     shared_with: dict[str, str] = field(default_factory=dict)
@@ -156,6 +163,7 @@ class AlbumInfo:
         return cls(id=data["id"], name=data.get("albumName") or "",
                    asset_count=int(data.get("assetCount") or 0),
                    cover_asset_id=data.get("albumThumbnailAssetId") or None,
+                   description=data.get("description") or "",
                    shared_with=shared, owner_id=owner)
 
 
@@ -375,6 +383,14 @@ class ImmichClient:
         """
         self.request("PATCH", f"albums/{album_id}", {"albumName": name})
 
+    def set_album_description(self, album_id: str, description: str) -> None:
+        """Write the album's description, e.g. the butler's hint line (N31).
+
+        Like rename and cover, this needs `album.update` on the API key; a key
+        without it fails here and the hint is skipped, never the run.
+        """
+        self.request("PATCH", f"albums/{album_id}", {"description": description})
+
     def set_album_cover(self, album_id: str, asset_id: str) -> None:
         """Point the album's cover at one of its assets.
 
@@ -464,6 +480,16 @@ def _parse_time(value: object) -> dt.datetime | None:
 def _as_float(value: object) -> float | None:
     if isinstance(value, (int, float)):
         return float(value)
+    return None
+
+
+def _as_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
     return None
 
 

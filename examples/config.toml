@@ -38,6 +38,14 @@ album_suffix = "[AB]"
 # album_suffix_fixed    = "◆"
 # album_suffix_updating = "↻"
 
+# Publish a one-line hint in each album's Immich description saying what kind of
+# album it is (trip, person, recurring-day) and whether it rotates, so a player
+# like PyImmichFrame can order it without being told. The butler owns only that
+# one "[butler v1] …" line and leaves the rest of a hand-written description
+# alone; "off" (the default) removes any line a previous run left. "hint" needs
+# "album.update" on the key; without it the run warns and fills the album anyway.
+# describe = "hint"
+
 log_level = "info"
 
 # Design mode: which port it listens on, and how long it stays up with nobody
@@ -179,3 +187,35 @@ cover   = "IMG_0042.jpg"
 
   [albums.photos-of-alex.match]
   people = ["Alex"]
+
+
+# A recurring-date album: every photo taken on one calendar day, any year, with
+# a fresh handful of them each week (N28 + N29). "on" is MM-DD; "since_year" is
+# how far back to look (nothing older can exist); "offset_days" widens the day
+# either side, catching e.g. a party held the day after.
+#
+# "pics_per_year" keeps at most that many of each year's matches; "pick"
+# chooses which:
+#
+#   "all"    everything the rule matched (the default)
+#   "best"   favourites first, then EXIF star ratings, stable between runs
+#   "random" a fresh sample each run -- repeats between weeks are possible
+#   "rotate" prefers photos not shown recently, so successive runs work through
+#            the whole set instead of repeating one sample
+#
+# "rotate" and "random" need sync = "mirror" (so last week's picks can be
+# removed) and an automatic schedule. The rotation remembers its place in
+# state.json, not here. A rotating album re-adds members every run, so keep the
+# cadence at a day or more.
+[albums.alex-birthday]
+name    = "Alex's birthday"
+sync    = "mirror"
+auto-update-schedule = "weekly sun 04:00"
+pics_per_year = 5
+pick    = "rotate"
+
+  [albums.alex-birthday.match]
+  people      = ["Alex"]   # narrow every yearly window to this person
+  on          = "05-17"    # this calendar day, every year
+  offset_days = 1          # also the day either side
+  since_year  = 1985       # the earliest year to look in (e.g. the birth year)

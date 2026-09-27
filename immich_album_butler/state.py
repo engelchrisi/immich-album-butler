@@ -29,6 +29,14 @@ class AlbumState:
     last_error: str | None = None
     assets_added: int = 0
     assets_removed: int = 0
+    # N29 rotation, all additive so state.json stays version 1 and an older
+    # file loads unchanged. Keyed by calendar year. `pick_bag` is what is left
+    # to draw before a reshuffle; `pick_last` is the previous round's picks,
+    # avoided at the seam; `pick_cycle` seeds the rng so a dry run reproduces
+    # the run and successive real runs differ.
+    pick_bag: dict[str, list[str]] = field(default_factory=dict)
+    pick_last: dict[str, list[str]] = field(default_factory=dict)
+    pick_cycle: int = 0
 
     @property
     def last_run_at(self) -> dt.datetime | None:

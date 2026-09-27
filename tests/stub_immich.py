@@ -35,7 +35,8 @@ def make_asset(number: int, *, when: str, lat: float | None = None,
                lon: float | None = None, city: str | None = None,
                state: str | None = None, country: str | None = None,
                kind: str = "IMAGE", people: tuple[str, ...] = (),
-               file_name: str | None = None) -> dict:
+               file_name: str | None = None, favorite: bool = False,
+               rating: int | None = None) -> dict:
     """One asset as Immich's search/metadata returns it."""
     return {
         "id": fake_id(number),
@@ -43,9 +44,10 @@ def make_asset(number: int, *, when: str, lat: float | None = None,
         "localDateTime": when,
         "originalFileName": file_name or f"IMG_{number:04d}.jpg",
         "originalPath": f"/photos/example-folder/{file_name or f'IMG_{number:04d}.jpg'}",
+        "isFavorite": favorite,
         "_people": list(people),          # stub-only, used for personIds filtering
         "exifInfo": {"latitude": lat, "longitude": lon, "city": city,
-                     "state": state, "country": country,
+                     "state": state, "country": country, "rating": rating,
                      "dateTimeOriginal": when},
     }
 
@@ -105,8 +107,10 @@ class StubImmich:
 
     # -- behaviour --------------------------------------------------------
 
-    def add_album(self, name: str, asset_ids: list[str] | None = None) -> dict:
+    def add_album(self, name: str, asset_ids: list[str] | None = None,
+                  description: str = "") -> dict:
         album = {"id": str(uuid.uuid4()), "albumName": name,
+                 "description": description,
                  "assets": [{"id": i} for i in (asset_ids or [])],
                  "albumUsers": [{"user": self.owner, "role": "owner"}]}
         album["assetCount"] = len(album["assets"])
@@ -237,6 +241,7 @@ def _make_handler(stub: StubImmich):
                     return
                 return self._send(200, [
                     {"id": a["id"], "albumName": a["albumName"],
+                     "description": a.get("description") or "",
                      "assetCount": stub.display_count(a),
                      "albumThumbnailAssetId": a.get("albumThumbnailAssetId"),
                      # Like the real listing: who the album is shared with
@@ -326,7 +331,8 @@ def _make_handler(stub: StubImmich):
                 if not self._authorized("album.create"):
                     return
                 album = stub.add_album(body.get("albumName", ""),
-                                       body.get("assetIds") or [])
+                                       body.get("assetIds") or [],
+                                       description=body.get("description") or "")
                 return self._send(201, album)
 
             self._send(404, {"message": f"no route {path}"})
@@ -409,6 +415,8 @@ def _make_handler(stub: StubImmich):
                     return self._send(404, {"message": "Not found"})
                 if "albumName" in body:
                     album["albumName"] = body["albumName"]
+                if "description" in body:
+                    album["description"] = body["description"]
                 if "albumThumbnailAssetId" in body:
                     cover = body["albumThumbnailAssetId"]
                     if not any(a["id"] == cover for a in album["assets"]):

@@ -276,6 +276,7 @@ class DesignApi:
                 "cover_asset": info.cover_asset_id if info else None,
                 "enabled": album.enabled, "sync": album.sync,
                 "cover": album.cover,
+                "pics_per_year": album.pics_per_year, "pick": album.pick,
                 "share_with": list(album.share_with),
                 "share_role": album.share_role,
                 "schedule": str(album.schedule),
@@ -812,11 +813,16 @@ class DesignApi:
             raise ApiError('a cover of "everyone" needs the rule to name people')
 
         share_with, share_role = self._sharing_from(payload)
+        try:
+            pics_per_year, pick = config_module._load_pick(payload, sync, schedule)
+        except config_module.ConfigError as exc:
+            raise ApiError(str(exc)) from None
 
         return Album(slug=slug, name=name or "(draft)", match=rule,
                      schedule=schedule, schedule_inherited=inherited,
                      enabled=bool(payload.get("enabled", True)), sync=sync,
-                     cover=cover, share_with=share_with, share_role=share_role)
+                     cover=cover, share_with=share_with, share_role=share_role,
+                     pics_per_year=pics_per_year, pick=pick)
 
     def _sharing_from(self, payload: dict) -> tuple[tuple[str, ...], str]:
         """Read the builder's share picker.
@@ -841,6 +847,13 @@ class DesignApi:
     def _rule_from(self, data: dict) -> MatchRule:
         from_date, from_time = _as_bound(data.get("from"), "from")
         to_date, to_time = _as_bound(data.get("to"), "to")
+        try:
+            on, offset_days, since_year = config_module._load_recurring(data)
+        except config_module.ConfigError as exc:
+            raise ApiError(str(exc)) from None
+        if on and (from_date or to_date):
+            raise ApiError("'on' is a recurring day and cannot be combined "
+                           "with 'from'/'to'")
         rule = MatchRule(
             from_date=from_date, to_date=to_date,
             from_time=from_time, to_time=to_time,
@@ -849,7 +862,8 @@ class DesignApi:
             cities=_as_names(data.get("cities")),
             people=_as_names(data.get("people")),
             people_mode=str(data.get("people_mode") or "any").lower(),
-            include_unlocated=bool(data.get("include_unlocated", True)))
+            include_unlocated=bool(data.get("include_unlocated", True)),
+            on=on, offset_days=offset_days, since_year=since_year)
 
         if rule.people_mode not in config_module.PEOPLE_MODES:
             raise ApiError(f"people_mode must be any or all, "
@@ -883,6 +897,8 @@ def rule_to_json(rule: MatchRule) -> dict:
         "cities": list(rule.cities), "people": list(rule.people),
         "people_mode": rule.people_mode,
         "include_unlocated": rule.include_unlocated,
+        "on": rule.on, "offset_days": rule.offset_days,
+        "since_year": rule.since_year,
     }
 
 

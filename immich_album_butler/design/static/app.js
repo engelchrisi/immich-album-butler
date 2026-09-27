@@ -24,9 +24,11 @@ function emptyDraft() {
   return {
     slug: "", name: "", enabled: true, sync: "add", schedule: "inherit",
     cover: "auto", share_with: [], share_role: "viewer",
+    pics_per_year: null, pick: "all",
     match: {
       from: null, to: null, countries: [], states: [], cities: [],
       people: [], people_mode: "any", include_unlocated: true,
+      on: "", offset_days: 0, since_year: null,
     },
   };
 }
@@ -116,6 +118,7 @@ async function loadAlbums() {
         describe(album.match), el("br"),
         `${album.schedule}${album.schedule_inherited ? " (inherited)" : ""}`,
         album.sync === "mirror" ? " · mirrored" : "",
+        album.pics_per_year ? ` · ${album.pics_per_year}/year (${album.pick})` : "",
         album.cover && album.cover !== "auto" ? ` · cover: ${album.cover}` : "",
         (album.share_with || []).length
           ? ` · shared with ${album.share_with.join(", ")}` : ""),
@@ -137,6 +140,12 @@ function describe(match) {
   const parts = [];
   const bound = (v) => v ? v.replace("T", " ").slice(0, 16) : "…";
   if (match.from || match.to) parts.push(`${bound(match.from)} → ${bound(match.to)}`);
+  if (match.on) {
+    let day = `${match.on} every year`;
+    if (match.offset_days) day += ` ±${match.offset_days}d`;
+    if (match.since_year) day += ` since ${match.since_year}`;
+    parts.push(day);
+  }
   const places = [...match.countries, ...match.states, ...match.cities];
   if (places.length) parts.push(places.join(", "));
   if (match.people.length) {
@@ -175,6 +184,7 @@ function editAlbum(album) {
     sync: album.sync, cover: album.cover || "auto",
     share_with: [...(album.share_with || [])],
     share_role: album.share_role || "viewer",
+    pics_per_year: album.pics_per_year ?? null, pick: album.pick || "all",
     schedule: album.schedule_inherited ? "inherit" : album.schedule,
     match: { ...album.match },
   };
@@ -190,6 +200,12 @@ function fillForm() {
   fillDates();
   $("people-mode").value = draft.match.people_mode;
   $("include-unlocated").checked = draft.match.include_unlocated;
+  $("recur-on").value = draft.match.on || "";
+  $("recur-offset").value = draft.match.offset_days || "";
+  $("recur-since").value = draft.match.since_year ?? "";
+  $("pics-per-year").value = draft.pics_per_year ?? "";
+  $("pick").value = draft.pick || "all";
+  updateWhenExclusivity();
   $("enabled").checked = draft.enabled;
   $("mirror").checked = draft.sync === "mirror";
   fillCover(draft.cover || "auto");
@@ -225,6 +241,7 @@ function fillDates() {
 function setBound(key, taken) {
   state.draft.match[key] = taken;
   fillDates();
+  updateWhenExclusivity();
   refreshPreview();
 }
 
@@ -235,6 +252,16 @@ function bindDraft() {
   $("date-to").onchange = (e) => setBound("to", e.target.value || null);
   $("people-mode").onchange = (e) => set("people_mode", e.target.value);
   $("include-unlocated").onchange = (e) => set("include_unlocated", e.target.checked);
+  $("recur-on").oninput = debounce((e) => set("on", e.target.value.trim()), 350);
+  $("recur-offset").onchange = (e) =>
+    set("offset_days", parseInt(e.target.value, 10) || 0);
+  $("recur-since").onchange = (e) =>
+    set("since_year", e.target.value ? parseInt(e.target.value, 10) : null);
+  $("pics-per-year").onchange = (e) => {
+    state.draft.pics_per_year = e.target.value ? parseInt(e.target.value, 10) : null;
+    refreshPreview();
+  };
+  $("pick").onchange = (e) => { state.draft.pick = e.target.value; refreshPreview(); };
   $("enabled").onchange = (e) => { state.draft.enabled = e.target.checked; };
   $("mirror").onchange = (e) => {
     state.draft.sync = e.target.checked ? "mirror" : "add";
@@ -343,7 +370,22 @@ function readCover() {
 
 function set(key, value) {
   state.draft.match[key] = value;
+  updateWhenExclusivity();
   refreshPreview();
+}
+
+/* A rule is either a From/To window or a recurring day, never both (the loader
+ * refuses the mix). Dim whichever group the other one rules out, so the choice
+ * is visible instead of only failing on save. */
+function updateWhenExclusivity() {
+  const m = state.draft.match;
+  const hasWindow = !!(m.from || m.to);
+  const hasRecur = !!(m.on && String(m.on).trim());
+  ["date-from", "date-to"].forEach((id) => { $(id).disabled = hasRecur; });
+  document.querySelectorAll("[data-preset]").forEach((b) => { b.disabled = hasRecur; });
+  ["recur-on", "recur-offset", "recur-since"].forEach((id) => {
+    $(id).disabled = hasWindow;
+  });
 }
 
 /* -- builder: people ---------------------------------------------------- */
@@ -367,19 +409,35 @@ $("person-search").oninput = debounce(async (event) => {
   }
   try {
     const data = await api(`/api/people?q=${encodeURIComponent(query)}`);
-    for (const person of data.people) hits.push({ name: person.name });
+    for (const person of data.people) hits.push({ name: person.name, id: person.id });
   } catch (error) { return banner(error.message); }
 
   if (!hits.length) {
     box.append(el("div", { class: "muted" }, `Nobody named “${query}”.`));
     return;
   }
+  // Immich can hold two face clusters with the same name. A rule names a person
+  // by name, so an ambiguous name is refused at run time -- flag it here rather
+  // than showing two identical chips and letting the run fail later.
+  const counts = {};
+  for (const hit of hits) if (!hit.group) counts[hit.name] = (counts[hit.name] || 0) + 1;
+  let ambiguous = false;
   for (const hit of hits) {
+    const clashes = !hit.group && counts[hit.name] > 1;
+    ambiguous = ambiguous || clashes;
     const chip = el("span", { class: hit.group ? "chip group" : "chip" },
-      hit.name, hit.group ? el("span", { class: "muted" },
-        ` ${hit.members.length}` ) : "");
+      hit.name,
+      hit.group ? el("span", { class: "muted" }, ` ${hit.members.length}`) : "",
+      clashes ? el("span", { class: "muted" }, ` #${(hit.id || "").slice(0, 4)}`) : "");
+    if (clashes) chip.title = `Two Immich people are named “${hit.name}”; `
+      + "merge or rename them in Immich, or a rule naming this person will fail.";
     chip.onclick = () => addPerson(hit.name);
     box.append(chip);
+  }
+  if (ambiguous) {
+    box.append(el("div", { class: "warn" },
+      "Two people share a name. A rule that names them will be refused until "
+      + "you merge or rename one in Immich."));
   }
 }, 250);
 

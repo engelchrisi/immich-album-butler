@@ -175,5 +175,57 @@ class MatchAgainstStubTests(unittest.TestCase):
                 match(self.client(stub), MatchRule(people=("Nobody",)))
 
 
+class RecurringDayTests(unittest.TestCase):
+    """N28: `on = "MM-DD"` as one windowed query per year."""
+
+    TODAY = dt.date(2020, 12, 31)
+
+    def library(self):
+        assets = []
+        n = 0
+        for year in (2016, 2017, 2018, 2019):
+            n += 1
+            assets.append(make_asset(n, when=day(year, 5, 17), people=(ALEX,)))
+        # Decoys a day either side, and an unrelated date.
+        assets.append(make_asset(50, when=day(2018, 5, 16)))
+        assets.append(make_asset(51, when=day(2018, 5, 18)))
+        assets.append(make_asset(52, when=day(2018, 8, 1)))
+        return assets
+
+    def client(self, stub):
+        return ImmichClient(stub.url, API_KEY)
+
+    def test_the_same_day_in_every_year_matches(self):
+        rule = MatchRule(on="05-17", since_year=2016)
+        with StubImmich(self.library(), page_size=100) as stub:
+            found = match(self.client(stub), rule, PEOPLE, today=self.TODAY)
+        self.assertEqual(set(found.ids),
+                         {fake_id(1), fake_id(2), fake_id(3), fake_id(4)})
+
+    def test_offset_days_widens_the_window(self):
+        rule = MatchRule(on="05-17", offset_days=1, since_year=2018)
+        with StubImmich(self.library(), page_size=100) as stub:
+            found = match(self.client(stub), rule, PEOPLE, today=self.TODAY)
+        # 2018 17th, plus the 16th and 18th decoys; 2019 17th.
+        self.assertEqual(set(found.ids),
+                         {fake_id(3), fake_id(50), fake_id(51), fake_id(4)})
+
+    def test_a_leap_day_is_simply_skipped_in_non_leap_years(self):
+        assets = [make_asset(1, when=day(2020, 2, 29))]
+        rule = MatchRule(on="02-29", since_year=2019)
+        with StubImmich(assets, page_size=100) as stub:
+            found = match(self.client(stub), rule, PEOPLE, today=self.TODAY)
+        self.assertEqual(set(found.ids), {fake_id(1)})   # only 2020 has the day
+
+    def test_it_composes_with_people(self):
+        assets = self.library()
+        assets.append(make_asset(60, when=day(2019, 5, 17), people=(SAM,)))
+        rule = MatchRule(on="05-17", since_year=2016, people=("Alex",))
+        with StubImmich(assets, page_size=100) as stub:
+            found = match(self.client(stub), rule, PEOPLE, today=self.TODAY)
+        self.assertNotIn(fake_id(60), set(found.ids))
+        self.assertIn(fake_id(4), set(found.ids))
+
+
 if __name__ == "__main__":
     unittest.main()

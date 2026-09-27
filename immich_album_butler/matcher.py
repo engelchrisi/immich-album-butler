@@ -15,6 +15,7 @@ Two things make this more than one API call:
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -114,9 +115,12 @@ def _matches_any(value: str | None, wanted: tuple[str, ...]) -> bool:
 
 
 def match(client: ImmichClient, rule: MatchRule,
-          people: list[Person] | None = None) -> MatchResult:
+          people: list[Person] | None = None,
+          today: dt.date | None = None) -> MatchResult:
     """Evaluate a rule against the library."""
     result = MatchResult()
+
+    windows = _windows(rule, today or dt.date.today())
 
     person_ids: list[str] = []
     if rule.people:
@@ -125,11 +129,11 @@ def match(client: ImmichClient, rule: MatchRule,
 
     by_person: dict[str, set[str]] = {}
     if rule.people_mode == "all" and len(person_ids) > 1:
-        assets = _assets_for_all(client, rule, person_ids, by_person)
+        assets = _assets_for_all(client, rule, person_ids, by_person, windows)
     elif person_ids:
-        assets = _assets_for_any(client, rule, person_ids, by_person)
+        assets = _assets_for_any(client, rule, person_ids, by_person, windows)
     else:
-        assets = _fetch(client, rule, None)
+        assets = _fetch(client, rule, None, windows)
 
     # The server narrows by whole days; a picked first or last photo cuts the
     # first and the last day to the second, which is done here.
@@ -152,20 +156,24 @@ def match(client: ImmichClient, rule: MatchRule,
 
 
 def _assets_for_any(client: ImmichClient, rule: MatchRule, person_ids: list[str],
-                    by_person: dict[str, set[str]]) -> dict[str, Asset]:
+                    by_person: dict[str, set[str]],
+                    windows: list[tuple[dt.date | None, dt.date | None]],
+                    ) -> dict[str, Asset]:
     found: dict[str, Asset] = {}
     for person_id in person_ids:
-        batch = _fetch(client, rule, [person_id])
+        batch = _fetch(client, rule, [person_id], windows)
         by_person[person_id] = set(batch)
         found.update(batch)
     return found
 
 
 def _assets_for_all(client: ImmichClient, rule: MatchRule, person_ids: list[str],
-                    by_person: dict[str, set[str]]) -> dict[str, Asset]:
+                    by_person: dict[str, set[str]],
+                    windows: list[tuple[dt.date | None, dt.date | None]],
+                    ) -> dict[str, Asset]:
     common: dict[str, Asset] | None = None
     for person_id in person_ids:
-        batch = _fetch(client, rule, [person_id])
+        batch = _fetch(client, rule, [person_id], windows)
         by_person[person_id] = set(batch)
         if common is None:
             common = batch
@@ -176,25 +184,59 @@ def _assets_for_all(client: ImmichClient, rule: MatchRule, person_ids: list[str]
     return common or {}
 
 
+def _windows(rule: MatchRule, today: dt.date,
+             ) -> list[tuple[dt.date | None, dt.date | None]]:
+    """The date windows to search: one for a plain rule, one per year for `on`.
+
+    A recurring day (N28) cannot be one takenAfter/takenBefore pair, so it
+    becomes one windowed query per year from `since_year` to now -- twenty-odd
+    paged searches once a week, keeping the filtering server-side rather than
+    paging the whole library to find a handful.
+    """
+    if not rule.has_recurring:
+        return [(rule.from_date, rule.to_date)]
+
+    month, dom = int(rule.on[:2]), int(rule.on[3:])
+    since = rule.since_year
+    if since is None:
+        since = today.year - 10
+        log.info("rule 'on = %s' has no since_year; looking back to %d",
+                 rule.on, since)
+    windows: list[tuple[dt.date | None, dt.date | None]] = []
+    for year in range(since, today.year + 1):
+        try:
+            day = dt.date(year, month, dom)
+        except ValueError:
+            continue                        # e.g. 02-29 in a non-leap year
+        offset = dt.timedelta(days=rule.offset_days)
+        windows.append((day - offset, day + offset))
+    return windows
+
+
 def _fetch(client: ImmichClient, rule: MatchRule,
-           person_ids: list[str] | None) -> dict[str, Asset]:
-    """One server-side query: dates, person, and a place only when it is safe.
+           person_ids: list[str] | None,
+           windows: list[tuple[dt.date | None, dt.date | None]],
+           ) -> dict[str, Asset]:
+    """Server-side queries: dates, person, and a place only when it is safe.
 
     A single country can be pushed to the server, but only when unlocated
     photos are *not* wanted -- otherwise the server's AND would throw away
-    exactly the photos the rule asks to keep.
+    exactly the photos the rule asks to keep. A recurring day runs one query
+    per year (see `_windows`); every other rule runs exactly one.
     """
     country = None
     if (not rule.include_unlocated and len(rule.countries) == 1
             and not rule.states and not rule.cities):
         country = rule.countries[0]
 
-    stream = client.search_metadata(
-        taken_after=rule.from_date, taken_before=rule.to_date,
-        person_ids=person_ids, country=country)
-    return {asset.id: asset for asset in stream}
+    found: dict[str, Asset] = {}
+    for after, before in windows:
+        stream = client.search_metadata(
+            taken_after=after, taken_before=before,
+            person_ids=person_ids, country=country)
+        for asset in stream:
+            found[asset.id] = asset
+    return found
 
 
-import datetime as _dt  # noqa: E402 - only for the sort sentinel below
-
-_EPOCH = _dt.datetime.min
+_EPOCH = dt.datetime.min

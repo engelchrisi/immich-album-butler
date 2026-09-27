@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import random
 import re
 import time
 from dataclasses import dataclass, field
@@ -20,6 +21,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import config as config_module
 from . import cover
+from . import describe as describe_module
+from . import picker
 from .config import Album, Config
 from .immich import AlbumInfo, ImmichClient, ImmichError, Person, User
 from .matcher import MatchError, match
@@ -63,11 +66,18 @@ class Plan:
     # When each matched asset was taken (wall clock), for the builder, which
     # sets an album's first or last photo from these.
     taken: dict[str, dt.datetime | None] = field(default_factory=dict)
+    # The album description to write (N31), set only when it differs from what
+    # Immich holds. The rotation bag to write (N29), set only when applying a
+    # rotate; both ride in the plan so a dry run shows them and never writes.
+    describe_to: str | None = None
+    pick_bag: dict[str, list[str]] = field(default_factory=dict)
+    pick_last: dict[str, list[str]] = field(default_factory=dict)
 
     @property
     def changes(self) -> bool:
         return bool(self.to_add or self.to_remove or self.creates_album
-                    or self.cover_asset_id or self.rename_to or self.to_share)
+                    or self.cover_asset_id or self.rename_to or self.to_share
+                    or self.describe_to is not None)
 
     def summary(self) -> str:
         if self.creates_album:
@@ -99,6 +109,7 @@ class RunReport:
     created: bool = False
     cover_set: bool = False
     renamed: bool = False
+    described: bool = False
     shared: int = 0
     error: str | None = None
     dry_run: bool = False
@@ -213,18 +224,29 @@ class Butler:
         if expanded != list(rule.people):
             rule = _with_people(rule, tuple(expanded))
 
-        result = match(self.client, rule)
-        matched = result.ids
+        today = dt.datetime.now(timezone_of(self.config)).date()
+        result = match(self.client, rule, today=today)
+        picked, new_bag, new_last = self._pick(album, result.assets)
+        matched = [a.id for a in picked]
 
         info = self.find_album(album)
         plan = Plan(album=album, matched=matched, warnings=problems + result.warnings,
-                    taken={a.id: a.taken_at for a in result.assets})
+                    taken={a.id: a.taken_at for a in result.assets},
+                    pick_bag={y: list(v) for y, v in new_bag.items()},
+                    pick_last={y: list(v) for y, v in new_last.items()})
+        if (album.rotating and album.schedule.kind == "interval"
+                and album.schedule.interval
+                and album.schedule.interval < dt.timedelta(days=1)):
+            plan.warnings.append(
+                "a rotating album on a schedule shorter than a day churns its "
+                "members for little gain -- a daily or weekly cadence is enough")
 
         if info is None:
             plan.creates_album = True
             plan.to_add = matched
             plan.cover_asset_id = self._cover(album, result, None, plan)
             plan.to_share = self._sharing(album, {}, plan)
+            self._describe(album, "", plan)
             return plan
 
         plan.album_id = info.id
@@ -249,7 +271,32 @@ class Butler:
         plan.cover_asset_id = self._cover(album, result, info.cover_asset_id, plan)
         plan.current_shares = dict(info.shared_with)
         plan.to_share = self._sharing(album, plan.current_shares, plan)
+        self._describe(album, info.description, plan)
         return plan
+
+    def _pick(self, album: Album, assets):
+        """Apply the per-year cap (N29), seeded so a dry run matches the run."""
+        if album.pick == picker.ALL or album.pics_per_year is None:
+            return assets, {}, {}
+        record = self.state.for_album(album.slug)
+        rng = random.Random(f"{album.slug}|{record.pick_cycle}")
+        bag = {year: tuple(ids) for year, ids in record.pick_bag.items()}
+        last = {year: tuple(ids) for year, ids in record.pick_last.items()}
+        return picker.pick(album.pick, album.pics_per_year, list(assets),
+                           bag, last, rng)
+
+    def _describe(self, album: Album, current: str, plan: Plan) -> None:
+        """Set plan.describe_to when the album's hint line should change (N31).
+
+        Computed whether the feature is on or off: "off" removes a line a
+        previous run left, and either way nothing is written unless the
+        resulting description differs from what Immich holds.
+        """
+        enabled = self.config.settings.describe == "hint"
+        line = describe_module.hint_line(album)
+        want = describe_module.apply_hint(current, line, enabled)
+        if want != current:
+            plan.describe_to = want
 
     def _sharing(self, album: Album, current: dict[str, str],
                  plan: Plan) -> list[tuple[str, str]]:
@@ -327,14 +374,18 @@ class Butler:
             report.created = plan.creates_album
             report.cover_set = bool(plan.cover_asset_id)
             report.renamed = bool(plan.rename_to)
+            report.described = plan.describe_to is not None
             report.shared = len(plan.to_share)
             return report
 
         if plan.creates_album:
             # Created with the marker already on it, which needs no permission
-            # -- unlike renaming one that exists.
+            # -- unlike renaming one that exists. The hint line, if any, goes on
+            # at creation for the same reason.
             info = self.client.create_album(self.marked_name(album),
+                                            description=plan.describe_to or "",
                                             asset_ids=plan.to_add)
+            report.described = plan.describe_to is not None
             report.created = True
             report.added = len(plan.to_add)
             plan.album_id = info.id
@@ -348,6 +399,9 @@ class Butler:
             if plan.to_remove:
                 report.removed = self.client.remove_assets(plan.album_id, plan.to_remove)
 
+            if plan.describe_to is not None:
+                report.described = self._describe_album(plan, report)
+
         if plan.cover_asset_id and plan.album_id:
             report.cover_set = self._set_cover(plan, report)
         if plan.to_share and plan.album_id:
@@ -357,7 +411,35 @@ class Butler:
         record.album_id = plan.album_id
         record.assets_added = report.added
         record.assets_removed = report.removed
+        # The rotation bag is written only here, by apply(), so a dry run
+        # spends nothing (N29). The cycle advances only for a rotating album,
+        # so a fresh sample differs run to run while a dry run reproduces it.
+        if album.pick != picker.ALL and album.pics_per_year is not None:
+            record.pick_bag = dict(plan.pick_bag)
+            record.pick_last = dict(plan.pick_last)
+            if album.rotating:
+                record.pick_cycle += 1
         return report
+
+    def _describe_album(self, plan: Plan, report: RunReport) -> bool:
+        """Write the album description (N31), a 403 becoming a warning.
+
+        The hint is cosmetic next to the album's contents, so a key without
+        `album.update` skips it rather than failing the run.
+        """
+        assert plan.album_id is not None and plan.describe_to is not None
+        try:
+            self.client.set_album_description(plan.album_id, plan.describe_to)
+            self._albums = None
+            return True
+        except ImmichError as exc:
+            if exc.status == 403:
+                report.warnings.append(
+                    "the description hint was not written: the API key needs "
+                    "the 'album.update' permission. Everything else worked.")
+            else:
+                report.warnings.append(f"the description hint was not written: {exc}")
+            return False
 
     def _rename(self, plan: Plan, report: RunReport) -> bool:
         """Add the marker suffix to an album that has not got it yet.

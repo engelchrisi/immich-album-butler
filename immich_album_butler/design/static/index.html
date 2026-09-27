@@ -82,6 +82,16 @@
           <button data-preset="month" class="link">whole month</button>
           <button data-preset="pad" class="link">± 1 day</button>
         </div>
+        <div class="row">
+          <label class="field"><span>…or a recurring day (MM-DD)</span>
+            <input id="recur-on" type="text" placeholder="05-17" maxlength="5"></label>
+          <label class="field"><span>± days</span>
+            <input id="recur-offset" type="number" min="0" step="1"></label>
+          <label class="field"><span>Since year</span>
+            <input id="recur-since" type="number" step="1" placeholder="2005"></label>
+        </div>
+        <span class="muted">A recurring day matches that date in every year; it
+          cannot be combined with a From/To window.</span>
       </fieldset>
 
       <fieldset>
@@ -112,6 +122,19 @@
           </select>
         </label>
         <div class="muted" id="next-run"></div>
+        <div class="row">
+          <label class="field"><span>Keep per year</span>
+            <input id="pics-per-year" type="number" min="1" step="1"
+                   placeholder="all"></label>
+          <label class="field"><span>Pick</span>
+            <select id="pick">
+              <option value="all">all matches</option>
+              <option value="best">best (favourites, ratings)</option>
+              <option value="random">random each run</option>
+              <option value="rotate">rotate (a new set each run)</option>
+            </select>
+          </label>
+        </div>
         <label class="field"><span>Cover picture</span>
           <select id="cover">
             <option value="auto">leave Immich's own choice alone</option>

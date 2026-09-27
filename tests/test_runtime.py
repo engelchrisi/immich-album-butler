@@ -202,6 +202,76 @@ class SyncModeTests(unittest.TestCase):
                          {fake_id(1), fake_id(2)})
 
 
+ROTATE_ALBUM = """
+name = "Rotating"
+sync = "mirror"
+auto-update-schedule = "weekly sun 04:00"
+pics_per_year = 2
+pick = "rotate"
+
+[match]
+people = ["Alex"]
+"""
+
+
+def alex_photos(count=6):
+    return [make_asset(n, when=day(2019, 5, 17), people=(ALEX,))
+            for n in range(1, count + 1)]
+
+
+class RotationTests(unittest.TestCase):
+    def members(self, stub):
+        return {a["id"] for a in stub.album_named("Rotating")["assets"]}
+
+    def test_two_consecutive_runs_pick_disjoint_sets_and_a_third_wraps(self):
+        with StubImmich(alex_photos(), people=PEOPLE, page_size=100) as stub:
+            with Fixture({"rot": ROTATE_ALBUM}, stub) as fx:
+                config, state = fx.load()
+                run_once(fx.client, config, state)
+                first = self.members(stub)
+                config, state = fx.load()
+                run_once(fx.client, config, state)
+                second = self.members(stub)
+                config, state = fx.load()
+                run_once(fx.client, config, state)
+                third = self.members(stub)
+        self.assertEqual(len(first), 2)
+        self.assertFalse(first & second)               # disjoint
+        self.assertEqual(first | second | third, {fake_id(n) for n in range(1, 7)})
+
+    def test_a_dry_run_is_deterministic_and_writes_no_state(self):
+        with StubImmich(alex_photos(), people=PEOPLE, page_size=100) as stub:
+            with Fixture({"rot": ROTATE_ALBUM}, stub) as fx:
+                config, state = fx.load()
+                butler = Butler(fx.client, config, state)
+                first = butler.plan(config.album("rot")).matched
+                second = butler.plan(config.album("rot")).matched
+                run_once(fx.client, config, state, dry_run=True)
+                exists = (fx.state_dir / "state.json").exists()
+        self.assertEqual(first, second)
+        self.assertFalse(exists)
+
+
+class DescribeTests(unittest.TestCase):
+    def _enable_hint(self, fx):
+        path = fx.config_dir / "config.toml"
+        path.write_text('describe = "hint"\n' + path.read_text(encoding="utf-8"),
+                        encoding="utf-8")
+
+    def test_the_hint_is_written_and_not_rewritten_when_unchanged(self):
+        with StubImmich(assets(), people=PEOPLE, page_size=2) as stub:
+            with Fixture({"italy-2019": ITALY}, stub) as fx:
+                self._enable_hint(fx)
+                config, state = fx.load()
+                run_once(fx.client, config, state)
+                description = stub.album_named("Italy 2019")["description"]
+                config, state = fx.load()
+                run_once(fx.client, config, state)
+                patches = sum(1 for m, p in stub.requests if m == "PATCH")
+        self.assertIn("[butler v1] kind=trip order=trip", description)
+        self.assertEqual(patches, 0)     # set at creation, never rewritten
+
+
 class FailureTests(unittest.TestCase):
     def test_one_broken_album_does_not_stop_the_others(self):
         broken = 'name = "Ghost"\n[match]\npeople = ["Nobody"]\n'

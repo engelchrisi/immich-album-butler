@@ -165,6 +165,64 @@ Setting a cover is the **only** thing the butler does that needs the
 `album.update` permission on the API key. Without it the album is still filled
 correctly and the run reports that the cover could not be set.
 
+### Recurring dates and rotating samples
+
+A rule can name a **calendar day in every year** instead of one window — "every
+photo taken on my birthday, any year" — and an album can keep just a **handful
+per year**, swapping in different ones each run.
+
+```toml
+[albums.alex-birthday]
+name    = "Alex's birthday"
+sync    = "mirror"
+auto-update-schedule = "weekly sun 04:00"
+pics_per_year = 5              # keep at most five of each year
+pick    = "rotate"            # a different five each run
+
+  [albums.alex-birthday.match]
+  people      = ["Alex"]      # narrow every yearly window to this person
+  on          = "05-17"       # this calendar day, every year (MM-DD)
+  offset_days = 1             # also the day either side
+  since_year  = 1985          # earliest year to look in
+```
+
+`on` cannot be combined with `from`/`to`. It is searched as one query per year
+from `since_year` to now (ten years back if omitted), and composes with
+`people`, `countries`, `states` and `cities`.
+
+`pick` chooses which of each year's matches the album keeps:
+
+| `pick` | keeps |
+|---|---|
+| `all` (default) | everything the rule matched |
+| `best` | favourites first, then EXIF star ratings; stable between runs |
+| `random` | a fresh sample each run — repeats between weeks are possible |
+| `rotate` | prefers photos not shown recently, working through the whole set before repeating |
+
+`rotate` and `random` need `sync = "mirror"` (last week's picks must be
+removable); `rotate` also needs an automatic schedule. The rotation remembers
+its place in `state.json`, never in the config, and is advanced only by a real
+run — a `--dry-run` shows exactly what the run would pick and writes nothing.
+Each run re-adds album members, so keep the cadence to a day or more.
+
+### Publishing the album kind
+
+A player like PyImmichFrame can order an album if it knows what kind it is. With
+`describe = "hint"` (top level) the butler keeps one line in each album's Immich
+description:
+
+```
+[butler v1] kind=recurring-day order=one-per-year rotating=yes
+```
+
+`kind` is `trip` (a dated window), `person`, `recurring-day`, or `place`;
+`rotating=yes` is set whenever the contents change each run. The butler owns
+**only** that line — the last one matching `[butler v…]` — and leaves any
+hand-written text around it verbatim; `describe = "off"` (the default) removes a
+line a previous run left. It is written only when it would change, so an
+ordinary run touches nothing, and it needs `album.update` on the key (a 403 is a
+warning, never a failed run).
+
 ### Sharing an album with another account
 
 Another account on the same Immich server can be given access to an album, named
@@ -314,7 +372,7 @@ run on every update; the **optional** ones depend on which features you use:
 | `album.read` | **required** | List your albums |
 | `album.create` | **required** | Create new albums |
 | `albumAsset.create` | **required** | Add assets to albums |
-| `album.update` | optional | Rename with `album_suffix`, set `cover` |
+| `album.update` | optional | Rename with `album_suffix`, set `cover`, write the `describe = "hint"` line |
 | `user.read` | optional | Resolve account names for `share_with` |
 | `albumUser.create` | optional | Share albums with other accounts |
 | `albumUser.update` | optional | Change a shared account's role later |

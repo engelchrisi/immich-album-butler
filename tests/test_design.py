@@ -247,6 +247,27 @@ class FirstLastPhotoTests(DesignTestCase):
             self.api.preview({"name": "Italy", "match": match})
 
 
+class RecurringAndRotateSaveTests(DesignTestCase):
+    def test_a_recurring_rotating_album_round_trips_through_save(self):
+        payload = {"name": "Birthday", "sync": "mirror",
+                   "auto-update-schedule": "weekly sun 04:00",
+                   "pics_per_year": 5, "pick": "rotate",
+                   "match": {"on": "05-17", "offset_days": 1, "since_year": 2005}}
+        self.api.save_album(payload)
+        row = self.api.albums()["albums"][0]
+        self.assertEqual(row["pick"], "rotate")
+        self.assertEqual(row["pics_per_year"], 5)
+        self.assertEqual(row["match"]["on"], "05-17")
+        self.assertEqual(row["match"]["offset_days"], 1)
+        self.assertEqual(row["match"]["since_year"], 2005)
+
+    def test_rotate_without_mirror_is_refused(self):
+        with self.assertRaises(ApiError):
+            self.api.save_album({"name": "Bad", "pick": "rotate",
+                                 "pics_per_year": 5,
+                                 "match": {"people": ["Alex"]}})
+
+
 class SaveTests(DesignTestCase):
     def test_saving_writes_a_readable_toml_file(self):
         result = self.api.save_album(ITALY)

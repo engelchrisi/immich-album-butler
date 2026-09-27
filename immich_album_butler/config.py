@@ -55,6 +55,11 @@ CONFIG_NAME = "config.toml"
 
 SYNC_MODES = ("add", "mirror")
 PEOPLE_MODES = ("any", "all")
+PICK_MODES = ("all", "rotate", "random", "best")
+DESCRIBE_MODES = ("off", "hint")
+
+# offset_days wide enough to span a year is a mistake, not a recurring day.
+MAX_OFFSET_DAYS = 182
 
 
 class ConfigError(ValueError):
@@ -78,6 +83,11 @@ class MatchRule:
     # clock, like Asset.taken_at; the dates above still hold the days.
     from_time: dt.datetime | None = None
     to_time: dt.datetime | None = None
+    # N28: a recurring calendar day. `on` is "MM-DD" and matches that day in
+    # every year from `since_year` to now, widened by `offset_days` either side.
+    on: str = ""
+    offset_days: int = 0
+    since_year: int | None = None
 
     def time_allows(self, taken: dt.datetime | None) -> bool:
         """Whether a timestamp lies within the exact bounds, if there are any.
@@ -103,8 +113,13 @@ class MatchRule:
         return self.from_date is not None or self.to_date is not None
 
     @property
+    def has_recurring(self) -> bool:
+        return bool(self.on)
+
+    @property
     def is_empty(self) -> bool:
-        return not (self.has_places or self.has_dates or self.people)
+        return not (self.has_places or self.has_dates or self.people
+                    or self.has_recurring)
 
 
 @dataclass(frozen=True)
@@ -127,10 +142,19 @@ class Album:
     # at run time, never a UUID.
     share_with: tuple[str, ...] = ()
     share_role: str = immich_module.VIEWER
+    # N29: keep at most this many assets of each calendar year (None = no cap),
+    # and how to choose which -- see PICK_MODES and picker.py.
+    pics_per_year: int | None = None
+    pick: str = "all"
 
     @property
     def mirrors(self) -> bool:
         return self.sync == "mirror"
+
+    @property
+    def rotating(self) -> bool:
+        """Whether the album's contents change from run to run (N29/N30)."""
+        return self.pick in ("rotate", "random")
 
     @property
     def sets_cover(self) -> bool:
@@ -189,6 +213,9 @@ class Settings:
     # falls back to `album_suffix` when empty.
     album_suffix_fixed: str = ""
     album_suffix_updating: str = ""
+    # N31: "hint" keeps a one-line kind/order marker in each album's Immich
+    # description; "off" (the default) removes any the butler left behind.
+    describe: str = "off"
     log_level: str = "info"
     design_idle_minutes: int = 30
     design_port: int = DEFAULT_PORT
@@ -326,9 +353,14 @@ def _load_settings(data: dict, filename: str) -> Settings:
     suffix_fixed = _load_suffix(data, "album_suffix_fixed", "●", filename)
     suffix_updating = _load_suffix(data, "album_suffix_updating", "↻", filename)
 
+    describe = str(data.get("describe", "off")).lower()
+    if describe not in DESCRIBE_MODES:
+        raise ConfigError(f"{filename}: describe must be one of "
+                          f"{', '.join(DESCRIBE_MODES)}, got {describe!r}")
+
     return Settings(server=server, schedule=schedule, timezone=timezone,
                     album_suffix=suffix, album_suffix_fixed=suffix_fixed,
-                    album_suffix_updating=suffix_updating,
+                    album_suffix_updating=suffix_updating, describe=describe,
                     log_level=str(data.get("log_level", "info")).lower(),
                     design_idle_minutes=idle, design_port=port,
                     design_users=_load_users(data.get("design"), filename),
@@ -469,10 +501,40 @@ def _load_album(slug: str, data: object, settings: Settings,
     cover = _load_cover(data.get("cover"), match)
     share_with = _load_share_with(data.get("share_with", data.get("share-with")))
     share_role = _load_share_role(data.get("share_role", data.get("share-role")))
+    pics_per_year, pick = _load_pick(data, sync, schedule)
 
     return Album(slug=slug, name=name, match=match, schedule=schedule,
                  schedule_inherited=inherited, enabled=enabled, sync=sync,
-                 cover=cover, share_with=share_with, share_role=share_role)
+                 cover=cover, share_with=share_with, share_role=share_role,
+                 pics_per_year=pics_per_year, pick=pick)
+
+
+def _load_pick(data: dict, sync: str, schedule: Schedule) -> tuple[int | None, str]:
+    """Read `pics_per_year` / `pick` (N29), each refusal naming its reason."""
+    pick = str(data.get("pick", "all")).lower()
+    if pick not in PICK_MODES:
+        raise ConfigError(f"pick must be one of {', '.join(PICK_MODES)}, "
+                          f"got {pick!r}")
+
+    raw = data.get("pics_per_year")
+    if raw is None:
+        pics = None
+    elif not isinstance(raw, int) or isinstance(raw, bool):
+        raise ConfigError("pics_per_year must be a whole number")
+    elif raw < 1:
+        raise ConfigError("pics_per_year must be at least 1")
+    else:
+        pics = raw
+
+    if pick != "all" and pics is None:
+        raise ConfigError(f"pick = {pick!r} needs pics_per_year")
+    if pick in ("rotate", "random") and sync != "mirror":
+        raise ConfigError(f"pick = {pick!r} needs sync = \"mirror\": nothing "
+                          f"would ever be removed otherwise")
+    if pick == "rotate" and not schedule.automatic:
+        raise ConfigError('pick = "rotate" needs an automatic schedule, not '
+                          '"manual" -- a rotation nobody runs')
+    return pics, pick
 
 
 def _load_share_with(value: object) -> tuple[str, ...]:
@@ -558,18 +620,56 @@ def _load_match(data: object, groups: dict[str, tuple[str, ...]]) -> MatchRule:
     if not isinstance(include_unlocated, bool):
         raise ConfigError("[match] include_unlocated must be true or false")
 
+    on, offset_days, since_year = _load_recurring(data)
+    if on and (from_date or to_date):
+        raise ConfigError("[match] 'on' is a recurring day and cannot be "
+                          "combined with 'from'/'to' -- use one window or a "
+                          "recurring day, not both")
+
     rule = MatchRule(
         from_date=from_date, to_date=to_date,
         from_time=from_time, to_time=to_time,
         countries=_as_names(data.get("countries"), "countries"),
         states=_as_names(data.get("states"), "states"),
         cities=_as_names(data.get("cities"), "cities"),
-        people=people, people_mode=mode, include_unlocated=include_unlocated)
+        people=people, people_mode=mode, include_unlocated=include_unlocated,
+        on=on, offset_days=offset_days, since_year=since_year)
 
     if rule.is_empty:
         raise ConfigError("[match] is empty -- that would match the whole library. "
                           "Give at least a date range, a place or a person.")
     return rule
+
+
+def _load_recurring(data: dict) -> tuple[str, int, int | None]:
+    """Read `on` / `offset_days` / `since_year` (N28), each refusal naming why."""
+    raw_on = data.get("on")
+    if raw_on is None:
+        on = ""
+    else:
+        on = str(raw_on).strip()
+        if not re.match(r"^\d{2}-\d{2}$", on):
+            raise ConfigError(f"[match] on must be \"MM-DD\", got {raw_on!r}")
+        month, day = int(on[:2]), int(on[3:])
+        if not 1 <= month <= 12 or not 1 <= day <= 31:
+            raise ConfigError(f"[match] on {on!r} is not a valid month/day")
+
+    offset = data.get("offset_days", 0)
+    if not isinstance(offset, int) or isinstance(offset, bool):
+        raise ConfigError("[match] offset_days must be a whole number of days")
+    if offset < 0:
+        raise ConfigError("[match] offset_days must not be negative")
+    if offset > MAX_OFFSET_DAYS:
+        raise ConfigError(f"[match] offset_days must be at most {MAX_OFFSET_DAYS} "
+                          f"(a wider window covers the whole year)")
+
+    since = data.get("since_year")
+    if since is not None and (not isinstance(since, int) or isinstance(since, bool)):
+        raise ConfigError("[match] since_year must be a year, e.g. 2005")
+
+    if not on and (offset or since is not None):
+        raise ConfigError("[match] offset_days/since_year only apply with 'on'")
+    return on, offset, since
 
 
 def _as_bound(value: object, key: str) -> tuple[dt.date | None, dt.datetime | None]:
@@ -639,6 +739,10 @@ def dump_config(config: Config) -> str:
         out.append(f"album_suffix_updating = "
                    f"{_toml_str(settings.album_suffix_updating)}"
                    f"   # albums that update on a schedule\n")
+    if settings.describe != "off":
+        out.append(f"describe = {_toml_str(settings.describe)}"
+                   f"   # keep a kind/order hint line in each album's "
+                   f"description\n")
     out.append(f"log_level = {_toml_str(settings.log_level)}\n")
     out.append(f"design_port = {settings.design_port}\n")
     out.append(f"design_idle_minutes = {settings.design_idle_minutes}\n")
@@ -694,6 +798,12 @@ def dump_album(album: Album) -> str:
     if album.sets_cover:
         lines.append(f"cover   = {_toml_str(album.cover)}   "
                      f"# {cover_module.describe(album.cover)}\n")
+    if album.pics_per_year is not None:
+        lines.append(f"pics_per_year = {album.pics_per_year}"
+                     f"   # keep at most this many per calendar year\n")
+    if album.pick != "all":
+        lines.append(f'pick    = "{album.pick}"'
+                     f"   # which of each year's matches to keep\n")
     if album.shares:
         lines.append(f"share_with = {_toml_list(album.share_with)}"
                      f"   # other accounts that may see this album\n")
@@ -715,6 +825,14 @@ def dump_album(album: Album) -> str:
         lines.append(f"  to   = {match.to_time.isoformat()}   # the last photo\n")
     elif match.to_date:
         lines.append(f"  to   = {match.to_date.isoformat()}\n")
+    if match.on:
+        lines.append(f'  on = "{match.on}"   # this calendar day, every year\n')
+        if match.offset_days:
+            lines.append(f"  offset_days = {match.offset_days}"
+                         f"   # +/- days around it\n")
+        if match.since_year is not None:
+            lines.append(f"  since_year = {match.since_year}"
+                         f"   # earliest year to look in\n")
     for key, values in (("countries", match.countries), ("states", match.states),
                         ("cities", match.cities)):
         if values:

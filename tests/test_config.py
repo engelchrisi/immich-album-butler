@@ -372,5 +372,100 @@ class DesignUserTests(unittest.TestCase):
             settings = cfg.load(d.path).settings
         self.assertEqual([u.name for u in settings.design_users], ["designer"])
 
+BIRTHDAY = """
+name = "Geburtstag"
+sync = "mirror"
+auto-update-schedule = "weekly sun 04:00"
+pics_per_year = 5
+pick = "rotate"
+
+[match]
+on = "05-17"
+offset_days = 1
+since_year = 2005
+"""
+
+
+class RecurringAndRotateTests(unittest.TestCase):
+    def _err(self, album):
+        with ConfigDir(albums={"x": album}) as d:
+            errors = cfg.load(d.path).errors
+        return errors[0] if errors else ""
+
+    def test_a_recurring_birthday_album_loads(self):
+        with ConfigDir(albums={"birthday": BIRTHDAY}) as d:
+            album = cfg.load(d.path).albums[0]
+        self.assertEqual(album.match.on, "05-17")
+        self.assertEqual(album.match.offset_days, 1)
+        self.assertEqual(album.match.since_year, 2005)
+        self.assertEqual(album.pics_per_year, 5)
+        self.assertEqual(album.pick, "rotate")
+        self.assertTrue(album.rotating)
+        self.assertFalse(album.match.is_empty)
+
+    def test_it_round_trips_through_toml(self):
+        with ConfigDir(albums={"birthday": BIRTHDAY}) as d:
+            config = cfg.load(d.path)
+            original = config.albums[0]
+            cfg.write_config(d.path, config)
+            reloaded = cfg.load(d.path).albums[0]
+        self.assertEqual(original.match, reloaded.match)
+        self.assertEqual(original.pick, reloaded.pick)
+        self.assertEqual(original.pics_per_year, reloaded.pics_per_year)
+
+    def test_on_with_a_date_window_is_refused(self):
+        self.assertIn("recurring day", self._err(
+            'name = "X"\n[match]\non = "05-17"\nfrom = 2019-01-01\n'))
+
+    def test_a_bad_on_is_refused(self):
+        self.assertIn("MM-DD", self._err('name = "X"\n[match]\non = "5-1"\n'))
+
+    def test_a_wide_offset_is_refused(self):
+        self.assertIn("offset_days", self._err(
+            'name = "X"\n[match]\non = "05-17"\noffset_days = 200\n'))
+
+    def test_rotate_needs_mirror(self):
+        self.assertIn("mirror", self._err(
+            'name = "X"\npick = "rotate"\npics_per_year = 5\n[match]\non = "05-17"\n'))
+
+    def test_rotate_needs_pics_per_year(self):
+        self.assertIn("pics_per_year", self._err(
+            'name = "X"\nsync = "mirror"\npick = "rotate"\n[match]\non = "05-17"\n'))
+
+    def test_rotate_needs_a_non_manual_schedule(self):
+        self.assertIn("manual", self._err(
+            'name = "X"\nsync = "mirror"\npick = "rotate"\npics_per_year = 5\n'
+            'auto-update-schedule = "manual"\n[match]\non = "05-17"\n'))
+
+    def test_random_also_needs_mirror(self):
+        self.assertIn("mirror", self._err(
+            'name = "X"\npick = "random"\npics_per_year = 5\n[match]\npeople = ["Alex"]\n'))
+
+    def test_best_needs_pics_per_year_but_not_mirror(self):
+        with ConfigDir(albums={"x":
+                'name = "X"\npick = "best"\npics_per_year = 3\n'
+                '[match]\npeople = ["Alex"]\n'}) as d:
+            self.assertEqual(cfg.load(d.path).errors, [])
+
+
+class DescribeSettingTests(unittest.TestCase):
+    def test_describe_defaults_to_off(self):
+        with ConfigDir() as d:
+            self.assertEqual(cfg.load(d.path).settings.describe, "off")
+
+    def test_describe_hint_loads_and_round_trips(self):
+        settings = GLOBAL + '\ndescribe = "hint"\n'
+        with ConfigDir(settings=settings, albums={"italy-2019": ITALY}) as d:
+            config = cfg.load(d.path)
+            self.assertEqual(config.settings.describe, "hint")
+            cfg.write_config(d.path, config)
+            self.assertEqual(cfg.load(d.path).settings.describe, "hint")
+
+    def test_a_bad_describe_is_refused(self):
+        with ConfigDir(settings=GLOBAL + '\ndescribe = "yes"\n') as d:
+            with self.assertRaises(cfg.ConfigError):
+                cfg.load(d.path)
+
+
 if __name__ == "__main__":
     unittest.main()
