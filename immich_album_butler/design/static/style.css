@@ -77,6 +77,12 @@ fieldset {
 legend { padding: 0 0.4rem; color: var(--muted); font-size: 0.8rem;
          text-transform: uppercase; letter-spacing: 0.08em; }
 
+fieldset .subgroup { margin-top: 0.7rem; background: var(--field); }
+fieldset .subgroup:first-child { margin-top: 0; }
+fieldset .subgroup legend { text-transform: none; font-size: 0.85rem;
+                             font-weight: 600; color: var(--ink); }
+.check.prominent { font-size: 1rem; font-weight: 600; }
+
 /* -- controls ---------------------------------------------------------- */
 
 .field { display: flex; flex-direction: column; gap: 0.25rem; }
