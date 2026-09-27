@@ -560,10 +560,11 @@ const refreshPreview = debounce(async () => {
   const { match } = state.draft;
   state.immichName = null;
   const empty = !match.from && !match.to && !match.people.length &&
-    !match.countries.length && !match.states.length && !match.cities.length;
+    !match.countries.length && !match.states.length && !match.cities.length &&
+    !(match.on && String(match.on).trim());
   if (empty) {
     box.replaceChildren(el("div", { class: "muted" },
-      "Pick a date range, a place or a person to see a preview."));
+      "Pick a date range, a recurring day, a place or a person to see a preview."));
     return;
   }
 
