@@ -423,6 +423,16 @@ class ImmichClient:
         """
         self.request("PUT", f"albums/{album_id}/user/{user_id}", {"role": role})
 
+    def delete_album(self, album_id: str) -> None:
+        """Delete an album from Immich. The photos in it stay in the library.
+
+        Immich's album delete only unmakes the album; the assets it held are
+        untouched -- the same library-safe stance the rest of this client keeps.
+        Needs `album.delete` on the API key, a scope no other feature uses, so a
+        key without it fails only here.
+        """
+        self.request("DELETE", f"albums/{album_id}")
+
     def remove_assets(self, album_id: str, asset_ids: list[str]) -> int:
         """Remove assets from an album. Never deletes them from the library."""
         removed = 0

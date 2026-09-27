@@ -95,15 +95,34 @@ async function loadAlbums() {
     `default schedule: ${data.default_schedule}`;
   $("schedule").querySelector('option[value="inherit"]').textContent =
     `inherit the global default: ${data.default_schedule}`;
+  renderAlbums();
+
+  for (const problem of data.errors || []) banner(problem);
+}
+
+function renderAlbums() {
   const list = $("album-list");
   list.replaceChildren();
 
-  if (!data.albums.length) {
+  const albums = state.saved || [];
+  if (!albums.length) {
     list.append(el("div", { class: "muted" },
       "No albums configured yet. Start one from the Builder, or from a detected trip."));
+    return;
   }
 
-  for (const album of data.albums) {
+  const needle = ($("album-filter").value || "").trim().toLowerCase();
+  const shown = needle
+    ? albums.filter(a => (a.immich_name || a.name).toLowerCase().includes(needle))
+    : albums;
+
+  if (!shown.length) {
+    list.append(el("div", { class: "muted" },
+      `No albums match “${$("album-filter").value.trim()}”.`));
+    return;
+  }
+
+  for (const album of shown) {
     const status = album.last_error
       ? el("span", { class: "pill err" }, "last run failed")
       : album.enabled ? "" : el("span", { class: "pill off" }, "disabled");
@@ -132,8 +151,6 @@ async function loadAlbums() {
         button("Run now", () => runAlbum(album.slug, false))));
     list.append(card);
   }
-
-  for (const problem of data.errors || []) banner(problem);
 }
 
 function describe(match) {
@@ -166,6 +183,12 @@ async function runAlbum(slug, dryRun) {
   } catch (error) { banner(error.message); }
 }
 
+const ALBUM_FILTER = "album-filter";
+try { $("album-filter").value = localStorage.getItem(ALBUM_FILTER) || ""; } catch {}
+$("album-filter").oninput = () => {
+  try { localStorage.setItem(ALBUM_FILTER, $("album-filter").value); } catch {}
+  renderAlbums();
+};
 $("new-album").onclick = () => { state.draft = emptyDraft(); fillForm(); showTab("builder"); };
 
 $("new-person-album").onclick = () => {
@@ -664,11 +687,17 @@ function requireSaved(work) {
 }
 
 $("delete-config").onclick = async () => {
-  if (!confirm(`Delete the config for “${state.immichName || state.draft.name}”?\n\n` +
-               `The album in Immich is not touched.`)) return;
+  const name = state.immichName || state.draft.name;
+  if (!confirm(`Delete the config for “${name}”?`)) return;
+  const alsoImmich = confirm(
+    `Also delete the album “${name}” from Immich?\n\n` +
+    `OK: delete the Immich album too — its photos stay in your library.\n` +
+    `Cancel: keep the Immich album, remove only the butler rule.`);
   try {
-    const result = await api(`/api/albums/${encodeURIComponent(state.draft.slug)}`,
-                             { method: "DELETE" });
+    const query = alsoImmich ? "?immich=1" : "";
+    const result = await api(
+      `/api/albums/${encodeURIComponent(state.draft.slug)}${query}`,
+      { method: "DELETE" });
     banner(result.note, true);
     state.draft = emptyDraft();
     fillForm();

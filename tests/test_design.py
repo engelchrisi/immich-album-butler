@@ -357,6 +357,20 @@ class SaveTests(DesignTestCase):
         self.assertEqual(config_module.load(self.config_dir).albums, [])
         self.assertIsNotNone(self.stub.album_named("Italy 2019"))
 
+    def test_deleting_the_config_can_also_delete_the_immich_album(self):
+        self.stub.add_album("Italy 2019", [fake_id(1)])
+        self.api.save_album(ITALY)
+        result = self.api.delete_album("italy-2019", remove_immich=True)
+        self.assertEqual(result["removed_immich"], "Italy 2019")
+        self.assertEqual(config_module.load(self.config_dir).albums, [])
+        self.assertIsNone(self.stub.album_named("Italy 2019"))
+
+    def test_deleting_with_immich_when_no_album_exists_removes_only_the_rule(self):
+        self.api.save_album(ITALY)
+        result = self.api.delete_album("italy-2019", remove_immich=True)
+        self.assertIsNone(result["removed_immich"])
+        self.assertEqual(config_module.load(self.config_dir).albums, [])
+
     def test_deleting_something_that_is_not_there_is_a_404(self):
         with self.assertRaises(ApiError) as caught:
             self.api.delete_album("nothing")

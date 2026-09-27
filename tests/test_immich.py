@@ -217,6 +217,20 @@ class AlbumWriteTests(unittest.TestCase):
             remaining = client.album_asset_ids(album.id)
         self.assertEqual(remaining, {fake_id(2)})
 
+    def test_deleting_an_album_removes_it_from_the_server(self):
+        with StubImmich([], page_size=100) as stub:
+            client = ImmichClient(stub.url, API_KEY)
+            album = client.create_album("Italy 2019")
+            client.delete_album(album.id)
+            self.assertIsNone(stub.album_named("Italy 2019"))
+
+    def test_deleting_an_album_needs_the_delete_scope(self):
+        with StubImmich([], missing_permissions={"album.delete"}) as stub:
+            client = ImmichClient(stub.url, API_KEY)
+            album = client.create_album("Italy 2019")
+            with self.assertRaises(ImmichError):
+                client.delete_album(album.id)
+
 
 if __name__ == "__main__":
     unittest.main()

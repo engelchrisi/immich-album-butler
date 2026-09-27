@@ -326,9 +326,14 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
             idle.touch()
             if not self._require_login(api_call=True) or not self._same_origin():
                 return
-            path = unquote(urlparse(self.path).path)
+            parsed = urlparse(self.path)
+            path = unquote(parsed.path)
             if path.startswith("/api/albums/"):
-                return self._call(lambda: api.delete_album(path.rsplit("/", 1)[-1]))
+                immich = parse_qs(parsed.query).get("immich", ["0"])[0]
+                remove_immich = immich in ("1", "true", "yes")
+                slug = path.rsplit("/", 1)[-1]
+                return self._call(
+                    lambda: api.delete_album(slug, remove_immich=remove_immich))
             if path.startswith("/api/groups/"):
                 return self._call(lambda: api.delete_group(path.rsplit("/", 1)[-1]))
             self._error(404, f"no route {path}")

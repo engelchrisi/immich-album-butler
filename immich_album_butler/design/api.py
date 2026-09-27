@@ -318,14 +318,41 @@ class DesignApi:
                 "renamed_from": existing.name if existing and
                 existing.name != album.name else None}
 
-    def delete_album(self, slug: str) -> dict:
-        """Removes the rule. The Immich album itself is never touched."""
+    def delete_album(self, slug: str, remove_immich: bool = False) -> dict:
+        """Remove the rule. Optionally also delete the generated Immich album.
+
+        Deleting the Immich album unmakes only the album -- the photos in it
+        stay in the library. The album is found the same way a run finds it (by
+        remembered id, then by name), and its remembered state is dropped so
+        nothing later re-finds an album that is gone.
+        """
         config = self.config()
-        if config.album(slug) is None:
+        album = config.album(slug)
+        if album is None:
             raise ApiError(f"no album config {slug!r}", status=404)
+        removed_immich = None
+        if remove_immich:
+            state = State.load(self.state_dir)
+            try:
+                info = Butler(self.client, config, state).find_album(album)
+                if info is not None:
+                    self.client.delete_album(info.id)
+                    removed_immich = info.name
+            except ImmichError as exc:
+                raise ApiError(f"could not delete the Immich album: {exc}",
+                               status=502) from None
+            if slug in state.albums:
+                del state.albums[slug]
+                state.save()
         config_module.write_config(self.config_dir, config.without_album(slug))
-        return {"deleted": slug,
-                "note": "the rule is gone; the Immich album is untouched"}
+        if removed_immich:
+            note = (f"the rule is gone and the Immich album “{removed_immich}” "
+                    "was deleted (its photos stay in the library)")
+        elif remove_immich:
+            note = "the rule is gone; no matching Immich album was there to delete"
+        else:
+            note = "the rule is gone; the Immich album is untouched"
+        return {"deleted": slug, "removed_immich": removed_immich, "note": note}
 
     # -- preview, analyze, run --------------------------------------------
 

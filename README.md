@@ -380,6 +380,7 @@ run on every update; the **optional** ones depend on which features you use:
 | `albumUser.create` | optional | Share albums with other accounts |
 | `albumUser.update` | optional | Change a shared account's role later |
 | `albumAsset.delete` | optional | Remove assets when `sync = "mirror"`, or outside an exact first/last photo, or duplicates from the Duplicates tab |
+| `album.delete` | optional | Delete the generated album from Immich when deleting a config (design mode) — the photos stay in the library |
 | `duplicate.read` | optional | List Immich's duplicate groups for the Duplicates tab |
 
 Without an optional permission, that feature fails gracefully: the album still

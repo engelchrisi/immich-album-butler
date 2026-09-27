@@ -447,6 +447,14 @@ def _make_handler(stub: StubImmich):
                 removed = before - len(album["assets"])
                 return self._send(200, [{"id": i, "success": True} for i in wanted][:removed])
 
+            if path.startswith("/api/albums/"):
+                if not self._authorized("album.delete"):
+                    return
+                album = stub.albums.pop(path.rsplit("/", 1)[-1], None)
+                if album is None:
+                    return self._send(404, {"message": "Not found"})
+                return self._send(200, {"id": album["id"], "success": True})
+
             self._send(404, {"message": f"no route {path}"})
 
     return Handler
