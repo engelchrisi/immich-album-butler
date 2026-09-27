@@ -109,7 +109,7 @@ def _check(args) -> int:
     for album in config.albums:
         mark = " " if album.enabled else "-"
         inherited = " (inherited)" if album.schedule_inherited else ""
-        shared = (f"  shared with {', '.join(album.share_with)}"
+        shared = (f"  shared with {', '.join(s.account for s in album.share_with)}"
                   if album.shares else "")
         print(f" {mark} {album.slug:<28} {album.schedule}{inherited}{shared}")
     for rule in config.settings.shares:
