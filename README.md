@@ -106,7 +106,6 @@ name = "Italy 2019"
 [albums.photos-of-alex]
 name = "Photos of Alex"
 auto-update-schedule = "weekly sun 04:00"   # photos of Alex keep arriving
-sync = "mirror"                             # keep the album exactly in sync
 cover = "IMG_0042.jpg"                      # the front picture, by file name
 
   [albums.photos-of-alex.match]
@@ -175,7 +174,6 @@ per year**, swapping in different ones each run.
 ```toml
 [albums.alex-birthday]
 name    = "Alex's birthday"
-sync    = "mirror"
 auto-update-schedule = "weekly sun 04:00"
 pics_per_year = 5              # keep at most five of each year
 pick    = "rotate"            # a different five each run
@@ -200,9 +198,9 @@ from `since_year` to now (ten years back if omitted), and composes with
 | `random` | a fresh sample each run — repeats between weeks are possible |
 | `rotate` | prefers photos not shown recently, working through the whole set before repeating |
 
-A `pics_per_year` cap **is** removal — keeping five means dropping the rest — so
-any capped album mirrors automatically; the loader sets `sync = "mirror"` for
-you, you do not write it. `rotate` additionally needs an automatic schedule. The
+A `pics_per_year` cap **is** removal — keeping five means dropping the rest —
+which every album already does, since every album mirrors its rule (see
+Safety). `rotate` additionally needs an automatic schedule. The
 rotation remembers its place in `state.json`, never in the config, and is
 advanced only by a real run — a `--dry-run` shows exactly what the run would pick
 and writes nothing. Each run re-adds album members, so keep the cadence to a day
@@ -375,11 +373,11 @@ run on every update; the **optional** ones depend on which features you use:
 | `album.read` | **required** | List your albums |
 | `album.create` | **required** | Create new albums |
 | `albumAsset.create` | **required** | Add assets to albums |
+| `albumAsset.delete` | **required** | Every album mirrors its rule: remove assets that stop matching, or duplicates from the Duplicates tab |
 | `album.update` | optional | Rename with `album_suffix`, set `cover`, write the `describe = "hint"` line |
 | `user.read` | optional | Resolve account names for `share_with` |
 | `albumUser.create` | optional | Share albums with other accounts |
 | `albumUser.update` | optional | Change a shared account's role later |
-| `albumAsset.delete` | optional | Remove assets when `sync = "mirror"`, or outside an exact first/last photo, or duplicates from the Duplicates tab |
 | `album.delete` | optional | Delete the generated album from Immich when deleting a config (design mode) — the photos stay in the library |
 | `duplicate.read` | optional | List Immich's duplicate groups for the Duplicates tab |
 
@@ -446,14 +444,12 @@ scripts/install-hooks.sh           # privacy-check git hooks, once per clone
 ## Safety
 
 The butler writes **albums only**. It never touches your originals, never
-deletes assets, and never deletes an album. It only *adds* assets to albums —
-unless an album is explicitly set to `sync = "mirror"`, which also removes
-assets from **that album** when they stop matching — and unless the album's
-`from` or `to` is an exact first or last photo: then media taken before the
-first or after the last are removed from the album, so moving either end in or
-out trims or extends it. The design UI's **Duplicates** tab removes extra
-copies of an Immich duplicate group from an album, only when you confirm it and
-always keeping one. Nothing ever leaves your library.
+deletes assets, and never deletes an album. Every album mirrors its rule: an
+asset that stops matching — because a face was reassigned, a date window
+moved, or a per-year cap dropped it — is removed from **that album** on the
+next run. Never from the library. The design UI's **Duplicates** tab removes
+extra copies of an Immich duplicate group from an album, only when you confirm
+it and always keeping one. Nothing ever leaves your library.
 
 ## License
 

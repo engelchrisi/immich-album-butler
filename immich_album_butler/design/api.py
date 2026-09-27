@@ -274,7 +274,7 @@ class DesignApi:
                 # What Immich calls it: the name plus the fixed/updating suffix.
                 "immich_name": butler.marked_name(album),
                 "cover_asset": info.cover_asset_id if info else None,
-                "enabled": album.enabled, "sync": album.sync,
+                "enabled": album.enabled,
                 "cover": album.cover,
                 "pics_per_year": album.pics_per_year, "pick": album.pick,
                 "share_with": list(album.share_with),
@@ -830,10 +830,6 @@ class DesignApi:
             except ScheduleError as exc:
                 raise ApiError(f"auto-update-schedule: {exc}") from None
 
-        sync = str(payload.get("sync") or "add").lower()
-        if sync not in config_module.SYNC_MODES:
-            raise ApiError(f"sync must be add or mirror, got {sync!r}")
-
         rule = self._rule_from(payload.get("match") or {})
         cover = str(payload.get("cover") or cover_module.AUTO).strip() or cover_module.AUTO
         if cover == cover_module.EVERYONE and not rule.people:
@@ -844,12 +840,10 @@ class DesignApi:
             pics_per_year, pick = config_module._load_pick(payload, schedule)
         except config_module.ConfigError as exc:
             raise ApiError(str(exc)) from None
-        if config_module.caps(pics_per_year, pick):
-            sync = "mirror"     # a per-year cap means removing the surplus
 
         return Album(slug=slug, name=name or "(draft)", match=rule,
                      schedule=schedule, schedule_inherited=inherited,
-                     enabled=bool(payload.get("enabled", True)), sync=sync,
+                     enabled=bool(payload.get("enabled", True)),
                      cover=cover, share_with=share_with, share_role=share_role,
                      pics_per_year=pics_per_year, pick=pick)
 

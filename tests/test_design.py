@@ -249,7 +249,7 @@ class FirstLastPhotoTests(DesignTestCase):
 
 class RecurringAndRotateSaveTests(DesignTestCase):
     def test_a_recurring_rotating_album_round_trips_through_save(self):
-        payload = {"name": "Birthday", "sync": "mirror",
+        payload = {"name": "Birthday",
                    "auto-update-schedule": "weekly sun 04:00",
                    "pics_per_year": 5, "pick": "rotate",
                    "match": {"on": "05-17", "offset_days": 1, "since_year": 2005}}
@@ -260,13 +260,7 @@ class RecurringAndRotateSaveTests(DesignTestCase):
         self.assertEqual(row["match"]["on"], "05-17")
         self.assertEqual(row["match"]["offset_days"], 1)
         self.assertEqual(row["match"]["since_year"], 2005)
-
-    def test_a_cap_implies_mirror(self):
-        # No sync given, yet a capped album comes back mirrored.
-        self.api.save_album({"name": "Capped", "pick": "random",
-                             "pics_per_year": 5, "match": {"people": ["Alex"]}})
-        row = [a for a in self.api.albums()["albums"] if a["name"] == "Capped"][0]
-        self.assertEqual(row["sync"], "mirror")
+        self.assertNotIn("sync", row)
 
 
 class SaveTests(DesignTestCase):

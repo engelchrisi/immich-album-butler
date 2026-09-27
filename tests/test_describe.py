@@ -10,7 +10,7 @@ def album(rule: MatchRule, *, pick: str = "all",
           pics_per_year: int | None = None) -> Album:
     return Album(slug="x", name="X", match=rule,
                  schedule=parse_schedule("weekly sun 04:00"),
-                 sync="mirror", pick=pick, pics_per_year=pics_per_year)
+                 pick=pick, pics_per_year=pics_per_year)
 
 
 class HintLineTests(unittest.TestCase):

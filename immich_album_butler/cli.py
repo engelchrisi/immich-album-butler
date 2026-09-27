@@ -111,8 +111,7 @@ def _check(args) -> int:
         inherited = " (inherited)" if album.schedule_inherited else ""
         shared = (f"  shared with {', '.join(album.share_with)}"
                   if album.shares else "")
-        print(f" {mark} {album.slug:<28} {album.schedule}{inherited}"
-              f"  sync={album.sync}{shared}")
+        print(f" {mark} {album.slug:<28} {album.schedule}{inherited}{shared}")
     for rule in config.settings.shares:
         what = "every album" if rule.every_album else ", ".join(rule.albums)
         print(f"   share  {what} -> {', '.join(rule.accounts)} "

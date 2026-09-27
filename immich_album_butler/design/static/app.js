@@ -22,7 +22,7 @@ const state = {
 
 function emptyDraft() {
   return {
-    slug: "", name: "", enabled: true, sync: "add", schedule: "inherit",
+    slug: "", name: "", enabled: true, schedule: "inherit",
     cover: "auto", share_with: [], share_role: "viewer",
     pics_per_year: null, pick: "all",
     match: {
@@ -136,7 +136,6 @@ function renderAlbums() {
       el("div", { class: "meta" },
         describe(album.match), el("br"),
         `${album.schedule}${album.schedule_inherited ? " (inherited)" : ""}`,
-        album.sync === "mirror" ? " · mirrored" : "",
         album.pics_per_year ? ` · ${album.pics_per_year}/year (${album.pick})` : "",
         album.cover && album.cover !== "auto" ? ` · cover: ${album.cover}` : "",
         (album.share_with || []).length
@@ -204,7 +203,7 @@ $("new-person-album").onclick = () => {
 function editAlbum(album) {
   state.draft = {
     slug: album.slug, name: album.name, enabled: album.enabled,
-    sync: album.sync, cover: album.cover || "auto",
+    cover: album.cover || "auto",
     share_with: [...(album.share_with || [])],
     share_role: album.share_role || "viewer",
     pics_per_year: album.pics_per_year ?? null, pick: album.pick || "all",
@@ -230,7 +229,6 @@ function fillForm() {
   $("pick").value = draft.pick || "all";
   updateWhenExclusivity();
   $("enabled").checked = draft.enabled;
-  $("mirror").checked = draft.sync === "mirror";
   fillCover(draft.cover || "auto");
   fillSharing(draft.share_with || [], draft.share_role || "viewer");
   $("schedule").value = [...$("schedule").options].some(o => o.value === draft.schedule)
@@ -286,12 +284,6 @@ function bindDraft() {
   };
   $("pick").onchange = (e) => { state.draft.pick = e.target.value; refreshPreview(); };
   $("enabled").onchange = (e) => { state.draft.enabled = e.target.checked; };
-  $("mirror").onchange = (e) => {
-    state.draft.sync = e.target.checked ? "mirror" : "add";
-    if (e.target.checked) {
-      banner("Mirroring needs the albumAsset.delete scope on the API key.", true);
-    }
-  };
   $("schedule").onchange = (e) => {
     state.draft.schedule = e.target.value;
     refreshPreview();

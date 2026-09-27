@@ -30,7 +30,6 @@ include_unlocated = true
 
 ALEX_ALBUM = """
 name = "Photos of Alex"
-sync = "mirror"
 
 [match]
 people = ["Alex"]
@@ -150,8 +149,10 @@ class DryRunTests(unittest.TestCase):
                 self.assertFalse((fx.state_dir / "state.json").exists())
 
 
-class SyncModeTests(unittest.TestCase):
-    def test_add_mode_leaves_a_manually_added_photo_alone(self):
+class MirrorTests(unittest.TestCase):
+    """Every album mirrors its rule: an asset that stops matching leaves it."""
+
+    def test_a_manually_added_photo_does_not_survive_a_run(self):
         with StubImmich(assets(), people=PEOPLE, page_size=2) as stub:
             with Fixture({"italy-2019": ITALY}, stub) as fx:
                 config, state = fx.load()
@@ -159,10 +160,11 @@ class SyncModeTests(unittest.TestCase):
                 album = stub.album_named("Italy 2019")
                 album["assets"].append({"id": fake_id(3)})   # a person added this
                 config, state = fx.load()
-                run_once(fx.client, config, state)
-        self.assertIn(fake_id(3), {a["id"] for a in album["assets"]})
+                reports = run_once(fx.client, config, state)
+        self.assertEqual(reports[0].removed, 1)
+        self.assertNotIn(fake_id(3), {a["id"] for a in album["assets"]})
 
-    def test_moving_the_first_photo_in_and_out_removes_and_adds_in_add_mode(self):
+    def test_moving_the_window_removes_and_re_adds(self):
         with StubImmich(assets(), people=PEOPLE, page_size=2) as stub:
             with Fixture({"italy-2019": ITALY}, stub) as fx:
                 config, state = fx.load()
@@ -181,12 +183,12 @@ class SyncModeTests(unittest.TestCase):
                 config, state = fx.load()
                 widened = run_once(fx.client, config, state)
                 after_widen = {a["id"] for a in album["assets"]}
-        # Moved in: the photo before the new first one goes; the one added by
-        # hand, within the ends, stays. Moved back out: it returns.
-        self.assertEqual(trimmed[0].removed, 1)
-        self.assertEqual(after_trim, {fake_id(2), fake_id(3)})
+        # After moving the window forward only fake_id(2) matches: the photo
+        # before it and the hand-added one both go. Restored, fake_id(1) rejoins.
+        self.assertEqual(trimmed[0].removed, 2)
+        self.assertEqual(after_trim, {fake_id(2)})
         self.assertEqual(widened[0].added, 1)
-        self.assertEqual(after_widen, {fake_id(1), fake_id(2), fake_id(3)})
+        self.assertEqual(after_widen, {fake_id(1), fake_id(2)})
 
     def test_mirror_mode_removes_what_no_longer_matches(self):
         with StubImmich(assets(), people=PEOPLE, page_size=2) as stub:
@@ -204,7 +206,6 @@ class SyncModeTests(unittest.TestCase):
 
 ROTATE_ALBUM = """
 name = "Rotating"
-sync = "mirror"
 auto-update-schedule = "weekly sun 04:00"
 pics_per_year = 2
 pick = "rotate"

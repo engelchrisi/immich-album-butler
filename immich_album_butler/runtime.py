@@ -258,16 +258,10 @@ class Butler:
         current = {asset.id for asset in in_album}
         plan.existing = len(current)
         plan.to_add = [asset_id for asset_id in matched if asset_id not in current]
-        if album.mirrors:
-            wanted = set(matched)
-            plan.to_remove = sorted(current - wanted)
-        else:
-            # A picked first or last photo is a correction of the album's ends:
-            # moved in, it takes out what now lies before or after it, even in
-            # an album that otherwise only adds. Media added by hand within the
-            # ends stay.
-            plan.to_remove = sorted(a.id for a in in_album
-                                    if not rule.time_allows(a.taken_at))
+        # Every album mirrors its rule: an asset that no longer matches leaves
+        # the album (never the library, N22). Media added by hand does not
+        # survive a run -- the rule is the single source of truth.
+        plan.to_remove = sorted(current - set(matched))
         plan.cover_asset_id = self._cover(album, result, info.cover_asset_id, plan)
         plan.current_shares = dict(info.shared_with)
         plan.to_share = self._sharing(album, plan.current_shares, plan)
@@ -340,11 +334,9 @@ class Butler:
                plan: Plan) -> str | None:
         """Which asset the cover should become, or None to leave it as it is.
 
-        The choice is made among the assets the rule matched, which for a
-        `sync = "add"` album may be fewer than the album holds -- a cover is a
-        statement about the rule, so anything hand-added is deliberately not a
-        candidate. A rule that cannot be satisfied (a file name nobody has)
-        becomes a warning on this album, never a failed run.
+        The choice is made among the assets the rule matched -- a cover is a
+        statement about the rule. A rule that cannot be satisfied (a file name
+        nobody has) becomes a warning on this album, never a failed run.
         """
         if not album.sets_cover:
             return None
@@ -397,7 +389,7 @@ class Butler:
             if plan.to_add:
                 report.added = self.client.add_assets(plan.album_id, plan.to_add)
             if plan.to_remove:
-                report.removed = self.client.remove_assets(plan.album_id, plan.to_remove)
+                report.removed = self._remove(plan, report)
 
             if plan.describe_to is not None:
                 report.described = self._describe_album(plan, report)
@@ -420,6 +412,27 @@ class Butler:
             if album.rotating:
                 record.pick_cycle += 1
         return report
+
+    def _remove(self, plan: Plan, report: RunReport) -> int:
+        """Remove the assets that no longer match, a 403 becoming a warning.
+
+        Every album mirrors its rule, so removal needs `albumAsset.delete` on
+        the key. A key without it keeps the album's contents and says so rather
+        than failing a run that otherwise added photos perfectly well. Nothing
+        is ever deleted from the library (N22).
+        """
+        assert plan.album_id is not None
+        try:
+            return self.client.remove_assets(plan.album_id, plan.to_remove)
+        except ImmichError as exc:
+            if exc.status == 403:
+                report.warnings.append(
+                    f"{len(plan.to_remove)} asset(s) that no longer match were "
+                    "not removed: the API key needs the 'albumAsset.delete' "
+                    "permission. Everything else worked.")
+            else:
+                report.warnings.append(f"assets were not removed: {exc}")
+            return 0
 
     def _describe_album(self, plan: Plan, report: RunReport) -> bool:
         """Write the album description (N31), a 403 becoming a warning.

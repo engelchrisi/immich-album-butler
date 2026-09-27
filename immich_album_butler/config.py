@@ -53,7 +53,6 @@ DEFAULT_PORT = 8081
 
 CONFIG_NAME = "config.toml"
 
-SYNC_MODES = ("add", "mirror")
 PEOPLE_MODES = ("any", "all")
 PICK_MODES = ("all", "rotate", "random", "best")
 DESCRIBE_MODES = ("off", "hint")
@@ -132,7 +131,6 @@ class Album:
     schedule: Schedule
     schedule_inherited: bool = False
     enabled: bool = True
-    sync: str = "add"
     # How to pick the album's front picture: "auto" (leave Immich's own choice
     # alone), "everyone", "newest", "oldest", or an original file name. Never
     # an asset id -- see the note about UUIDs at the top of this module.
@@ -146,10 +144,6 @@ class Album:
     # and how to choose which -- see PICK_MODES and picker.py.
     pics_per_year: int | None = None
     pick: str = "all"
-
-    @property
-    def mirrors(self) -> bool:
-        return self.sync == "mirror"
 
     @property
     def rotating(self) -> bool:
@@ -480,10 +474,6 @@ def _load_album(slug: str, data: object, settings: Settings,
     if not name or not isinstance(name, str):
         raise ConfigError("'name' is required (the album name shown in Immich)")
 
-    sync = str(data.get("sync", "add")).lower()
-    if sync not in SYNC_MODES:
-        raise ConfigError(f"sync must be one of {', '.join(SYNC_MODES)}, got {sync!r}")
-
     enabled = data.get("enabled", True)
     if not isinstance(enabled, bool):
         raise ConfigError("enabled must be true or false")
@@ -502,11 +492,9 @@ def _load_album(slug: str, data: object, settings: Settings,
     share_with = _load_share_with(data.get("share_with", data.get("share-with")))
     share_role = _load_share_role(data.get("share_role", data.get("share-role")))
     pics_per_year, pick = _load_pick(data, schedule)
-    if caps(pics_per_year, pick):
-        sync = "mirror"     # a per-year cap means removing the surplus
 
     return Album(slug=slug, name=name, match=match, schedule=schedule,
-                 schedule_inherited=inherited, enabled=enabled, sync=sync,
+                 schedule_inherited=inherited, enabled=enabled,
                  cover=cover, share_with=share_with, share_role=share_role,
                  pics_per_year=pics_per_year, pick=pick)
 
@@ -514,9 +502,8 @@ def _load_album(slug: str, data: object, settings: Settings,
 def _load_pick(data: dict, schedule: Schedule) -> tuple[int | None, str]:
     """Read `pics_per_year` / `pick` (N29), each refusal naming its reason.
 
-    A cap *is* removal -- keeping five per year means dropping the rest -- so a
-    capping pick implies `sync = "mirror"` (materialised by the caller) rather
-    than making the reader set it too.
+    A cap *is* removal -- keeping five per year means dropping the rest -- which
+    every album now does anyway: albums always mirror their rule.
     """
     pick = str(data.get("pick", "all")).lower()
     if pick not in PICK_MODES:
@@ -539,11 +526,6 @@ def _load_pick(data: dict, schedule: Schedule) -> tuple[int | None, str]:
         raise ConfigError('pick = "rotate" needs an automatic schedule, not '
                           '"manual" -- a rotation nobody runs')
     return pics, pick
-
-
-def caps(pics_per_year: int | None, pick: str) -> bool:
-    """Whether an album holds only a subset per year, so it must remove the rest."""
-    return pics_per_year is not None and pick != "all"
 
 
 def _load_share_with(value: object) -> tuple[str, ...]:
@@ -801,9 +783,6 @@ def dump_album(album: Album) -> str:
              f"name    = {_toml_str(album.name)}\n"]
     if not album.enabled:
         lines.append("enabled = false\n")
-    if album.sync != "add":
-        lines.append(f'sync    = "{album.sync}"   '
-                     f"# also removes assets from this album when they stop matching\n")
     if album.sets_cover:
         lines.append(f"cover   = {_toml_str(album.cover)}   "
                      f"# {cover_module.describe(album.cover)}\n")

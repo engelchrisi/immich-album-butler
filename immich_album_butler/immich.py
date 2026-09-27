@@ -407,8 +407,7 @@ class ImmichClient:
         Only ever *adds* access. There is deliberately no unshare here: taking
         somebody's access away is not something an unattended daemon should do
         on the strength of an edited config file, so it stays a human act in
-        the Immich UI -- the same reasoning that keeps `albumAsset.delete` off
-        the key unless an album asks to mirror.
+        the Immich UI.
         """
         self.request("PUT", f"albums/{album_id}/users",
                      {"albumUsers": [{"userId": user_id, "role": role}

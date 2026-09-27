@@ -171,14 +171,12 @@ share_role = "viewer"   # "viewer" may look; "editor" may add and remove too
 
 
 # A person album: everything Immich recognises as this person, kept current.
-# This is what immich-face-to-album did, expressed as a rule.
+# This is what immich-face-to-album did, expressed as a rule. Every album
+# mirrors its rule -- a photo that stops matching (say, after a face is
+# reassigned in Immich) is removed from the album on the next run. Never from
+# the library, only from this album.
 [albums.photos-of-alex]
 name    = "Photos of Alex"
-
-# "mirror" also REMOVES assets from this album when they stop matching -- for
-# instance after a face is reassigned in Immich. It never deletes anything from
-# the library, only from this album. The default, "add", never removes.
-sync    = "mirror"
 
 # Unlike a finished holiday, a person album is never done: photos of Alex keep
 # arriving. So this one overrides the global "manual" default.
@@ -205,14 +203,12 @@ cover   = "IMG_0042.jpg"
 #   "rotate" prefers photos not shown recently, so successive runs work through
 #            the whole set instead of repeating one sample
 #
-# A per-year cap means removing the surplus, so a capped album mirrors
-# automatically -- the loader sets sync = "mirror" for you, no need to write it.
-# "rotate" also needs an automatic schedule. The rotation remembers its place in
-# state.json, not here. A rotating album re-adds members every run, so keep the
-# cadence at a day or more.
+# A per-year cap is just more of what every album already does: removing what
+# no longer belongs. "rotate" also needs an automatic schedule. The rotation
+# remembers its place in state.json, not here. A rotating album re-adds members
+# every run, so keep the cadence at a day or more.
 [albums.alex-birthday]
 name    = "Alex's birthday"
-sync    = "mirror"
 auto-update-schedule = "weekly sun 04:00"
 pics_per_year = 5
 pick    = "rotate"

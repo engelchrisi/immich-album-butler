@@ -25,7 +25,6 @@ include_unlocated = true
 
 PERSON_ALBUM = """
 name = "Photos of Alex"
-sync = "mirror"
 
 [match]
 people = ["Alex"]
@@ -97,12 +96,13 @@ class LoadingTests(unittest.TestCase):
             album = cfg.load(d.path).albums[0]
         self.assertFalse(album.schedule.automatic)
 
-    def test_mirror_is_opt_in_and_add_is_the_default(self):
-        with ConfigDir(albums={"photos-of-alex": PERSON_ALBUM,
-                               "italy-2019": ITALY}) as d:
-            config = cfg.load(d.path)
-        self.assertTrue(config.album("photos-of-alex").mirrors)
-        self.assertFalse(config.album("italy-2019").mirrors)
+    def test_there_is_no_sync_setting_anymore(self):
+        # sync was removed: every album mirrors its rule, so an album has no
+        # sync attribute and the key is silently ignored if left in a file.
+        with ConfigDir(albums={"photos-of-alex": PERSON_ALBUM}) as d:
+            album = cfg.load(d.path).albums[0]
+        self.assertFalse(hasattr(album, "sync"))
+        self.assertFalse(hasattr(album, "mirrors"))
 
     def test_missing_config_toml_is_fatal(self):
         with ConfigDir(settings=None) as d:
@@ -143,11 +143,6 @@ class BrokenAlbumTests(unittest.TestCase):
                                             "from = 2019-07-01T18:00:00\n"
                                             "to = 2019-07-01T09:00:00\n"}) as d:
             self.assertIn("is after", cfg.load(d.path).errors[0])
-
-    def test_an_unknown_sync_mode_is_refused(self):
-        with ConfigDir(albums={"odd": 'name = "O"\nsync = "delete"\n'
-                                      '[match]\npeople = ["Alex"]\n'}) as d:
-            self.assertIn("sync", cfg.load(d.path).errors[0])
 
     def test_a_bad_schedule_names_the_album(self):
         with ConfigDir(albums={"odd": 'name = "O"\nauto-update-schedule = "hourly"\n'
@@ -210,7 +205,6 @@ class WritingTests(unittest.TestCase):
         self.assertEqual(original.name, reloaded.name)
         self.assertEqual(original.match, reloaded.match)
         self.assertEqual(str(original.schedule), str(reloaded.schedule))
-        self.assertEqual(original.sync, reloaded.sync)
 
     def test_a_first_and_last_photo_round_trip(self):
         album = ITALY.replace("from = 2019-07-01", "from = 2019-07-01T14:32:10") \
@@ -227,12 +221,13 @@ class WritingTests(unittest.TestCase):
         self.assertIn("from = 2019-07-01T14:32:10", text)
         self.assertEqual(original.match, reloaded.match)
 
-    def test_a_mirror_person_album_round_trips(self):
+    def test_a_person_album_round_trips_without_a_sync_key(self):
         with ConfigDir(albums={"photos-of-alex": PERSON_ALBUM}) as d:
             config = cfg.load(d.path)
             cfg.write_config(d.path, config)
+            text = (d.path / "config.toml").read_text(encoding="utf-8")
             reloaded = cfg.load(d.path).albums[0]
-        self.assertTrue(reloaded.mirrors)
+        self.assertNotIn("sync", text)
         self.assertEqual(reloaded.match.people, ("Alex",))
 
     def test_rewriting_keeps_the_settings_groups_and_every_album(self):
@@ -374,7 +369,6 @@ class DesignUserTests(unittest.TestCase):
 
 BIRTHDAY = """
 name = "Geburtstag"
-sync = "mirror"
 auto-update-schedule = "weekly sun 04:00"
 pics_per_year = 5
 pick = "rotate"
@@ -424,26 +418,26 @@ class RecurringAndRotateTests(unittest.TestCase):
         self.assertIn("offset_days", self._err(
             'name = "X"\n[match]\non = "05-17"\noffset_days = 200\n'))
 
-    def test_a_cap_implies_mirror_without_asking(self):
-        # pick = "random" + pics_per_year already says "hold 5, replace them",
-        # so the loader sets sync = "mirror" instead of refusing.
+    def test_a_capped_random_album_loads_without_a_sync_setting(self):
+        # A cap already means "hold 5, replace them"; every album mirrors now,
+        # so no sync setting is needed or accepted.
         with ConfigDir(albums={"x":
                 'name = "X"\npick = "random"\npics_per_year = 5\n'
                 'auto-update-schedule = "daily 03:30"\n[match]\npeople = ["Alex"]\n'}) as d:
             config = cfg.load(d.path)
         self.assertEqual(config.errors, [])
-        self.assertTrue(config.albums[0].mirrors)
+        self.assertEqual(config.albums[0].pics_per_year, 5)
 
     def test_rotate_needs_pics_per_year(self):
         self.assertIn("pics_per_year", self._err(
-            'name = "X"\nsync = "mirror"\npick = "rotate"\n[match]\non = "05-17"\n'))
+            'name = "X"\npick = "rotate"\n[match]\non = "05-17"\n'))
 
     def test_rotate_needs_a_non_manual_schedule(self):
         self.assertIn("manual", self._err(
             'name = "X"\npick = "rotate"\npics_per_year = 5\n'
             'auto-update-schedule = "manual"\n[match]\non = "05-17"\n'))
 
-    def test_best_needs_pics_per_year_but_not_mirror(self):
+    def test_best_needs_pics_per_year(self):
         with ConfigDir(albums={"x":
                 'name = "X"\npick = "best"\npics_per_year = 3\n'
                 '[match]\npeople = ["Alex"]\n'}) as d:

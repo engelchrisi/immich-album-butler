@@ -64,10 +64,11 @@ message; if they already differ, ask before aligning them.
 ## Safety toward Immich
 
 The tool writes **albums only**. It never deletes assets, never modifies
-originals, and never deletes an album. Removing assets *from* an album happens
-only for an album explicitly configured with `sync = "mirror"`, or from the
-design UI's Duplicates tab: on an explicit, confirmed request, never the last
-copy of a duplicate group, and never `DELETE /assets`.
+originals, and never deletes an album. Every album mirrors its rule: an asset
+that stops matching is removed from that album on the next run (never from the
+library). The design UI's Duplicates tab removes assets the same way, on an
+explicit, confirmed request, never the last copy of a duplicate group, and
+never `DELETE /assets`.
 
 ## Deployment is not automatic
 
