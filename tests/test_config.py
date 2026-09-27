@@ -374,8 +374,8 @@ pics_per_year = 5
 pick = "rotate"
 
 [match]
-on = "05-17"
-offset_days = 1
+on_from = "05-16"
+on_to   = "05-18"
 since_year = 2005
 """
 
@@ -389,8 +389,8 @@ class RecurringAndRotateTests(unittest.TestCase):
     def test_a_recurring_birthday_album_loads(self):
         with ConfigDir(albums={"birthday": BIRTHDAY}) as d:
             album = cfg.load(d.path).albums[0]
-        self.assertEqual(album.match.on, "05-17")
-        self.assertEqual(album.match.offset_days, 1)
+        self.assertEqual(album.match.on_from, "05-16")
+        self.assertEqual(album.match.on_to, "05-18")
         self.assertEqual(album.match.since_year, 2005)
         self.assertEqual(album.pics_per_year, 5)
         self.assertEqual(album.pick, "rotate")
@@ -409,14 +409,29 @@ class RecurringAndRotateTests(unittest.TestCase):
 
     def test_on_with_a_date_window_is_refused(self):
         self.assertIn("recurring day", self._err(
-            'name = "X"\n[match]\non = "05-17"\nfrom = 2019-01-01\n'))
+            'name = "X"\n[match]\non_from = "05-17"\nfrom = 2019-01-01\n'))
 
-    def test_a_bad_on_is_refused(self):
-        self.assertIn("MM-DD", self._err('name = "X"\n[match]\non = "5-1"\n'))
+    def test_a_bad_on_from_is_refused(self):
+        self.assertIn("MM-DD", self._err('name = "X"\n[match]\non_from = "5-1"\n'))
 
-    def test_a_wide_offset_is_refused(self):
-        self.assertIn("offset_days", self._err(
-            'name = "X"\n[match]\non = "05-17"\noffset_days = 200\n'))
+    def test_on_to_without_on_from_is_refused(self):
+        self.assertIn("on_from", self._err(
+            'name = "X"\n[match]\non_to = "05-17"\n'))
+
+    def test_a_wide_span_is_refused(self):
+        self.assertIn("on_from/on_to", self._err(
+            'name = "X"\n[match]\non_from = "01-01"\non_to = "12-30"\n'))
+
+    def test_a_single_day_is_the_default_when_on_to_is_omitted(self):
+        with ConfigDir(albums={"x": 'name = "X"\n[match]\non_from = "05-17"\n'}) as d:
+            album = cfg.load(d.path).albums[0]
+        self.assertEqual(album.match.on_to, "05-17")
+
+    def test_a_window_wrapping_across_new_year_is_accepted(self):
+        with ConfigDir(albums={"x":
+                'name = "X"\n[match]\non_from = "12-28"\non_to = "01-03"\n'}) as d:
+            errors = cfg.load(d.path).errors
+        self.assertEqual(errors, [])
 
     def test_a_capped_random_album_loads_without_a_sync_setting(self):
         # A cap already means "hold 5, replace them"; every album mirrors now,
@@ -430,12 +445,12 @@ class RecurringAndRotateTests(unittest.TestCase):
 
     def test_rotate_needs_pics_per_year(self):
         self.assertIn("pics_per_year", self._err(
-            'name = "X"\npick = "rotate"\n[match]\non = "05-17"\n'))
+            'name = "X"\npick = "rotate"\n[match]\non_from = "05-17"\n'))
 
     def test_rotate_needs_a_non_manual_schedule(self):
         self.assertIn("manual", self._err(
             'name = "X"\npick = "rotate"\npics_per_year = 5\n'
-            'auto-update-schedule = "manual"\n[match]\non = "05-17"\n'))
+            'auto-update-schedule = "manual"\n[match]\non_from = "05-17"\n'))
 
     def test_best_needs_pics_per_year(self):
         with ConfigDir(albums={"x":

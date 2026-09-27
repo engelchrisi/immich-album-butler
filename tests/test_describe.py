@@ -27,7 +27,7 @@ class HintLineTests(unittest.TestCase):
                          "[butler v1] kind=person order=person")
 
     def test_a_recurring_day_is_recurring_day(self):
-        self.assertEqual(hint_line(album(MatchRule(on="05-17"))),
+        self.assertEqual(hint_line(album(MatchRule(on_from="05-17", on_to="05-17"))),
                          "[butler v1] kind=recurring-day order=one-per-year")
 
     def test_places_only_have_no_order(self):
@@ -35,7 +35,7 @@ class HintLineTests(unittest.TestCase):
                          "[butler v1] kind=place")
 
     def test_rotating_overrides_everything(self):
-        rule = MatchRule(on="05-17")
+        rule = MatchRule(on_from="05-17", on_to="05-17")
         line = hint_line(album(rule, pick="rotate", pics_per_year=5))
         self.assertEqual(
             line, "[butler v1] kind=recurring-day order=one-per-year rotating=yes")

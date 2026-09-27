@@ -73,9 +73,11 @@
         <legend>When</legend>
         <div class="row">
           <label class="field"><span>From</span>
-            <input id="date-from" type="date"></label>
+            <input id="date-from" type="text" maxlength="10"
+                   placeholder="dd/mm/yyyy, dd/mm, or mm/yyyy"></label>
           <label class="field"><span>To</span>
-            <input id="date-to" type="date"></label>
+            <input id="date-to" type="text" maxlength="10"
+                   placeholder="dd/mm/yyyy, dd/mm, or mm/yyyy"></label>
         </div>
         <div class="chips" id="exact-bounds"></div>
         <div class="row presets">
@@ -85,15 +87,13 @@
           <button data-preset="pad" class="link">± 1 day</button>
         </div>
         <div class="row">
-          <label class="field"><span>…or a recurring day (MM-DD)</span>
-            <input id="recur-on" type="text" placeholder="05-17" maxlength="5"></label>
-          <label class="field"><span>± days</span>
-            <input id="recur-offset" type="number" min="0" step="1"></label>
-          <label class="field"><span>Since year</span>
+          <label class="field" id="since-year-row" hidden><span>Since year</span>
             <input id="recur-since" type="number" step="1" placeholder="2005"></label>
         </div>
-        <span class="muted">A recurring day matches that date in every year; it
-          cannot be combined with a From/To window.</span>
+        <span id="date-error" class="bad" hidden></span>
+        <span class="muted">A day/month without a year (e.g. 17/05) matches
+          that date in every year; From and To together set a recurring
+          window instead of a single day.</span>
       </fieldset>
 
       <fieldset>

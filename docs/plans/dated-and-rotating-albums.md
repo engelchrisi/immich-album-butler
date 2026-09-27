@@ -42,15 +42,16 @@ pick = "rotate"                     # all (default) | rotate | random | best
 cover = "newest"
 
 [albums.birthday.match]
-on = "05-17"                        # N28: this calendar day, every year
-offset_days = 0                     # +/- days around it; 1 = 16th to 18th
+on_from = "05-17"                   # N28: this calendar day, every year...
+on_to   = "05-17"                   # ...through this one (a range if different)
 since_year = 2005                   # earliest year to look in
 ```
 
-`on` is `MM-DD`. `29-02` is accepted and simply finds nothing in most years; that is honest and
-needs no leap-year rule.
+`on_from`/`on_to` are `MM-DD`. `29-02` is accepted and simply finds nothing in most years; that is
+honest and needs no leap-year rule. `on_to` defaults to `on_from` when omitted, and the window may
+wrap across New Year (`on_to` earlier than `on_from`).
 
-Placement, and why: `on`/`offset_days`/`since_year` go in `[match]`, because they decide **which
+Placement, and why: `on_from`/`on_to`/`since_year` go in `[match]`, because they decide **which
 assets qualify**. `pics_per_year`/`pick` go on the **album**, because they decide how many of the
 qualifying assets of each year the album holds — a second stage, reusable with every existing rule. Keeping
 them apart is what makes N29 useful on any rule: the chunk is the calendar year of the capture date,
@@ -77,10 +78,12 @@ so "five a year of the children" needs no `on` at all.
 
 Refused at load, each naming the reason:
 
-- `on` that is not `MM-DD`, or a month/day out of range;
-- `on` together with `from`/`to` — one window or a recurring day, not both. (`since_year` is the
-  recurring rule's own lower bound.)
-- `offset_days` negative, or wide enough to cover the year (`> 182`);
+- `on_from`/`on_to` that is not `MM-DD`, or a month/day out of range; `on_to` given without
+  `on_from`;
+- `on_from` together with `from`/`to` — one window or a recurring day, not both. (`since_year` is
+  the recurring rule's own lower bound.)
+- `on_from`/`on_to` spanning more than half the year (`> 182` days, wrapping across New Year
+  counted correctly) — that wide is a mistake, not a recurring day;
 - `pick = "rotate"` with `sync = "add"` — nothing would ever be removed, so the album would grow
   every week and "rotate" would be a lie. This is the important one.
 - `pick = "rotate"`, `"random"` or `"best"` without `pics_per_year`, and `pics_per_year` below 1;
@@ -91,7 +94,7 @@ Refused at load, each naming the reason:
 
 Each person gets one album: their photos on their own birthday, five per year, a new five every
 Sunday. `since_year` is the birth year (nothing earlier can exist), `people` narrows every yearly
-window to that person, `offset_days = 1` catches the party held the day after.
+window to that person, `on_to = "06-22"` catches the party held the day after.
 
 ```toml
 [albums.alex-birthday]
@@ -102,8 +105,8 @@ pics_per_year = 5
 pick = "rotate"
 [albums.alex-birthday.match]
 people = ["Alex"]
-on = "06-21"
-offset_days = 1
+on_from = "06-21"
+on_to = "06-22"
 since_year = 1985
 ```
 

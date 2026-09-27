@@ -193,9 +193,10 @@ cover   = "IMG_0042.jpg"
 
 
 # A recurring-date album: every photo taken on one calendar day, any year, with
-# a fresh handful of them each week (N28 + N29). "on" is MM-DD; "since_year" is
-# how far back to look (nothing older can exist); "offset_days" widens the day
-# either side, catching e.g. a party held the day after.
+# a fresh handful of them each week (N28 + N29). "on_from"/"on_to" are MM-DD; a
+# single day is on_from == on_to (the default when on_to is omitted), or widen
+# it to a range, e.g. to catch a party held the day after. "since_year" is how
+# far back to look -- nothing older can exist.
 #
 # "pics_per_year" keeps at most that many of each year's matches; "pick"
 # chooses which:
@@ -217,7 +218,7 @@ pics_per_year = 5
 pick    = "rotate"
 
   [albums.alex-birthday.match]
-  people      = ["Alex"]   # narrow every yearly window to this person
-  on          = "05-17"    # this calendar day, every year
-  offset_days = 1          # also the day either side
-  since_year  = 1985       # the earliest year to look in (e.g. the birth year)
+  people     = ["Alex"]    # narrow every yearly window to this person
+  on_from    = "05-16"     # this calendar day, every year...
+  on_to      = "05-18"     # ...through this one -- also the day either side
+  since_year = 1985        # the earliest year to look in (e.g. the birth year)

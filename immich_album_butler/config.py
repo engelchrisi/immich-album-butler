@@ -57,8 +57,9 @@ PEOPLE_MODES = ("any", "all")
 PICK_MODES = ("all", "rotate", "random", "best")
 DESCRIBE_MODES = ("off", "hint")
 
-# offset_days wide enough to span a year is a mistake, not a recurring day.
-MAX_OFFSET_DAYS = 182
+# A recurring window spanning more than half the year is a mistake, not a
+# recurring day.
+MAX_RECUR_SPAN_DAYS = 182
 
 
 class ConfigError(ValueError):
@@ -82,10 +83,11 @@ class MatchRule:
     # clock, like Asset.taken_at; the dates above still hold the days.
     from_time: dt.datetime | None = None
     to_time: dt.datetime | None = None
-    # N28: a recurring calendar day. `on` is "MM-DD" and matches that day in
-    # every year from `since_year` to now, widened by `offset_days` either side.
-    on: str = ""
-    offset_days: int = 0
+    # N28: a recurring calendar window. `on_from`/`on_to` are "MM-DD" and match
+    # every year from `since_year` to now; a single day is `on_from == on_to`,
+    # and the window may wrap across New Year (on_to earlier than on_from).
+    on_from: str = ""
+    on_to: str = ""
     since_year: int | None = None
 
     def time_allows(self, taken: dt.datetime | None) -> bool:
@@ -113,7 +115,7 @@ class MatchRule:
 
     @property
     def has_recurring(self) -> bool:
-        return bool(self.on)
+        return bool(self.on_from)
 
     @property
     def is_empty(self) -> bool:
@@ -663,11 +665,11 @@ def _load_match(data: object, groups: dict[str, tuple[str, ...]]) -> MatchRule:
     if not isinstance(include_unlocated, bool):
         raise ConfigError("[match] include_unlocated must be true or false")
 
-    on, offset_days, since_year = _load_recurring(data)
-    if on and (from_date or to_date):
-        raise ConfigError("[match] 'on' is a recurring day and cannot be "
-                          "combined with 'from'/'to' -- use one window or a "
-                          "recurring day, not both")
+    on_from, on_to, since_year = _load_recurring(data)
+    if on_from and (from_date or to_date):
+        raise ConfigError("[match] 'on_from'/'on_to' is a recurring window and "
+                          "cannot be combined with 'from'/'to' -- use one "
+                          "window or a recurring day, not both")
 
     rule = MatchRule(
         from_date=from_date, to_date=to_date,
@@ -676,7 +678,7 @@ def _load_match(data: object, groups: dict[str, tuple[str, ...]]) -> MatchRule:
         states=_as_names(data.get("states"), "states"),
         cities=_as_names(data.get("cities"), "cities"),
         people=people, people_mode=mode, include_unlocated=include_unlocated,
-        on=on, offset_days=offset_days, since_year=since_year)
+        on_from=on_from, on_to=on_to, since_year=since_year)
 
     if rule.is_empty:
         raise ConfigError("[match] is empty -- that would match the whole library. "
@@ -684,35 +686,54 @@ def _load_match(data: object, groups: dict[str, tuple[str, ...]]) -> MatchRule:
     return rule
 
 
-def _load_recurring(data: dict) -> tuple[str, int, int | None]:
-    """Read `on` / `offset_days` / `since_year` (N28), each refusal naming why."""
-    raw_on = data.get("on")
-    if raw_on is None:
-        on = ""
-    else:
-        on = str(raw_on).strip()
-        if not re.match(r"^\d{2}-\d{2}$", on):
-            raise ConfigError(f"[match] on must be \"MM-DD\", got {raw_on!r}")
-        month, day = int(on[:2]), int(on[3:])
-        if not 1 <= month <= 12 or not 1 <= day <= 31:
-            raise ConfigError(f"[match] on {on!r} is not a valid month/day")
+def _parse_mmdd(raw, name: str) -> str:
+    value = str(raw).strip()
+    if not re.match(r"^\d{2}-\d{2}$", value):
+        raise ConfigError(f"[match] {name} must be \"MM-DD\", got {raw!r}")
+    month, day = int(value[:2]), int(value[3:])
+    if not 1 <= month <= 12 or not 1 <= day <= 31:
+        raise ConfigError(f"[match] {name} {value!r} is not a valid month/day")
+    return value
 
-    offset = data.get("offset_days", 0)
-    if not isinstance(offset, int) or isinstance(offset, bool):
-        raise ConfigError("[match] offset_days must be a whole number of days")
-    if offset < 0:
-        raise ConfigError("[match] offset_days must not be negative")
-    if offset > MAX_OFFSET_DAYS:
-        raise ConfigError(f"[match] offset_days must be at most {MAX_OFFSET_DAYS} "
-                          f"(a wider window covers the whole year)")
+
+def _recur_span_days(on_from: str, on_to: str) -> int:
+    """Days from `on_from` to `on_to`, wrapping across New Year if needed."""
+    year = 2001                             # any non-leap reference year
+    start = (int(on_from[:2]), int(on_from[3:]))
+    end = (int(on_to[:2]), int(on_to[3:]))
+    end_year = year if end >= start else year + 1
+    start_date = dt.date(year, *start) if start != (2, 29) else dt.date(year, 3, 1)
+    try:
+        end_date = dt.date(end_year, *end)
+    except ValueError:
+        end_date = dt.date(end_year, 3, 1)  # Feb 29 in a non-leap end_year
+    return (end_date - start_date).days
+
+
+def _load_recurring(data: dict) -> tuple[str, str, int | None]:
+    """Read `on_from` / `on_to` / `since_year` (N28), each refusal naming why."""
+    raw_from = data.get("on_from")
+    raw_to = data.get("on_to")
+    if raw_from is None:
+        if raw_to is not None:
+            raise ConfigError("[match] on_to needs an on_from")
+        on_from = on_to = ""
+    else:
+        on_from = _parse_mmdd(raw_from, "on_from")
+        on_to = _parse_mmdd(raw_to, "on_to") if raw_to is not None else on_from
+        span = _recur_span_days(on_from, on_to)
+        if span > MAX_RECUR_SPAN_DAYS:
+            raise ConfigError(f"[match] on_from/on_to must span at most "
+                              f"{MAX_RECUR_SPAN_DAYS} days (a wider window "
+                              f"covers the whole year)")
 
     since = data.get("since_year")
     if since is not None and (not isinstance(since, int) or isinstance(since, bool)):
         raise ConfigError("[match] since_year must be a year, e.g. 2005")
 
-    if not on and (offset or since is not None):
-        raise ConfigError("[match] offset_days/since_year only apply with 'on'")
-    return on, offset, since
+    if not on_from and since is not None:
+        raise ConfigError("[match] since_year only applies with 'on_from'")
+    return on_from, on_to, since
 
 
 def _as_bound(value: object, key: str) -> tuple[dt.date | None, dt.datetime | None]:
@@ -860,11 +881,10 @@ def dump_album(album: Album) -> str:
         lines.append(f"  to   = {match.to_time.isoformat()}   # the last photo\n")
     elif match.to_date:
         lines.append(f"  to   = {match.to_date.isoformat()}\n")
-    if match.on:
-        lines.append(f'  on = "{match.on}"   # this calendar day, every year\n')
-        if match.offset_days:
-            lines.append(f"  offset_days = {match.offset_days}"
-                         f"   # +/- days around it\n")
+    if match.on_from:
+        lines.append(f'  on_from = "{match.on_from}"   # this calendar day, every year\n')
+        if match.on_to != match.on_from:
+            lines.append(f'  on_to   = "{match.on_to}"   # ...through this one\n')
         if match.since_year is not None:
             lines.append(f"  since_year = {match.since_year}"
                          f"   # earliest year to look in\n")

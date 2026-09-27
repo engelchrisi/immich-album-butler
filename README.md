@@ -167,9 +167,9 @@ correctly and the run reports that the cover could not be set.
 
 ### Recurring dates and rotating samples
 
-A rule can name a **calendar day in every year** instead of one window — "every
-photo taken on my birthday, any year" — and an album can keep just a **handful
-per year**, swapping in different ones each run.
+A rule can name a **calendar window in every year** instead of one window —
+"every photo taken on my birthday, any year" — and an album can keep just a
+**handful per year**, swapping in different ones each run.
 
 ```toml
 [albums.alex-birthday]
@@ -179,15 +179,17 @@ pics_per_year = 5              # keep at most five of each year
 pick    = "rotate"            # a different five each run
 
   [albums.alex-birthday.match]
-  people      = ["Alex"]      # narrow every yearly window to this person
-  on          = "05-17"       # this calendar day, every year (MM-DD)
-  offset_days = 1             # also the day either side
-  since_year  = 1985          # earliest year to look in
+  people     = ["Alex"]       # narrow every yearly window to this person
+  on_from    = "05-16"        # this calendar day, every year (MM-DD)...
+  on_to      = "05-18"        # ...through this one -- omit to match one day
+  since_year = 1985           # earliest year to look in
 ```
 
-`on` cannot be combined with `from`/`to`. It is searched as one query per year
-from `since_year` to now (ten years back if omitted), and composes with
-`people`, `countries`, `states` and `cities`.
+`on_from`/`on_to` cannot be combined with `from`/`to`. A single day is
+`on_from == on_to` (the default when `on_to` is omitted); the window may also
+wrap across New Year (`on_to` earlier in the calendar than `on_from`). It is
+searched as one query per year from `since_year` to now (ten years back if
+omitted), and composes with `people`, `countries`, `states` and `cities`.
 
 `pick` chooses which of each year's matches the album keeps:
 

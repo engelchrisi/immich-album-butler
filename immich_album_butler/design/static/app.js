@@ -28,7 +28,7 @@ function emptyDraft() {
     match: {
       from: null, to: null, countries: [], states: [], cities: [],
       people: [], people_mode: "any", include_unlocated: true,
-      on: "", offset_days: 0, since_year: null,
+      on_from: "", on_to: "", since_year: null,
     },
   };
 }
@@ -156,9 +156,10 @@ function describe(match) {
   const parts = [];
   const bound = (v) => v ? v.replace("T", " ").slice(0, 16) : "…";
   if (match.from || match.to) parts.push(`${bound(match.from)} → ${bound(match.to)}`);
-  if (match.on) {
-    let day = `${match.on} every year`;
-    if (match.offset_days) day += ` ±${match.offset_days}d`;
+  if (match.on_from) {
+    let day = match.on_to && match.on_to !== match.on_from
+      ? `${match.on_from} – ${match.on_to} every year`
+      : `${match.on_from} every year`;
     if (match.since_year) day += ` since ${match.since_year}`;
     parts.push(day);
   }
@@ -221,8 +222,6 @@ function fillForm() {
   fillDates();
   $("people-mode").value = draft.match.people_mode;
   $("include-unlocated").checked = draft.match.include_unlocated;
-  $("recur-on").value = draft.match.on || "";
-  $("recur-offset").value = draft.match.offset_days || "";
   $("recur-since").value = draft.match.since_year ?? "";
   $("pick").value = draft.pick || "all";
   fillPicsPerYear();
@@ -241,11 +240,33 @@ function fillForm() {
 
 /* From and To hold a day, or the moment a picked first/last photo was taken
  * ("2023-05-28T14:32:10"). The date inputs show the day; an exact time shows
- * as a chip underneath, and removing it widens back to the whole day. */
+ * as a chip underneath, and removing it widens back to the whole day. They
+ * also double as the entry point for a recurring window: typed as dd/mm
+ * (no year) they set on_from/on_to instead of from/to -- see
+ * parseDateField/applyDateFields. */
+const pad2 = (n) => String(n).padStart(2, "0");
+
+function isoToDisplay(iso) {
+  if (!iso) return "";
+  const [y, m, d] = iso.slice(0, 10).split("-");
+  return `${d}/${m}/${y}`;
+}
+
+function mmddToDisplay(mmdd) {
+  if (!mmdd) return "";
+  const [m, d] = mmdd.split("-");
+  return `${d}/${m}`;
+}
+
 function fillDates() {
   const { match } = state.draft;
-  $("date-from").value = (match.from || "").slice(0, 10);
-  $("date-to").value = (match.to || "").slice(0, 10);
+  if (match.on_from) {
+    $("date-from").value = mmddToDisplay(match.on_from);
+    $("date-to").value = mmddToDisplay(match.on_to || match.on_from);
+  } else {
+    $("date-from").value = isoToDisplay(match.from);
+    $("date-to").value = isoToDisplay(match.to);
+  }
   const box = $("exact-bounds");
   box.replaceChildren();
   const time = (v) => v && v.includes("T") ? v.slice(11, 19) : null;
@@ -266,16 +287,77 @@ function setBound(key, taken) {
   refreshPreview();
 }
 
+/* dd/mm/yyyy -> an exact date; dd/mm -> a recurring day; mm/yyyy -> a whole
+ * month (both fields required for the last two -- see the plan's clarifying
+ * answers). Bad or mismatched input is reported and nothing is applied. */
+function parseDateField(raw) {
+  const text = (raw || "").trim();
+  if (!text) return null;
+  let m = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m) return { kind: "full", day: +m[1], month: +m[2], year: +m[3] };
+  m = text.match(/^(\d{2})\/(\d{4})$/);
+  if (m) return { kind: "month", month: +m[1], year: +m[2] };
+  m = text.match(/^(\d{2})\/(\d{2})$/);
+  if (m) return { kind: "day", day: +m[1], month: +m[2] };
+  return { kind: "invalid" };
+}
+
+function applyDateFields() {
+  const from = parseDateField($("date-from").value);
+  const to = parseDateField($("date-to").value);
+  const errorBox = $("date-error");
+  const fail = (msg) => { errorBox.textContent = msg; errorBox.hidden = false; };
+  errorBox.hidden = true;
+  errorBox.textContent = "";
+
+  if (from?.kind === "invalid" || to?.kind === "invalid") {
+    fail("Use dd/mm/yyyy, dd/mm, or mm/yyyy.");
+    return;
+  }
+  const match = state.draft.match;
+  if (!from && !to) {
+    match.from = match.to = null;
+    match.on_from = match.on_to = "";
+  } else if (from?.kind === "month" || to?.kind === "month") {
+    if (!from || !to || from.kind !== "month" || to.kind !== "month") {
+      fail("mm/yyyy needs both From and To.");
+      return;
+    }
+    match.from = `${from.year}-${pad2(from.month)}-01`;
+    const lastDay = new Date(to.year, to.month, 0).getDate();
+    match.to = `${to.year}-${pad2(to.month)}-${pad2(lastDay)}`;
+    match.on_from = match.on_to = "";
+  } else if (from?.kind === "day" || to?.kind === "day") {
+    if ((from && from.kind !== "day") || (to && to.kind !== "day")) {
+      fail("From and To must both be dates, both month/year, or both day/month.");
+      return;
+    }
+    const onFrom = from ? `${pad2(from.month)}-${pad2(from.day)}`
+                         : `${pad2(to.month)}-${pad2(to.day)}`;
+    match.on_from = onFrom;
+    match.on_to = to ? `${pad2(to.month)}-${pad2(to.day)}` : onFrom;
+    match.from = match.to = null;
+  } else {
+    if (from && to && from.kind !== to.kind) {
+      fail("From and To must both be dates, both month/year, or both day/month.");
+      return;
+    }
+    match.from = from ? `${from.year}-${pad2(from.month)}-${pad2(from.day)}` : null;
+    match.to = to ? `${to.year}-${pad2(to.month)}-${pad2(to.day)}` : null;
+    match.on_from = match.on_to = "";
+  }
+  fillDates();
+  updateWhenExclusivity();
+  refreshPreview();
+}
+
 function bindDraft() {
   // The name decides which Immich album a run fills, so the preview follows it.
   $("album-name").oninput = (e) => { state.draft.name = e.target.value; refreshPreview(); };
-  $("date-from").onchange = (e) => setBound("from", e.target.value || null);
-  $("date-to").onchange = (e) => setBound("to", e.target.value || null);
+  $("date-from").onchange = applyDateFields;
+  $("date-to").onchange = applyDateFields;
   $("people-mode").onchange = (e) => set("people_mode", e.target.value);
   $("include-unlocated").onchange = (e) => set("include_unlocated", e.target.checked);
-  $("recur-on").oninput = debounce((e) => set("on", e.target.value.trim()), 350);
-  $("recur-offset").onchange = (e) =>
-    set("offset_days", parseInt(e.target.value, 10) || 0);
   $("recur-since").onchange = (e) =>
     set("since_year", e.target.value ? parseInt(e.target.value, 10) : null);
   $("pics-per-year").onchange = (e) => {
@@ -407,18 +489,14 @@ function set(key, value) {
   refreshPreview();
 }
 
-/* A rule is either a From/To window or a recurring day, never both (the loader
- * refuses the mix). Dim whichever group the other one rules out, so the choice
- * is visible instead of only failing on save. */
+/* From/To double as the recurring-window entry (see applyDateFields), so a
+ * rule is either a window or a recurring day depending on what was typed,
+ * never both at once. The presets only make sense for an exact window, and
+ * the since-year field only for a recurring one. */
 function updateWhenExclusivity() {
-  const m = state.draft.match;
-  const hasWindow = !!(m.from || m.to);
-  const hasRecur = !!(m.on && String(m.on).trim());
-  ["date-from", "date-to"].forEach((id) => { $(id).disabled = hasRecur; });
+  const hasRecur = !!state.draft.match.on_from;
+  $("since-year-row").hidden = !hasRecur;
   document.querySelectorAll("[data-preset]").forEach((b) => { b.disabled = hasRecur; });
-  ["recur-on", "recur-offset", "recur-since"].forEach((id) => {
-    $(id).disabled = hasWindow;
-  });
 }
 
 /* -- builder: people ---------------------------------------------------- */
@@ -594,7 +672,7 @@ const refreshPreview = debounce(async () => {
   state.immichName = null;
   const empty = !match.from && !match.to && !match.people.length &&
     !match.countries.length && !match.states.length && !match.cities.length &&
-    !(match.on && String(match.on).trim());
+    !match.on_from;
   if (empty) {
     box.replaceChildren(el("div", { class: "muted" },
       "Pick a date range, a recurring day, a place or a person to see a preview."));

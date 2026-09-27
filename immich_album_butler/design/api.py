@@ -877,12 +877,12 @@ class DesignApi:
         from_date, from_time = _as_bound(data.get("from"), "from")
         to_date, to_time = _as_bound(data.get("to"), "to")
         try:
-            on, offset_days, since_year = config_module._load_recurring(data)
+            on_from, on_to, since_year = config_module._load_recurring(data)
         except config_module.ConfigError as exc:
             raise ApiError(str(exc)) from None
-        if on and (from_date or to_date):
-            raise ApiError("'on' is a recurring day and cannot be combined "
-                           "with 'from'/'to'")
+        if on_from and (from_date or to_date):
+            raise ApiError("a recurring window cannot be combined with "
+                           "'from'/'to'")
         rule = MatchRule(
             from_date=from_date, to_date=to_date,
             from_time=from_time, to_time=to_time,
@@ -892,7 +892,7 @@ class DesignApi:
             people=_as_names(data.get("people")),
             people_mode=str(data.get("people_mode") or "any").lower(),
             include_unlocated=bool(data.get("include_unlocated", True)),
-            on=on, offset_days=offset_days, since_year=since_year)
+            on_from=on_from, on_to=on_to, since_year=since_year)
 
         if rule.people_mode not in config_module.PEOPLE_MODES:
             raise ApiError(f"people_mode must be any or all, "
@@ -926,7 +926,7 @@ def rule_to_json(rule: MatchRule) -> dict:
         "cities": list(rule.cities), "people": list(rule.people),
         "people_mode": rule.people_mode,
         "include_unlocated": rule.include_unlocated,
-        "on": rule.on, "offset_days": rule.offset_days,
+        "on_from": rule.on_from, "on_to": rule.on_to,
         "since_year": rule.since_year,
     }
 

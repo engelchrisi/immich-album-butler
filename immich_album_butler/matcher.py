@@ -186,9 +186,10 @@ def _assets_for_all(client: ImmichClient, rule: MatchRule, person_ids: list[str]
 
 def _windows(rule: MatchRule, today: dt.date,
              ) -> list[tuple[dt.date | None, dt.date | None]]:
-    """The date windows to search: one for a plain rule, one per year for `on`.
+    """The date windows to search: one for a plain rule, one per year for a
+    recurring window (`on_from`/`on_to`).
 
-    A recurring day (N28) cannot be one takenAfter/takenBefore pair, so it
+    A recurring window (N28) cannot be one takenAfter/takenBefore pair, so it
     becomes one windowed query per year from `since_year` to now -- twenty-odd
     paged searches once a week, keeping the filtering server-side rather than
     paging the whole library to find a handful.
@@ -196,20 +197,27 @@ def _windows(rule: MatchRule, today: dt.date,
     if not rule.has_recurring:
         return [(rule.from_date, rule.to_date)]
 
-    month, dom = int(rule.on[:2]), int(rule.on[3:])
+    from_month, from_day = int(rule.on_from[:2]), int(rule.on_from[3:])
+    to_month, to_day = int(rule.on_to[:2]), int(rule.on_to[3:])
     since = rule.since_year
     if since is None:
         since = today.year - 10
-        log.info("rule 'on = %s' has no since_year; looking back to %d",
-                 rule.on, since)
+        log.info("rule 'on_from = %s' has no since_year; looking back to %d",
+                 rule.on_from, since)
     windows: list[tuple[dt.date | None, dt.date | None]] = []
     for year in range(since, today.year + 1):
         try:
-            day = dt.date(year, month, dom)
+            start = dt.date(year, from_month, from_day)
         except ValueError:
             continue                        # e.g. 02-29 in a non-leap year
-        offset = dt.timedelta(days=rule.offset_days)
-        windows.append((day - offset, day + offset))
+        # A window that wraps across New Year (on_to earlier than on_from
+        # in the calendar) ends the following year.
+        end_year = year if (to_month, to_day) >= (from_month, from_day) else year + 1
+        try:
+            end = dt.date(end_year, to_month, to_day)
+        except ValueError:
+            continue
+        windows.append((start, end))
     return windows
 
 

@@ -41,7 +41,7 @@ groups, albums. State (`state.json`) lives in the state directory and holds Immi
 last-run times; it is rewritten atomically because a half-written file would make the butler
 forget which album it owns and create a duplicate.
 
-New keys: `[match]` gains `on`/`offset_days`/`since_year` (N28); an album gains `pics_per_year`
+New keys: `[match]` gains `on_from`/`on_to`/`since_year` (N28); an album gains `pics_per_year`
 and `pick` (N29); the top level gains `describe` (N31). State gains `pick_bag`, `pick_last` (both
 keyed by calendar year) and `pick_cycle`, all additive so `state.json` stays `version: 1` and an
 older file loads unchanged. Asset UUIDs stay in `state.json`, never in `config.toml`.

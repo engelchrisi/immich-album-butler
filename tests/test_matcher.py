@@ -176,7 +176,7 @@ class MatchAgainstStubTests(unittest.TestCase):
 
 
 class RecurringDayTests(unittest.TestCase):
-    """N28: `on = "MM-DD"` as one windowed query per year."""
+    """N28: `on_from`/`on_to` as one windowed query per year."""
 
     TODAY = dt.date(2020, 12, 31)
 
@@ -196,14 +196,14 @@ class RecurringDayTests(unittest.TestCase):
         return ImmichClient(stub.url, API_KEY)
 
     def test_the_same_day_in_every_year_matches(self):
-        rule = MatchRule(on="05-17", since_year=2016)
+        rule = MatchRule(on_from="05-17", on_to="05-17", since_year=2016)
         with StubImmich(self.library(), page_size=100) as stub:
             found = match(self.client(stub), rule, PEOPLE, today=self.TODAY)
         self.assertEqual(set(found.ids),
                          {fake_id(1), fake_id(2), fake_id(3), fake_id(4)})
 
-    def test_offset_days_widens_the_window(self):
-        rule = MatchRule(on="05-17", offset_days=1, since_year=2018)
+    def test_an_asymmetric_range_widens_the_window(self):
+        rule = MatchRule(on_from="05-16", on_to="05-18", since_year=2018)
         with StubImmich(self.library(), page_size=100) as stub:
             found = match(self.client(stub), rule, PEOPLE, today=self.TODAY)
         # 2018 17th, plus the 16th and 18th decoys; 2019 17th.
@@ -212,7 +212,7 @@ class RecurringDayTests(unittest.TestCase):
 
     def test_a_leap_day_is_simply_skipped_in_non_leap_years(self):
         assets = [make_asset(1, when=day(2020, 2, 29))]
-        rule = MatchRule(on="02-29", since_year=2019)
+        rule = MatchRule(on_from="02-29", on_to="02-29", since_year=2019)
         with StubImmich(assets, page_size=100) as stub:
             found = match(self.client(stub), rule, PEOPLE, today=self.TODAY)
         self.assertEqual(set(found.ids), {fake_id(1)})   # only 2020 has the day
@@ -220,11 +220,23 @@ class RecurringDayTests(unittest.TestCase):
     def test_it_composes_with_people(self):
         assets = self.library()
         assets.append(make_asset(60, when=day(2019, 5, 17), people=(SAM,)))
-        rule = MatchRule(on="05-17", since_year=2016, people=("Alex",))
+        rule = MatchRule(on_from="05-17", on_to="05-17", since_year=2016,
+                          people=("Alex",))
         with StubImmich(assets, page_size=100) as stub:
             found = match(self.client(stub), rule, PEOPLE, today=self.TODAY)
         self.assertNotIn(fake_id(60), set(found.ids))
         self.assertIn(fake_id(4), set(found.ids))
+
+    def test_a_window_wrapping_across_new_year_reaches_into_the_next_year(self):
+        assets = [
+            make_asset(70, when=day(2019, 12, 30), people=(ALEX,)),
+            make_asset(71, when=day(2020, 1, 2), people=(ALEX,)),
+            make_asset(72, when=day(2019, 12, 20), people=(ALEX,)),  # too early
+        ]
+        rule = MatchRule(on_from="12-28", on_to="01-03", since_year=2019)
+        with StubImmich(assets, page_size=100) as stub:
+            found = match(self.client(stub), rule, PEOPLE, today=self.TODAY)
+        self.assertEqual(set(found.ids), {fake_id(70), fake_id(71)})
 
 
 if __name__ == "__main__":
