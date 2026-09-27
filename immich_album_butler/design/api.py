@@ -277,8 +277,8 @@ class DesignApi:
                 "enabled": album.enabled,
                 "cover": album.cover,
                 "pics_per_year": album.pics_per_year, "pick": album.pick,
-                "share_with": list(album.share_with),
-                "share_role": album.share_role,
+                "shares": [{"account": s.account, "role": s.role}
+                          for s in album.share_with],
                 "schedule": str(album.schedule),
                 "schedule_inherited": album.schedule_inherited,
                 "match": rule_to_json(album.match),
@@ -835,7 +835,7 @@ class DesignApi:
         if cover == cover_module.EVERYONE and not rule.people:
             raise ApiError('a cover of "everyone" needs the rule to name people')
 
-        share_with, share_role = self._sharing_from(payload)
+        share_with = self._sharing_from(payload)
         try:
             pics_per_year, pick = config_module._load_pick(payload, schedule)
         except config_module.ConfigError as exc:
@@ -844,28 +844,34 @@ class DesignApi:
         return Album(slug=slug, name=name or "(draft)", match=rule,
                      schedule=schedule, schedule_inherited=inherited,
                      enabled=bool(payload.get("enabled", True)),
-                     cover=cover, share_with=share_with, share_role=share_role,
+                     cover=cover, share_with=share_with,
                      pics_per_year=pics_per_year, pick=pick)
 
-    def _sharing_from(self, payload: dict) -> tuple[tuple[str, ...], str]:
-        """Read the builder's share picker.
+    def _sharing_from(self, payload: dict) -> tuple[config_module.AlbumShare, ...]:
+        """Read the builder's share picker: one account, one role, each.
 
         Saving rewrites the whole config file, so a payload that simply omits
-        `share_with` would silently drop sharing from a rule that had it --
-        the picker always sends the field, and an absent one means nobody.
+        `shares` would silently drop sharing from a rule that had it -- the
+        picker always sends the field, and an absent one means nobody.
         """
-        raw = payload.get("share_with") or []
-        if isinstance(raw, str):
-            raw = [raw]
+        raw = payload.get("shares") or []
         if not isinstance(raw, list):
-            raise ApiError("share_with must be a list of account names")
-        names = [str(entry).strip() for entry in raw if str(entry).strip()]
-
-        role = str(payload.get("share_role") or immich_module.VIEWER).lower()
-        if role not in immich_module.SHARE_ROLES:
-            raise ApiError(f"share_role must be one of "
-                           f"{', '.join(immich_module.SHARE_ROLES)}, got {role!r}")
-        return tuple(dict.fromkeys(names)), role
+            raise ApiError("shares must be a list of {account, role}")
+        shares: list[config_module.AlbumShare] = []
+        for entry in raw:
+            if not isinstance(entry, dict):
+                raise ApiError("each share must be an {account, role} object")
+            account = str(entry.get("account") or "").strip()
+            if not account:
+                raise ApiError("each share needs an account")
+            if any(account.casefold() == s.account.casefold() for s in shares):
+                continue
+            role = str(entry.get("role") or immich_module.VIEWER).lower()
+            if role not in immich_module.SHARE_ROLES:
+                raise ApiError(f"role must be one of "
+                               f"{', '.join(immich_module.SHARE_ROLES)}, got {role!r}")
+            shares.append(config_module.AlbumShare(account=account, role=role))
+        return tuple(shares)
 
     def _rule_from(self, data: dict) -> MatchRule:
         from_date, from_time = _as_bound(data.get("from"), "from")

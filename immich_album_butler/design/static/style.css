@@ -81,7 +81,6 @@ fieldset .subgroup { margin-top: 0.7rem; background: var(--field); }
 fieldset .subgroup:first-child { margin-top: 0; }
 fieldset .subgroup legend { text-transform: none; font-size: 0.85rem;
                              font-weight: 600; color: var(--ink); }
-.check.prominent { font-size: 1rem; font-weight: 600; }
 
 /* -- controls ---------------------------------------------------------- */
 
@@ -142,6 +141,21 @@ button.link { background: none; border: none; color: var(--accent); padding: 0.2
 .chip.group { border-style: dashed; }
 .chosen .chip { background: var(--chosen-bg); border-color: var(--chosen-line); }
 .chip .x { color: var(--muted); font-weight: 700; }
+
+/* -- per-account sharing rows -------------------------------------------- */
+
+.share-list { display: flex; flex-direction: column; gap: 0.4rem;
+              margin-top: 0.6rem; min-height: 1.2rem; }
+.share-row {
+  display: flex; align-items: center; gap: 0.6rem;
+  background: var(--raised); border: 1px solid var(--line);
+  border-radius: 8px; padding: 0.3rem 0.5rem 0.3rem 0.75rem;
+}
+.share-row .account { flex: 1 1 auto; font-size: 0.9rem; }
+.share-row select { font-size: 0.85rem; padding: 0.25rem 0.4rem; min-width: 0; }
+.share-row .x { color: var(--muted); font-weight: 700; cursor: pointer;
+                 padding: 0.1rem 0.3rem; }
+.share-row .x:hover { color: var(--ink); }
 
 .muted-empty:empty::before {
   content: attr(data-empty); color: var(--muted); font-size: 0.88rem;

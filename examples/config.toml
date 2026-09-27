@@ -143,14 +143,6 @@ enabled = true
 # filled and the run says the cover could not be set.
 cover   = "everyone"
 
-# Other accounts on this server that should see this album, named the way you
-# name a person: an account name, or an e-mail address. Access is only ever
-# granted -- removing a name here leaves that account's access alone, because
-# an edited config file is a poor reason for somebody to lose sight of an
-# album. Unshare in the Immich UI.
-share_with = ["Sam"]
-share_role = "viewer"   # "viewer" may look; "editor" may add and remove too
-
 # No auto-update-schedule: this album follows the global default, which is
 # "manual". The trip is over, so nothing new will ever match this rule; run it
 # by hand on the rare occasion that old photos are imported.
@@ -168,6 +160,17 @@ share_role = "viewer"   # "viewer" may look; "editor" may add and remove too
   # date range joins the album even though it has no coordinates -- which is
   # usually the majority of a holiday's pictures.
   include_unlocated = true
+
+# Other accounts on this server that should see this album, named the way you
+# name a person: an account name, or an e-mail address. One block per account,
+# each with its own role. The role is only what a NEW share is granted with --
+# once an account has access, later runs never correct its role again, even if
+# it changes here. Access is only ever granted -- removing a block here leaves
+# that account's access alone, because an edited config file is a poor reason
+# for somebody to lose sight of an album. Unshare in the Immich UI.
+  [[albums.italy-2019.share]]
+  account = "Sam"
+  role    = "viewer"   # "viewer" may look; "editor" may add and remove too
 
 
 # A person album: everything Immich recognises as this person, kept current.

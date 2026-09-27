@@ -227,18 +227,26 @@ warning, never a failed run).
 ### Sharing an album with another account
 
 Another account on the same Immich server can be given access to an album, named
-the way a person names it — an account name or an e-mail address, never a UUID:
+the way a person names it — an account name or an e-mail address, never a UUID.
+Each account gets its own `[[.share]]` block and its own role:
 
 ```toml
 [albums.photos-of-alex]
-name       = "Photos of Alex"
-share_with = ["Sam"]        # or ["sam@example.com"]
-share_role = "viewer"       # "viewer" (default) may look; "editor" may also change
+name = "Photos of Alex"
+
+  [[albums.photos-of-alex.share]]
+  account = "Sam"              # or "sam@example.com"
+  role    = "viewer"           # "viewer" (default) may look; "editor" may also change
 ```
+
+The role is only what a **new** share is granted with. Once an account has
+access, later runs never correct its role again — change it in Immich directly
+if it needs to change.
 
 Albums the butler has **no rule for** — the hand-made ones, usually the
 majority — are shared with a `[[shares]]` block instead. It only ever hands out
-access: it never creates, fills or renames an album.
+access: it never creates, fills or renames an album, and — unlike per-album
+sharing above — it *does* keep every account's role in sync on every run.
 
 ```toml
 [[shares]]
@@ -249,13 +257,14 @@ role   = "viewer"
 
 Two things the butler deliberately does **not** do:
 
-- **It never takes access away.** Removing a name from `share_with` or from a
-  `[[shares]]` list leaves that account's access alone, because an edited config
-  file is a poor reason for somebody to lose sight of an album.
+- **It never takes access away.** Removing an account from an album's `share`
+  blocks or from a `[[shares]]` list leaves that account's access alone,
+  because an edited config file is a poor reason for somebody to lose sight of
+  an album.
 
   So un-sharing is **two steps, in this order**: revoke in the Immich UI first
   (open the album, remove the account from the people it is shared with), *then*
-  take the name out of the config. Done the other way round, the name is still
+  take the account out of the config. Done the other way round, it is still
   listed when the next run comes along and the access goes straight back.
 - **It cannot share people.** Immich has no per-person sharing; a person belongs
   to one account. What it does have is a *cluster group*, which makes faces
@@ -264,8 +273,10 @@ Two things the butler deliberately does **not** do:
   the browsable substitute.
 
 Sharing needs **`user.read`** (to resolve a name to an account) and
-**`albumUser.create`** on the API key, plus `albumUser.update` if you change a
-role later. Without them the albums still fill and the run says what is missing.
+**`albumUser.create`** on the API key. `albumUser.update` is needed too, but
+only for `[[shares]]`'s standing role sync — per-album sharing above never
+calls it. Without any of these the albums still fill and the run says what is
+missing.
 
 Design mode rewrites this file when it saves. Values survive — the login hashes
 included — but comments you add do not.
@@ -375,9 +386,9 @@ run on every update; the **optional** ones depend on which features you use:
 | `albumAsset.create` | **required** | Add assets to albums |
 | `albumAsset.delete` | **required** | Every album mirrors its rule: remove assets that stop matching, or duplicates from the Duplicates tab |
 | `album.update` | optional | Rename with `album_suffix`, set `cover`, write the `describe = "hint"` line |
-| `user.read` | optional | Resolve account names for `share_with` |
+| `user.read` | optional | Resolve account names for sharing |
 | `albumUser.create` | optional | Share albums with other accounts |
-| `albumUser.update` | optional | Change a shared account's role later |
+| `albumUser.update` | optional | Keep `[[shares]]` accounts' roles in sync (per-album sharing never uses this) |
 | `album.delete` | optional | Delete the generated album from Immich when deleting a config (design mode) — the photos stay in the library |
 | `duplicate.read` | optional | List Immich's duplicate groups for the Duplicates tab |
 

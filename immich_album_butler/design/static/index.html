@@ -133,12 +133,9 @@
 
         <fieldset class="subgroup">
           <legend>Schedule</legend>
-          <label class="check prominent">
-            <input id="enabled" type="checkbox" checked> Enabled
-          </label>
-          <span class="muted">An album that is not enabled is skipped by every run.</span>
           <label class="field"><span>Update schedule</span>
             <select id="schedule">
+              <option value="none">None — no run at all</option>
               <option value="inherit">inherit the global default</option>
               <option value="daily 03:30">daily at 03:30</option>
               <option value="weekly sun 04:00">weekly, Sunday 04:00</option>
@@ -149,9 +146,6 @@
           </label>
           <div class="muted" id="next-run"></div>
           <div class="row">
-            <label class="field"><span>Keep per year</span>
-              <input id="pics-per-year" type="number" min="1" step="1"
-                     placeholder="all"></label>
             <label class="field"><span>Pick</span>
               <select id="pick">
                 <option value="all">all matches</option>
@@ -160,26 +154,30 @@
                 <option value="rotate">rotate (a new set each run)</option>
               </select>
             </label>
+            <label class="field"><span>Keep per year</span>
+              <input id="pics-per-year" type="number" min="1" step="1"
+                     placeholder="all"></label>
           </div>
         </fieldset>
 
         <fieldset class="subgroup">
           <legend>Sharing</legend>
-          <label class="field"><span>Also visible to</span>
-            <select id="share-with" multiple size="3"></select>
-            <span class="muted" id="share-note"></span>
-          </label>
-          <label id="share-role-row" class="field" hidden><span>They may</span>
-            <select id="share-role">
-              <option value="viewer">Viewer — can view all assets</option>
-              <option value="editor">Editor — can view, upload and delete assets</option>
-            </select>
-          </label>
+          <div class="row">
+            <input id="share-search" type="search" placeholder="Add an account…"
+                   autocomplete="off" list="share-accounts">
+            <datalist id="share-accounts"></datalist>
+          </div>
+          <span class="muted" id="share-note"></span>
+          <div id="share-list" class="share-list muted-empty"
+               data-empty="Not shared with anyone."></div>
           <p class="muted">
-            Click an account to add or drop it. Access is only ever granted here,
-            never taken away: dropping a name stops it being shared again on the
-            next run, it does not revoke access already given. To actually remove
-            someone, unshare the album in Immich first, then drop the name here.
+            Access is only ever granted here, never taken away: dropping an
+            account stops it being shared again on the next run, it does not
+            revoke access already given -- unshare in Immich first, then drop
+            it here. The role picked here is only what a <em>new</em> share
+            starts at: once an account has access, later runs never change
+            its role again, even if it is changed here -- change it in
+            Immich instead.
           </p>
         </fieldset>
       </fieldset>

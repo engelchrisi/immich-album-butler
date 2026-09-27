@@ -28,17 +28,21 @@ USERS = [SAM, ROBIN]
 
 SHARED_ALBUM = """
 name = "Photos of Alex"
-share_with = ["Sam"]
 
 [match]
 people = ["Alex"]
+
+[[albums.alex.share]]
+account = "Sam"
 """
+
+
+PLAIN_ALBUM = 'name = "Photos of Alex"\n\n[match]\npeople = ["Alex"]\n'
 
 
 def as_editor(body: str) -> str:
     """The same rule, sharing as an editor rather than a viewer."""
-    return body.replace('share_with = ["Sam"]',
-                        'share_with = ["Sam"]\nshare_role = "editor"')
+    return body + '\nrole = "editor"'
 
 
 def assets():
@@ -71,28 +75,31 @@ class ConfigTests(unittest.TestCase):
     def test_share_with_and_its_role_survive_a_rewrite(self):
         config = self.load(SHARED_ALBUM)
         album = config.album("alex")
-        self.assertEqual(album.share_with, ("Sam",))
-        self.assertEqual(album.share_role, "viewer")
+        self.assertEqual(album.share_with, (cfg.AlbumShare("Sam", "viewer"),))
         rewritten = cfg.dump_album(album)
-        self.assertIn('share_with = ["Sam"]', rewritten)
-        self.assertIn('share_role = "viewer"', rewritten)
+        self.assertIn("[[albums.alex.share]]", rewritten)
+        self.assertIn('account = "Sam"', rewritten)
+        self.assertIn('role    = "viewer"', rewritten)
 
-    def test_one_name_may_be_written_without_a_list(self):
-        config = self.load(SHARED_ALBUM.replace('["Sam"]', '"Sam"'))
-        self.assertEqual(config.album("alex").share_with, ("Sam",))
+    def test_more_than_one_account_may_be_shared_with(self):
+        both = SHARED_ALBUM + '\n[[albums.alex.share]]\naccount = "Robin"\nrole = "editor"\n'
+        album = self.load(both).album("alex")
+        self.assertEqual(album.share_with,
+                         (cfg.AlbumShare("Sam", "viewer"), cfg.AlbumShare("Robin", "editor")))
 
-    def test_the_same_name_twice_is_kept_once(self):
-        config = self.load(SHARED_ALBUM.replace('["Sam"]', '["Sam", "sam"]'))
-        self.assertEqual(config.album("alex").share_with, ("Sam",))
+    def test_the_same_account_twice_is_refused(self):
+        twice = SHARED_ALBUM + '\n[[albums.alex.share]]\naccount = "sam"\n'
+        config = self.load(twice)
+        self.assertTrue(config.errors)
+        self.assertIn("sam", " ".join(config.errors))
 
     def test_an_unknown_role_is_refused(self):
-        config = self.load(SHARED_ALBUM.replace(
-            'share_with = ["Sam"]', 'share_with = ["Sam"]\nshare_role = "owner"'))
+        config = self.load(as_editor(SHARED_ALBUM).replace('"editor"', '"owner"'))
         self.assertTrue(config.errors)
-        self.assertIn("share_role", " ".join(config.errors))
+        self.assertIn("role", " ".join(config.errors))
 
-    def test_a_share_with_that_is_not_a_string_is_refused(self):
-        config = self.load(SHARED_ALBUM.replace('["Sam"]', "[3]"))
+    def test_a_share_needs_an_account(self):
+        config = self.load(SHARED_ALBUM.replace('account = "Sam"', "account = 3"))
         self.assertTrue(config.errors)
 
 
@@ -116,7 +123,7 @@ class SharingTests(unittest.TestCase):
         self.assertEqual(stub.shared_with(album_of(stub)), {SAM_ID: "viewer"})
 
     def test_an_address_names_an_account_as_well_as_its_name(self):
-        body = SHARED_ALBUM.replace('["Sam"]', '["sam@example.com"]')
+        body = SHARED_ALBUM.replace('"Sam"', '"sam@example.com"')
         with StubImmich(assets(), people=PEOPLE, users=USERS, page_size=2) as stub:
             with Fixture({"alex": body}, stub) as fx:
                 config, state = fx.load()
@@ -139,7 +146,7 @@ class SharingTests(unittest.TestCase):
                                           path.endswith("/users")])
 
     def test_only_the_missing_account_is_added(self):
-        both = SHARED_ALBUM.replace('["Sam"]', '["Sam", "Robin"]')
+        both = SHARED_ALBUM + '\n[[albums.alex.share]]\naccount = "Robin"\n'
         with StubImmich(assets(), people=PEOPLE, users=USERS, page_size=2) as stub:
             with Fixture({"alex": SHARED_ALBUM}, stub) as fx:
                 config, state = fx.load()
@@ -151,7 +158,8 @@ class SharingTests(unittest.TestCase):
         self.assertEqual(stub.shared_with(album_of(stub)),
                          {SAM_ID: "viewer", ROBIN_ID: "viewer"})
 
-    def test_a_changed_role_is_applied_to_an_existing_member(self):
+    def test_a_changed_role_is_not_applied_to_an_existing_member(self):
+        """The role is only what a NEW share starts at (unlike [[shares]])."""
         with StubImmich(assets(), people=PEOPLE, users=USERS, page_size=2) as stub:
             with Fixture({"alex": SHARED_ALBUM}, stub) as fx:
                 config, state = fx.load()
@@ -159,8 +167,8 @@ class SharingTests(unittest.TestCase):
             with Fixture({"alex": as_editor(SHARED_ALBUM)}, stub) as fx:
                 config, state = fx.load()
                 reports = run_once(fx.client, config, state)
-        self.assertEqual(reports[0].shared, 1)
-        self.assertEqual(stub.shared_with(album_of(stub)), {SAM_ID: "editor"})
+        self.assertEqual(reports[0].shared, 0)
+        self.assertEqual(stub.shared_with(album_of(stub)), {SAM_ID: "viewer"})
 
     def test_an_account_dropped_from_the_rule_keeps_its_access(self):
         """Taking access away is a human act, never a side effect of an edit."""
@@ -168,8 +176,7 @@ class SharingTests(unittest.TestCase):
             with Fixture({"alex": SHARED_ALBUM}, stub) as fx:
                 config, state = fx.load()
                 run_once(fx.client, config, state)
-            plain = SHARED_ALBUM.replace('share_with = ["Sam"]\n', "")
-            with Fixture({"alex": plain}, stub) as fx:
+            with Fixture({"alex": PLAIN_ALBUM}, stub) as fx:
                 config, state = fx.load()
                 reports = run_once(fx.client, config, state)
         self.assertEqual(reports[0].shared, 0)
@@ -185,10 +192,9 @@ class SharingTests(unittest.TestCase):
         self.assertEqual(stub.shared_with(album_of(stub)), {})
 
     def test_an_album_that_shares_with_nobody_never_asks_for_the_user_list(self):
-        """No share_with anywhere means the key never needs `user.read`."""
-        plain = SHARED_ALBUM.replace('share_with = ["Sam"]\n', "")
+        """No [[share]] anywhere means the key never needs `user.read`."""
         with StubImmich(assets(), people=PEOPLE, users=USERS, page_size=2) as stub:
-            with Fixture({"alex": plain}, stub) as fx:
+            with Fixture({"alex": PLAIN_ALBUM}, stub) as fx:
                 config, state = fx.load()
                 run_once(fx.client, config, state)
         self.assertNotIn("/api/users", [path for _, path in stub.requests])
@@ -298,6 +304,24 @@ class HandMadeAlbumTests(unittest.TestCase):
         self.assertEqual(stub.shared_with(hand_made),
                          {SAM_ID: "viewer", ROBIN_ID: "editor"})
 
+    def test_a_key_without_album_user_update_still_fills_and_warns(self):
+        """Only [[shares]] ever needs this: it keeps roles in sync (N7)."""
+        shares = '\n[[shares]]\nalbums = ["Holiday snaps"]\nwith = ["Sam"]\n'
+        with StubImmich(assets(), people=PEOPLE, users=USERS, page_size=2) as stub:
+            hand_made = stub.add_album("Holiday snaps", [fake_id(1)])
+            with self.fixture(stub, shares) as fx:
+                config, state = fx.load()
+                run_once(fx.client, config, state)
+            stub.missing_permissions = {"albumUser.update"}
+            editor_shares = shares + 'role = "editor"\n'
+            with self.fixture(stub, editor_shares) as fx:
+                config, state = fx.load()
+                reports = run_once(fx.client, config, state)
+        self.assertTrue(reports[-1].ok)
+        self.assertEqual(reports[-1].shared, 0)
+        self.assertIn("albumUser.update", " ".join(reports[-1].warnings))
+        self.assertEqual(stub.shared_with(hand_made), {SAM_ID: "viewer"})
+
     def test_a_rule_without_accounts_is_refused(self):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
@@ -325,7 +349,7 @@ class HandMadeAlbumTests(unittest.TestCase):
 
 class ProblemTests(unittest.TestCase):
     def test_an_unknown_account_warns_and_the_album_still_fills(self):
-        body = SHARED_ALBUM.replace('["Sam"]', '["Nobody"]')
+        body = SHARED_ALBUM.replace('"Sam"', '"Nobody"')
         with StubImmich(assets(), people=PEOPLE, users=USERS, page_size=2) as stub:
             with Fixture({"alex": body}, stub) as fx:
                 config, state = fx.load()
@@ -371,20 +395,6 @@ class ProblemTests(unittest.TestCase):
         self.assertEqual(report.shared, 0)
         self.assertIn("albumUser.create", " ".join(report.warnings))
         self.assertEqual(stub.shared_with(album_of(stub)), {})
-
-    def test_a_key_without_album_user_update_still_fills_and_warns(self):
-        with StubImmich(assets(), people=PEOPLE, users=USERS, page_size=2) as stub:
-            with Fixture({"alex": SHARED_ALBUM}, stub) as fx:
-                config, state = fx.load()
-                run_once(fx.client, config, state)
-            stub.missing_permissions = {"albumUser.update"}
-            with Fixture({"alex": as_editor(SHARED_ALBUM)}, stub) as fx:
-                config, state = fx.load()
-                reports = run_once(fx.client, config, state)
-        self.assertTrue(reports[0].ok)
-        self.assertEqual(reports[0].shared, 0)
-        self.assertIn("albumUser.update", " ".join(reports[0].warnings))
-        self.assertEqual(stub.shared_with(album_of(stub)), {SAM_ID: "viewer"})
 
 
 if __name__ == "__main__":

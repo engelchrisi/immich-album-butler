@@ -122,6 +122,20 @@ class MatchRule:
 
 
 @dataclass(frozen=True)
+class AlbumShare:
+    """One account this album is shared with, and the role it starts at.
+
+    The role is only what a *new* share is granted with -- once an account
+    has access, later runs never correct its role again (unlike `[[shares]]`,
+    which keeps every account's role in sync on every run; see
+    `Butler._sharing` in runtime.py).
+    """
+
+    account: str
+    role: str = immich_module.VIEWER
+
+
+@dataclass(frozen=True)
 class Album:
     """One album rule, as read from one `[albums.<slug>]` table."""
 
@@ -138,8 +152,7 @@ class Album:
     # Other accounts on the same server that should see this album, named the
     # way a human names them -- an account name or an e-mail address, resolved
     # at run time, never a UUID.
-    share_with: tuple[str, ...] = ()
-    share_role: str = immich_module.VIEWER
+    share_with: tuple[AlbumShare, ...] = ()
     # N29: keep at most this many assets of each calendar year (None = no cap),
     # and how to choose which -- see PICK_MODES and picker.py.
     pics_per_year: int | None = None
@@ -489,13 +502,12 @@ def _load_album(slug: str, data: object, settings: Settings,
 
     match = _load_match(data.get("match", {}), groups)
     cover = _load_cover(data.get("cover"), match)
-    share_with = _load_share_with(data.get("share_with", data.get("share-with")))
-    share_role = _load_share_role(data.get("share_role", data.get("share-role")))
+    share_with = _load_album_shares(data.get("share"))
     pics_per_year, pick = _load_pick(data, schedule)
 
     return Album(slug=slug, name=name, match=match, schedule=schedule,
                  schedule_inherited=inherited, enabled=enabled,
-                 cover=cover, share_with=share_with, share_role=share_role,
+                 cover=cover, share_with=share_with,
                  pics_per_year=pics_per_year, pick=pick)
 
 
@@ -529,23 +541,25 @@ def _load_pick(data: dict, schedule: Schedule) -> tuple[int | None, str]:
 
 
 def _load_share_with(value: object) -> tuple[str, ...]:
-    """Validate `share_with`: the accounts this album should be visible to.
+    """Validate a list of account names or e-mail addresses.
 
-    Whether such an account exists is not decided here -- that needs the
-    server, and a name that no longer resolves must be a warning on one album
-    rather than a config file that refuses to load and stops every album.
+    Used by `[[shares]]` (top-level rules with one role for every account and
+    album they name) for both its `albums` and `with` keys. Whether such an
+    account or album exists is not decided here -- that needs the server, and
+    a name that no longer resolves must be a warning on one rule rather than a
+    config file that refuses to load and stops every album.
     """
     if value is None:
         return ()
     if isinstance(value, str):
         value = [value]
     if not isinstance(value, list):
-        raise ConfigError("share_with must be a list of account names or "
-                          'e-mail addresses, for example ["sam"]')
+        raise ConfigError("must be a list of names or e-mail addresses, "
+                          'for example ["sam"]')
     names: list[str] = []
     for entry in value:
         if not isinstance(entry, str) or not entry.strip():
-            raise ConfigError("share_with entries must be non-empty strings")
+            raise ConfigError("entries must be non-empty strings")
         name = entry.strip()
         if not any(name.casefold() == seen.casefold() for seen in names):
             names.append(name)
@@ -558,9 +572,47 @@ def _load_share_role(value: object) -> str:
     role = str(value).strip().lower()
     if role not in immich_module.SHARE_ROLES:
         raise ConfigError(
-            f"share_role must be one of "
+            f"role must be one of "
             f"{', '.join(immich_module.SHARE_ROLES)}, got {value!r}")
     return role
+
+
+def _load_album_shares(value: object) -> tuple[AlbumShare, ...]:
+    """Validate `[[albums.<slug>.share]]`: who this album is visible to.
+
+    Whether such an account exists is not decided here -- that needs the
+    server, and a name that no longer resolves must be a warning on one album
+    rather than a config file that refuses to load and stops every album.
+    Two entries naming the same account is refused rather than silently
+    picking one: with a role on each entry, the two could genuinely disagree.
+    """
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ConfigError(
+            "share must be a list of tables, for example "
+            '[[albums.<slug>.share]]\\naccount = "sam"')
+    shares: list[AlbumShare] = []
+    for entry in value:
+        if not isinstance(entry, dict):
+            raise ConfigError(
+                "each share must be a table: [[albums.<slug>.share]] with "
+                "an 'account' key")
+        account = entry.get("account")
+        if not isinstance(account, str) or not account.strip():
+            raise ConfigError("share.account must be a non-empty string")
+        account = account.strip()
+        if any(account.casefold() == seen.account.casefold() for seen in shares):
+            raise ConfigError(f"account {account!r} is shared with more than "
+                              "once in this album")
+        role = entry.get("role")
+        role = immich_module.VIEWER if role is None else str(role).strip().lower()
+        if role not in immich_module.SHARE_ROLES:
+            raise ConfigError(
+                f"share.role must be one of "
+                f"{', '.join(immich_module.SHARE_ROLES)}, got {entry.get('role')!r}")
+        shares.append(AlbumShare(account=account, role=role))
+    return tuple(shares)
 
 
 def _load_cover(value: object, match: MatchRule) -> str:
@@ -792,11 +844,6 @@ def dump_album(album: Album) -> str:
     if album.pick != "all":
         lines.append(f'pick    = "{album.pick}"'
                      f"   # which of each year's matches to keep\n")
-    if album.shares:
-        lines.append(f"share_with = {_toml_list(album.share_with)}"
-                     f"   # other accounts that may see this album\n")
-        lines.append(f'share_role = "{album.share_role}"'
-                     f"   # {_describe_role(album.share_role)}\n")
     if album.schedule_inherited:
         lines.append(f"# auto-update-schedule = \"{album.schedule}\"   "
                      f"# inherited from the global default\n")
@@ -834,6 +881,12 @@ def dump_album(album: Album) -> str:
     if match.has_places or match.has_dates:
         lines.append(f"  include_unlocated = {str(match.include_unlocated).lower()}"
                      f"   # photos in the window that carry no GPS\n")
+
+    for share in album.share_with:
+        lines.append(f"\n  [[albums.{_toml_key(album.slug)}.share]]\n")
+        lines.append(f"  account = {_toml_str(share.account)}\n")
+        lines.append(f"  role    = {_toml_str(share.role)}"
+                     f"   # {_describe_role(share.role)}\n")
     return "".join(lines)
 
 

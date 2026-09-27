@@ -23,7 +23,7 @@ const state = {
 function emptyDraft() {
   return {
     slug: "", name: "", enabled: true, schedule: "inherit",
-    cover: "auto", share_with: [], share_role: "viewer",
+    cover: "auto", share_with: [],   // [{ account, role }]
     pics_per_year: null, pick: "all",
     match: {
       from: null, to: null, countries: [], states: [], cities: [],
@@ -138,8 +138,8 @@ function renderAlbums() {
         `${album.schedule}${album.schedule_inherited ? " (inherited)" : ""}`,
         album.pics_per_year ? ` · ${album.pics_per_year}/year (${album.pick})` : "",
         album.cover && album.cover !== "auto" ? ` · cover: ${album.cover}` : "",
-        (album.share_with || []).length
-          ? ` · shared with ${album.share_with.join(", ")}` : ""),
+        (album.shares || []).length
+          ? ` · shared with ${album.shares.map(s => s.account).join(", ")}` : ""),
       album.last_error
         ? el("div", { class: "warn bad" }, album.last_error)
         : el("div", { class: "muted" },
@@ -204,8 +204,7 @@ function editAlbum(album) {
   state.draft = {
     slug: album.slug, name: album.name, enabled: album.enabled,
     cover: album.cover || "auto",
-    share_with: [...(album.share_with || [])],
-    share_role: album.share_role || "viewer",
+    share_with: (album.shares || []).map(s => ({ ...s })),
     pics_per_year: album.pics_per_year ?? null, pick: album.pick || "all",
     schedule: album.schedule_inherited ? "inherit" : album.schedule,
     match: { ...album.match },
@@ -225,14 +224,15 @@ function fillForm() {
   $("recur-on").value = draft.match.on || "";
   $("recur-offset").value = draft.match.offset_days || "";
   $("recur-since").value = draft.match.since_year ?? "";
-  $("pics-per-year").value = draft.pics_per_year ?? "";
   $("pick").value = draft.pick || "all";
+  fillPicsPerYear();
   updateWhenExclusivity();
-  $("enabled").checked = draft.enabled;
   fillCover(draft.cover || "auto");
-  fillSharing(draft.share_with || [], draft.share_role || "viewer");
-  $("schedule").value = [...$("schedule").options].some(o => o.value === draft.schedule)
-    ? draft.schedule : "inherit";
+  fillSharing();
+  $("schedule").value = !draft.enabled
+    ? "none"
+    : [...$("schedule").options].some(o => o.value === draft.schedule)
+      ? draft.schedule : "inherit";
   $("delete-config").hidden = !state.saved.some(a => a.slug === draft.slug);
   renderChosenPeople();
   renderChosenPlaces();
@@ -282,25 +282,34 @@ function bindDraft() {
     state.draft.pics_per_year = e.target.value ? parseInt(e.target.value, 10) : null;
     refreshPreview();
   };
-  $("pick").onchange = (e) => { state.draft.pick = e.target.value; refreshPreview(); };
-  $("enabled").onchange = (e) => { state.draft.enabled = e.target.checked; };
+  $("pick").onchange = (e) => {
+    state.draft.pick = e.target.value;
+    if (e.target.value === "all") state.draft.pics_per_year = null;
+    fillPicsPerYear();
+    refreshPreview();
+  };
   $("schedule").onchange = (e) => {
-    state.draft.schedule = e.target.value;
+    const value = e.target.value;
+    if (value === "none") {
+      state.draft.enabled = false;
+    } else {
+      state.draft.enabled = true;
+      state.draft.schedule = value;
+    }
     refreshPreview();
   };
   $("cover").onchange = () => { readCover(); refreshPreview(); };
   $("cover-name").oninput = debounce(() => { readCover(); refreshPreview(); }, 350);
-  $("share-with").onchange = () => { readSharing(); refreshPreview(); };
-  // A plain click toggles an account, so one can be taken off the list again
-  // without knowing about Ctrl-click.
-  $("share-with").onmousedown = (event) => {
-    if (!(event.target instanceof HTMLOptionElement)) return;
-    event.preventDefault();
-    event.target.selected = !event.target.selected;
-    $("share-with").focus();
-    $("share-with").dispatchEvent(new Event("change"));
-  };
-  $("share-role").onchange = () => { readSharing(); refreshPreview(); };
+  $("share-search").onchange = (e) => { addShare(e.target.value); e.target.value = ""; };
+}
+
+/* Pick = "all" always ignores pics_per_year (picker.py), so the field is
+ * blanked and disabled rather than showing a number that has no effect. */
+function fillPicsPerYear() {
+  const { draft } = state;
+  const capped = draft.pick !== "all";
+  $("pics-per-year").disabled = !capped;
+  $("pics-per-year").value = capped ? (draft.pics_per_year ?? "") : "";
 }
 
 /* -- builder: sharing ---------------------------------------------------
@@ -318,7 +327,7 @@ async function loadAccounts() {
     state.accounts = [];
     state.accountsNote = "the account list could not be read";
   }
-  fillSharing(state.draft.share_with || [], state.draft.share_role || "viewer");
+  fillSharing();
 }
 
 /* The user's own Immich albums that no rule keeps yet, offered as album names:
@@ -332,36 +341,45 @@ async function loadImmichAlbums() {
   $("album-name-hint").hidden = !albums.length;
 }
 
-function fillSharing(chosen, role) {
-  const box = $("share-with");
-  const wanted = new Set(chosen.map(name => name.toLowerCase()));
+function fillSharing() {
+  const shared = new Set(state.draft.share_with.map(s => s.account.toLowerCase()));
+  $("share-accounts").replaceChildren(
+    ...(state.accounts || [])
+      .filter(a => !shared.has((a.name || a.email || "").toLowerCase()))
+      .map(a => el("option", { value: a.name || a.email })));
+  $("share-note").textContent = state.accountsNote || "";
+
+  const box = $("share-list");
   box.replaceChildren();
-  for (const account of state.accounts || []) {
-    const label = account.name || account.email;
-    const option = el("option", { value: label }, label);
-    option.selected = wanted.has(label.toLowerCase()) ||
-                      wanted.has((account.email || "").toLowerCase());
-    box.append(option);
-  }
-  // A name in the rule that no longer answers to an account is kept and shown,
-  // rather than quietly dropped on the next save.
-  for (const name of chosen) {
-    if (![...box.options].some(o => o.selected && o.value === name)) {
-      const option = el("option", { value: name }, `${name} (unknown)`);
-      option.selected = true;
-      box.append(option);
-    }
-  }
-  $("share-role").value = role;
-  $("share-role-row").hidden = chosen.length === 0;
-  if (state.accountsNote) $("share-note").textContent = state.accountsNote;
+  state.draft.share_with.forEach((share, index) => {
+    const role = el("select", {},
+      el("option", { value: "viewer" }, "Viewer — can view all assets"),
+      el("option", { value: "editor" }, "Editor — can view, upload and delete assets"));
+    role.value = share.role;
+    role.onchange = (e) => {
+      state.draft.share_with[index].role = e.target.value;
+      refreshPreview();
+    };
+    const remove = el("span", { class: "x", title: "remove" }, "×");
+    remove.onclick = () => {
+      state.draft.share_with.splice(index, 1);
+      fillSharing();
+      refreshPreview();
+    };
+    box.append(el("div", { class: "share-row" },
+      el("span", { class: "account" }, share.account), role, remove));
+  });
 }
 
-function readSharing() {
-  const chosen = [...$("share-with").selectedOptions].map(o => o.value);
-  state.draft.share_with = chosen;
-  state.draft.share_role = $("share-role").value;
-  $("share-role-row").hidden = chosen.length === 0;
+/* Adding the same account twice would just be confusing -- the picker already
+ * hides an account once it's shared, but a hand-typed name is kept too. */
+function addShare(name) {
+  name = name.trim();
+  if (!name) return;
+  if (state.draft.share_with.some(s => s.account.toLowerCase() === name.toLowerCase())) return;
+  state.draft.share_with.push({ account: name, role: "viewer" });
+  fillSharing();
+  refreshPreview();
 }
 
 /* The cover is one value in the config but two controls here: a list of rules
@@ -620,9 +638,9 @@ const refreshPreview = debounce(async () => {
     children.push(el("div", { class: "muted" },
       `${data.to_share} account(s) would gain access to this album`));
   }
-  $("next-run").textContent = data.next_run
-    ? `next automatic run: ${data.next_run.replace("T", " ")}`
-    : "never runs automatically";
+  $("next-run").textContent = !state.draft.enabled
+    ? "disabled — this album is skipped by every run"
+    : data.next_run ? `next automatic run: ${data.next_run.replace("T", " ")}` : "";
   box.replaceChildren(...children);
 }, 350);
 

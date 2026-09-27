@@ -296,9 +296,13 @@ class Butler:
                  plan: Plan) -> list[tuple[str, str]]:
         """Who still needs access to this album, and in which role.
 
-        Only additions and role changes: an account that already sees the album
-        in the role the rule asks for costs nothing, and an account the rule no
-        longer names keeps its access -- see `ImmichClient.share_album` for why
+        Only additions, in the role the account's `[[.share]]` entry names:
+        once an account has access, later runs never correct its role again,
+        even if the config changes it -- the role is what a *new* share
+        starts at, not a standing correction. (`[[shares]]`, a separate
+        feature for albums with no rule, does keep every account's role in
+        sync -- see `apply_shares`.) An account the rule no longer names
+        keeps its access either way -- see `ImmichClient.share_album` for why
         the butler never takes access away.
 
         A name nobody answers to is a warning on this album, like an unknown
@@ -309,25 +313,26 @@ class Butler:
         try:
             accounts = self.users()
         except ImmichError as exc:
-            plan.warnings.append(_share_problem(exc, album.share_with))
+            plan.warnings.append(
+                _share_problem(exc, [share.account for share in album.share_with]))
             return []
 
         grants: list[tuple[str, str]] = []
         for wanted in album.share_with:
-            matches = [user for user in accounts if user.answers_to(wanted)]
+            matches = [user for user in accounts if user.answers_to(wanted.account)]
             if not matches:
                 plan.warnings.append(
-                    f"not shared with {wanted!r}: no account of that name or "
-                    f"address on this server")
+                    f"not shared with {wanted.account!r}: no account of that "
+                    f"name or address on this server")
                 continue
             if len(matches) > 1:
                 plan.warnings.append(
-                    f"not shared with {wanted!r}: {len(matches)} accounts "
-                    f"answer to it; use the e-mail address instead")
+                    f"not shared with {wanted.account!r}: {len(matches)} "
+                    f"accounts answer to it; use the e-mail address instead")
                 continue
             user = matches[0]
-            if current.get(user.id) != album.share_role:
-                grants.append((user.id, album.share_role))
+            if user.id not in current:
+                grants.append((user.id, wanted.role))
         return grants
 
     def _cover(self, album: Album, result, current: str | None,
