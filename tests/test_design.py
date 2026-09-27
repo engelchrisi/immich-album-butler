@@ -261,11 +261,12 @@ class RecurringAndRotateSaveTests(DesignTestCase):
         self.assertEqual(row["match"]["offset_days"], 1)
         self.assertEqual(row["match"]["since_year"], 2005)
 
-    def test_rotate_without_mirror_is_refused(self):
-        with self.assertRaises(ApiError):
-            self.api.save_album({"name": "Bad", "pick": "rotate",
-                                 "pics_per_year": 5,
-                                 "match": {"people": ["Alex"]}})
+    def test_a_cap_implies_mirror(self):
+        # No sync given, yet a capped album comes back mirrored.
+        self.api.save_album({"name": "Capped", "pick": "random",
+                             "pics_per_year": 5, "match": {"people": ["Alex"]}})
+        row = [a for a in self.api.albums()["albums"] if a["name"] == "Capped"][0]
+        self.assertEqual(row["sync"], "mirror")
 
 
 class SaveTests(DesignTestCase):

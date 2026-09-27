@@ -132,6 +132,8 @@ enabled = true
 #               newest one if several show them all -- for a group album, the
 #               picture with the whole family in it
 #   "newest" / "oldest"    the ends of the album
+#   "favorite"  a favourited picture (newest of them); if none are favourited,
+#               Immich's own choice is left alone
 #   anything else          the original file name of one of the album's own
 #                          pictures, e.g. "IMG_0042.jpg"
 #
@@ -203,8 +205,9 @@ cover   = "IMG_0042.jpg"
 #   "rotate" prefers photos not shown recently, so successive runs work through
 #            the whole set instead of repeating one sample
 #
-# "rotate" and "random" need sync = "mirror" (so last week's picks can be
-# removed) and an automatic schedule. The rotation remembers its place in
+# A per-year cap means removing the surplus, so a capped album mirrors
+# automatically -- the loader sets sync = "mirror" for you, no need to write it.
+# "rotate" also needs an automatic schedule. The rotation remembers its place in
 # state.json, not here. A rotating album re-adds members every run, so keep the
 # cadence at a day or more.
 [albums.alex-birthday]

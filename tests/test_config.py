@@ -424,9 +424,15 @@ class RecurringAndRotateTests(unittest.TestCase):
         self.assertIn("offset_days", self._err(
             'name = "X"\n[match]\non = "05-17"\noffset_days = 200\n'))
 
-    def test_rotate_needs_mirror(self):
-        self.assertIn("mirror", self._err(
-            'name = "X"\npick = "rotate"\npics_per_year = 5\n[match]\non = "05-17"\n'))
+    def test_a_cap_implies_mirror_without_asking(self):
+        # pick = "random" + pics_per_year already says "hold 5, replace them",
+        # so the loader sets sync = "mirror" instead of refusing.
+        with ConfigDir(albums={"x":
+                'name = "X"\npick = "random"\npics_per_year = 5\n'
+                'auto-update-schedule = "daily 03:30"\n[match]\npeople = ["Alex"]\n'}) as d:
+            config = cfg.load(d.path)
+        self.assertEqual(config.errors, [])
+        self.assertTrue(config.albums[0].mirrors)
 
     def test_rotate_needs_pics_per_year(self):
         self.assertIn("pics_per_year", self._err(
@@ -434,12 +440,8 @@ class RecurringAndRotateTests(unittest.TestCase):
 
     def test_rotate_needs_a_non_manual_schedule(self):
         self.assertIn("manual", self._err(
-            'name = "X"\nsync = "mirror"\npick = "rotate"\npics_per_year = 5\n'
+            'name = "X"\npick = "rotate"\npics_per_year = 5\n'
             'auto-update-schedule = "manual"\n[match]\non = "05-17"\n'))
-
-    def test_random_also_needs_mirror(self):
-        self.assertIn("mirror", self._err(
-            'name = "X"\npick = "random"\npics_per_year = 5\n[match]\npeople = ["Alex"]\n'))
 
     def test_best_needs_pics_per_year_but_not_mirror(self):
         with ConfigDir(albums={"x":

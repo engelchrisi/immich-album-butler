@@ -351,7 +351,7 @@ function readSharing() {
 
 /* The cover is one value in the config but two controls here: a list of rules
    plus, for "a picture I name", the file name itself. */
-const COVER_RULES = ["auto", "everyone", "newest", "oldest"];
+const COVER_RULES = ["auto", "everyone", "newest", "oldest", "favorite"];
 
 function fillCover(cover) {
   const named = !COVER_RULES.includes(cover);

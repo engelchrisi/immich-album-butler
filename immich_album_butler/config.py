@@ -501,7 +501,9 @@ def _load_album(slug: str, data: object, settings: Settings,
     cover = _load_cover(data.get("cover"), match)
     share_with = _load_share_with(data.get("share_with", data.get("share-with")))
     share_role = _load_share_role(data.get("share_role", data.get("share-role")))
-    pics_per_year, pick = _load_pick(data, sync, schedule)
+    pics_per_year, pick = _load_pick(data, schedule)
+    if caps(pics_per_year, pick):
+        sync = "mirror"     # a per-year cap means removing the surplus
 
     return Album(slug=slug, name=name, match=match, schedule=schedule,
                  schedule_inherited=inherited, enabled=enabled, sync=sync,
@@ -509,8 +511,13 @@ def _load_album(slug: str, data: object, settings: Settings,
                  pics_per_year=pics_per_year, pick=pick)
 
 
-def _load_pick(data: dict, sync: str, schedule: Schedule) -> tuple[int | None, str]:
-    """Read `pics_per_year` / `pick` (N29), each refusal naming its reason."""
+def _load_pick(data: dict, schedule: Schedule) -> tuple[int | None, str]:
+    """Read `pics_per_year` / `pick` (N29), each refusal naming its reason.
+
+    A cap *is* removal -- keeping five per year means dropping the rest -- so a
+    capping pick implies `sync = "mirror"` (materialised by the caller) rather
+    than making the reader set it too.
+    """
     pick = str(data.get("pick", "all")).lower()
     if pick not in PICK_MODES:
         raise ConfigError(f"pick must be one of {', '.join(PICK_MODES)}, "
@@ -528,13 +535,15 @@ def _load_pick(data: dict, sync: str, schedule: Schedule) -> tuple[int | None, s
 
     if pick != "all" and pics is None:
         raise ConfigError(f"pick = {pick!r} needs pics_per_year")
-    if pick in ("rotate", "random") and sync != "mirror":
-        raise ConfigError(f"pick = {pick!r} needs sync = \"mirror\": nothing "
-                          f"would ever be removed otherwise")
     if pick == "rotate" and not schedule.automatic:
         raise ConfigError('pick = "rotate" needs an automatic schedule, not '
                           '"manual" -- a rotation nobody runs')
     return pics, pick
+
+
+def caps(pics_per_year: int | None, pick: str) -> bool:
+    """Whether an album holds only a subset per year, so it must remove the rest."""
+    return pics_per_year is not None and pick != "all"
 
 
 def _load_share_with(value: object) -> tuple[str, ...]:

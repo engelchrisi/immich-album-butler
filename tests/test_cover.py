@@ -50,6 +50,15 @@ class ChoosingTests(unittest.TestCase):
         self.assertIn("holiday.jpg", str(caught.exception))
         self.assertIn("everyone", str(caught.exception))
 
+    def test_favorite_picks_the_newest_favourite(self):
+        from dataclasses import replace
+        assets = [replace(asset(1, 2019), is_favorite=True),
+                  replace(asset(2, 2021), is_favorite=True), asset(3, 2020)]
+        self.assertEqual(cover.choose("favorite", assets), fake_id(2))
+
+    def test_favorite_without_any_leaves_immich_choice(self):
+        self.assertIsNone(cover.choose("favorite", self.assets))
+
     def test_a_video_is_not_chosen_while_a_picture_exists(self):
         library = [asset(1, 2019), asset(9, 2024, kind="VIDEO")]
         self.assertEqual(cover.choose("newest", library), fake_id(1))

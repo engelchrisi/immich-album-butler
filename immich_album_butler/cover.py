@@ -21,8 +21,9 @@ AUTO = "auto"
 EVERYONE = "everyone"
 NEWEST = "newest"
 OLDEST = "oldest"
+FAVORITE = "favorite"
 
-RULES = (AUTO, EVERYONE, NEWEST, OLDEST)
+RULES = (AUTO, EVERYONE, NEWEST, OLDEST, FAVORITE)
 
 _EPOCH = dt.datetime.min
 
@@ -41,6 +42,8 @@ def describe(spec: str) -> str:
         return "the newest picture in the album"
     if spec == OLDEST:
         return "the oldest picture in the album"
+    if spec == FAVORITE:
+        return "a favourited picture, else Immich's own choice"
     return f"the picture named {spec!r}"
 
 
@@ -65,6 +68,10 @@ def choose(spec: str, assets: list[Asset],
         return _by_time(pictures, newest=False).id
     if spec == EVERYONE:
         return _everyone(pictures, by_person or {}).id
+    if spec == FAVORITE:
+        favourites = [a for a in pictures if a.is_favorite]
+        # No favourite among the matches: leave Immich's own choice alone.
+        return _by_time(favourites, newest=True).id if favourites else None
     return _named(pictures, spec).id
 
 

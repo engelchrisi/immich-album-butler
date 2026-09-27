@@ -155,6 +155,7 @@ no UUIDs:
 | `"auto"` (default) | whatever Immich picked — the butler does not touch it |
 | `"everyone"` | the matching picture showing **most of the album's people**, and where several show them all, the newest |
 | `"newest"` / `"oldest"` | the ends of the album |
+| `"favorite"` | a favourited picture (newest of them); if none are favourited, Immich's own choice is left alone |
 | anything else | the original file name of one of the album's own pictures |
 
 `"everyone"` is what a group album wants: one picture with the whole family in
@@ -199,11 +200,13 @@ from `since_year` to now (ten years back if omitted), and composes with
 | `random` | a fresh sample each run — repeats between weeks are possible |
 | `rotate` | prefers photos not shown recently, working through the whole set before repeating |
 
-`rotate` and `random` need `sync = "mirror"` (last week's picks must be
-removable); `rotate` also needs an automatic schedule. The rotation remembers
-its place in `state.json`, never in the config, and is advanced only by a real
-run — a `--dry-run` shows exactly what the run would pick and writes nothing.
-Each run re-adds album members, so keep the cadence to a day or more.
+A `pics_per_year` cap **is** removal — keeping five means dropping the rest — so
+any capped album mirrors automatically; the loader sets `sync = "mirror"` for
+you, you do not write it. `rotate` additionally needs an automatic schedule. The
+rotation remembers its place in `state.json`, never in the config, and is
+advanced only by a real run — a `--dry-run` shows exactly what the run would pick
+and writes nothing. Each run re-adds album members, so keep the cadence to a day
+or more.
 
 ### Publishing the album kind
 

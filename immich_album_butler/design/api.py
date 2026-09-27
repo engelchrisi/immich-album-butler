@@ -814,9 +814,11 @@ class DesignApi:
 
         share_with, share_role = self._sharing_from(payload)
         try:
-            pics_per_year, pick = config_module._load_pick(payload, sync, schedule)
+            pics_per_year, pick = config_module._load_pick(payload, schedule)
         except config_module.ConfigError as exc:
             raise ApiError(str(exc)) from None
+        if config_module.caps(pics_per_year, pick):
+            sync = "mirror"     # a per-year cap means removing the surplus
 
         return Album(slug=slug, name=name or "(draft)", match=rule,
                      schedule=schedule, schedule_inherited=inherited,
