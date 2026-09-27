@@ -773,6 +773,13 @@ async function addNow(group) {
 
 $("dup-rescan").onclick = () => loadDuplicates(true);
 
+const DUP_FILTER = "dup-filter";
+try { $("dup-filter").value = localStorage.getItem(DUP_FILTER) || ""; } catch {}
+$("dup-filter").oninput = () => {
+  try { localStorage.setItem(DUP_FILTER, $("dup-filter").value); } catch {}
+  renderDupList();
+};
+
 const RULE_MANAGED = "rule-managed: removed copies return on the next run";
 
 function showDupPage(page) {
@@ -794,12 +801,28 @@ async function loadDuplicates(rescan = false) {
   const total = data.albums.reduce((sum, a) => sum + a.removable, 0);
   note.replaceChildren(`${data.albums.length} albums · ${total} duplicates · scanned `,
     el("b", {}, (data.scanned_at || "").replace("T", " ").slice(0, 16)));
+  state.dups = data.albums;
+  renderDupList();
+}
+
+function renderDupList() {
+  const list = $("dup-list");
   list.replaceChildren();
-  if (!data.albums.length) {
+  const albums = state.dups || [];
+  if (!albums.length) {
     list.append(el("div", { class: "muted" }, "No album contains duplicates."));
     return;
   }
-  for (const album of data.albums) {
+  const needle = $("dup-filter").value.trim().toLocaleLowerCase();
+  const shown = needle
+    ? albums.filter(a => a.name.toLocaleLowerCase().includes(needle))
+    : albums;
+  if (!shown.length) {
+    list.append(el("div", { class: "muted" },
+      `No albums match “${$("dup-filter").value.trim()}”.`));
+    return;
+  }
+  for (const album of shown) {
     const card = el("div", { class: "card dup-album-card", title: "Open" },
       el("img", { class: "dup-cover", src: `/api/thumb/${album.cover}`,
                   loading: "lazy", alt: "" }),
@@ -1067,6 +1090,13 @@ document.addEventListener("keydown", (event) => {
 
 $("rescan").onclick = () => loadTrips(true);
 
+const TRIP_FILTER = "trip-filter";
+try { $("trip-filter").value = localStorage.getItem(TRIP_FILTER) || ""; } catch {}
+$("trip-filter").oninput = () => {
+  try { localStorage.setItem(TRIP_FILTER, $("trip-filter").value); } catch {}
+  renderTripList();
+};
+
 /* Hiding trips that already have an album is a per-viewer preference. */
 const ONLY_NEW = "butler.trips.onlyNew";
 try { $("only-new").checked = localStorage.getItem(ONLY_NEW) !== "0"; } catch {}
@@ -1105,6 +1135,14 @@ async function loadTrips(rescan) {
   } else {
     note.textContent = "no scan yet";
   }
+  state.trips = data;
+  renderTripList();
+}
+
+function renderTripList() {
+  const list = $("trip-list");
+  const data = state.trips;
+  if (!data) return;
   list.replaceChildren();
 
   if (!data.trips.length) {
@@ -1114,7 +1152,17 @@ async function loadTrips(rescan) {
     return;
   }
 
-  for (const trip of data.trips) {
+  const needle = $("trip-filter").value.trim().toLocaleLowerCase();
+  const shown = needle
+    ? data.trips.filter(t => t.name.toLocaleLowerCase().includes(needle))
+    : data.trips;
+  if (!shown.length) {
+    list.append(el("div", { class: "muted" },
+      `No trips match “${$("trip-filter").value.trim()}”.`));
+    return;
+  }
+
+  for (const trip of shown) {
     const strips = editStrips({ ...trip, matched: trip.total });
     const known = !!trip.in_album;
     const card = el("div", {

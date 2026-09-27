@@ -206,6 +206,9 @@
     <span class="divider"></span>
     <label class="toggle">
       <input id="only-new" type="checkbox" checked> Only trips without an album</label>
+    <span class="divider"></span>
+    <input id="trip-filter" type="search" placeholder="Filter trips by name…"
+           autocomplete="off">
   </div>
   <div class="muted scan-note" id="scan-note"></div>
   <div id="trip-list" class="cards"></div>
@@ -215,6 +218,9 @@
 <section id="duplicates" class="panel">
   <div class="toolbar">
     <button id="dup-rescan">Rescan</button>
+    <span class="divider"></span>
+    <input id="dup-filter" type="search" placeholder="Filter albums by name…"
+           autocomplete="off">
   </div>
   <div class="muted scan-note" id="dup-note"></div>
   <div id="dup-list" class="cards"></div>
