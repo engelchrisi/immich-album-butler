@@ -172,7 +172,9 @@ button.link { background: none; border: none; color: var(--accent); padding: 0.2
 .card h3 { margin: 0 0 0.35rem; font-size: 1rem; }
 .card .meta { color: var(--muted); font-size: 0.85rem; }
 .card .bar { margin: 0.7rem 0 0; }
-.card.album { display: flow-root; }
+.card.album { display: flex; flex-direction: column; height: 100%; }
+.card.album .bar { margin-top: auto; }
+.album-top { display: flow-root; }
 .album-cover { float: left; width: 88px; height: 88px; margin: 0 0.8rem 0.4rem 0;
                object-fit: cover; border-radius: 6px; background: var(--thumb-bg); }
 .card.no-album { border-left: 4px solid var(--accent); }

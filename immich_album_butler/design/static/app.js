@@ -100,6 +100,19 @@ async function loadAlbums() {
   for (const problem of data.errors || []) banner(problem);
 }
 
+function filteredAlbums() {
+  const albums = state.saved || [];
+  const needle = ($("album-filter").value || "").trim().toLowerCase();
+  return needle
+    ? albums.filter(a => (a.immich_name || a.name).toLowerCase().includes(needle))
+    : albums;
+}
+
+function formatLastRun(iso) {
+  if (!iso) return "";
+  try { return new Date(iso).toLocaleString(); } catch { return iso; }
+}
+
 function renderAlbums() {
   const list = $("album-list");
   list.replaceChildren();
@@ -111,10 +124,7 @@ function renderAlbums() {
     return;
   }
 
-  const needle = ($("album-filter").value || "").trim().toLowerCase();
-  const shown = needle
-    ? albums.filter(a => (a.immich_name || a.name).toLowerCase().includes(needle))
-    : albums;
+  const shown = filteredAlbums();
 
   if (!shown.length) {
     list.append(el("div", { class: "muted" },
@@ -128,22 +138,25 @@ function renderAlbums() {
       : album.enabled ? "" : el("span", { class: "pill off" }, "disabled");
 
     const card = el("div", { class: "card album" },
-      album.cover_asset
-        ? el("img", { class: "album-cover", src: `/api/thumb/${album.cover_asset}`,
-                      loading: "lazy", alt: "" })
-        : el("div", { class: "album-cover none" }),
-      el("h3", {}, album.immich_name || album.name, " ", status),
-      el("div", { class: "meta" },
-        describe(album.match), el("br"),
-        `${album.schedule}${album.schedule_inherited ? " (inherited)" : ""}`,
-        album.pics_per_year ? ` · ${album.pics_per_year}/year (${album.pick})` : "",
-        album.cover && album.cover !== "auto" ? ` · cover: ${album.cover}` : "",
-        (album.shares || []).length
-          ? ` · shared with ${album.shares.map(s => s.account).join(", ")}` : ""),
-      album.last_error
-        ? el("div", { class: "warn bad" }, album.last_error)
-        : el("div", { class: "muted" },
-             album.last_result || "not run yet"),
+      el("div", { class: "album-top" },
+        album.cover_asset
+          ? el("img", { class: "album-cover", src: `/api/thumb/${album.cover_asset}`,
+                        loading: "lazy", alt: "" })
+          : el("div", { class: "album-cover none" }),
+        el("h3", {}, album.immich_name || album.name, " ", status),
+        el("div", { class: "meta" },
+          describe(album.match), el("br"),
+          `${album.schedule}${album.schedule_inherited ? " (inherited)" : ""}`,
+          album.pics_per_year ? ` · ${album.pics_per_year}/year (${album.pick})` : "",
+          album.cover && album.cover !== "auto" ? ` · cover: ${album.cover}` : "",
+          (album.shares || []).length
+            ? ` · shared with ${album.shares.map(s => s.account).join(", ")}` : ""),
+        album.last_error
+          ? el("div", { class: "warn bad" }, album.last_error)
+          : el("div", { class: "muted" },
+               album.last_result || "not run yet"),
+        el("div", { class: "muted" },
+          album.last_run ? `last run: ${formatLastRun(album.last_run)}` : "never run")),
       el("div", { class: "bar" },
         button("Edit", () => editAlbum(album)),
         button("Dry run", () => runAlbum(album.slug, true)),
@@ -183,6 +196,22 @@ async function runAlbum(slug, dryRun) {
   } catch (error) { banner(error.message); }
 }
 
+async function runAllAlbums() {
+  const albums = filteredAlbums();
+  if (!albums.length) return banner("No albums to run.");
+
+  let ok = 0, failed = 0;
+  for (const album of albums) {
+    banner(`Running ${ok + failed + 1}/${albums.length}: ${album.immich_name || album.name}…`, true);
+    try {
+      const result = await post("/api/run", { slug: album.slug, dry_run: false });
+      if (result.error) failed++; else ok++;
+    } catch { failed++; }
+  }
+  banner(`Ran ${ok} album${ok === 1 ? "" : "s"}` + (failed ? `, ${failed} failed` : ""), true);
+  loadAlbums();
+}
+
 const ALBUM_FILTER = "album-filter";
 try { $("album-filter").value = localStorage.getItem(ALBUM_FILTER) || ""; } catch {}
 $("album-filter").oninput = () => {
@@ -190,6 +219,7 @@ $("album-filter").oninput = () => {
   renderAlbums();
 };
 $("new-album").onclick = () => { state.draft = emptyDraft(); fillForm(); showTab("builder"); };
+$("run-all-albums").onclick = runAllAlbums;
 
 $("new-person-album").onclick = () => {
   state.draft = emptyDraft();
