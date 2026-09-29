@@ -198,6 +198,11 @@ class PreviewTests(DesignTestCase):
                               "match": {"from": "2019-07-31", "to": "2019-07-01"}})
         self.assertIn("after", str(caught.exception))
 
+    def test_a_plain_date_range_is_not_read_as_an_empty_recurring_window(self):
+        """The Builder always sends on_from/on_to, "" when unused -- not absent."""
+        payload = {**ITALY, "match": {**ITALY["match"], "on_from": "", "on_to": ""}}
+        self.assertEqual(self.api.preview(payload)["matched"], 3)
+
     def test_an_unknown_person_is_reported_not_silently_dropped(self):
         with self.assertRaises(ApiError) as caught:
             self.api.preview({"name": "Who?", "match": {"people": ["Nobody"]}})
@@ -397,11 +402,11 @@ class SaveTests(DesignTestCase):
         album["albumThumbnailAssetId"] = fake_id(1)
         self.assertEqual(self.api.albums()["albums"][0]["cover_asset"], fake_id(1))
 
-    def test_a_manual_album_is_typed_fixed_and_a_scheduled_one_typed_schedule(self):
+    def test_a_manual_album_is_typed_manual_and_a_scheduled_one_typed_scheduled(self):
         self.api.save_album({**ITALY, "auto-update-schedule": "manual"})
-        self.assertEqual(self.api.albums()["albums"][0]["type"], "fixed")
+        self.assertEqual(self.api.albums()["albums"][0]["type"], "manual")
         self.api.save_album({**ITALY, "auto-update-schedule": "weekly sun 04:00"})
-        self.assertEqual(self.api.albums()["albums"][0]["type"], "updating")
+        self.assertEqual(self.api.albums()["albums"][0]["type"], "scheduled")
 
     def test_an_immich_album_with_no_rule_is_listed_as_normal(self):
         self.stub.add_album("Holiday import", [fake_id(1)])
@@ -418,7 +423,7 @@ class SaveTests(DesignTestCase):
         self.api.save_album({**ITALY, "auto-update-schedule": "manual"})
         rows = self.api.albums()["albums"]
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["type"], "fixed")
+        self.assertEqual(rows[0]["type"], "manual")
 
 
 class ExistingAlbumTests(DesignTestCase):

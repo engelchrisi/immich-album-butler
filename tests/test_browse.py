@@ -57,7 +57,7 @@ class AlbumListTests(BrowseTestCase):
         albums = self.api.albums()["albums"]
         self.assertEqual([a["name"] for a in albums], ["Italy 2019", "Spain"])
         self.assertEqual([a["asset_count"] for a in albums], [3, 2])
-        self.assertEqual([a["type"] for a in albums], ["fixed", "normal"])
+        self.assertEqual([a["type"] for a in albums], ["manual", "normal"])
         self.assertFalse(any(a["shared"] for a in albums))
 
     def test_albums_of_another_owner_are_marked_shared(self):

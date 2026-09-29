@@ -42,7 +42,7 @@ Priority: P1 = needed, P2 = wanted.
 | N19 | A Duplicates tab; removal from an album only on explicit confirmation and never the last copy | P2 |
 | N20 | Login is mandatory: scrypt hashes in `config.toml`, produced by `passwd`; no default account; without a user it binds to loopback only | P1 |
 | N21 | Design mode stops itself after `design_idle_minutes` idle | P2 |
-| N33 | The Albums page lists every Immich album this key can see, not only the ones with a rule: each is tagged "fixed", "updating" or "normal Immich album", and can be filtered by that kind as well as by name. A "View" button opens that album's media grouped by folder, date, camera, place or kind (replacing the separate Browse tab); an unmanaged album offers "New rule…" instead of Edit/Run, seeded with its existing name so saving extends it rather than duplicating it | P2 |
+| N33 | The Albums page lists every Immich album this key can see, not only the ones with a rule: each is tagged "manual", "scheduled" or "normal Immich album", and can be filtered by that kind as well as by name. A "View" button opens that album's media grouped by folder, date, camera, place or kind (replacing the separate Browse tab); an unmanaged album offers "New rule…" instead of Edit/Run, seeded with its existing name so saving extends it rather than duplicating it | P2 |
 | N34 | A cover picture can be set by hand, from the album viewer, for any album this key can see — butler-managed or not; it needs `album.update` like every other cover write and sticks until a rule next overrides it | P2 |
 
 ## 2. Safety

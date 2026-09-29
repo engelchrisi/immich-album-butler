@@ -34,12 +34,13 @@
     <span class="muted" id="albums-note"></span>
     <input id="album-filter" type="search" placeholder="Filter albums by name…"
            autocomplete="off">
-    <select id="album-type-filter">
-      <option value="">every kind of album</option>
-      <option value="fixed">fixed</option>
-      <option value="updating">updating</option>
-      <option value="normal">normal Immich album</option>
-    </select>
+    <label class="field inline"><span>Type</span>
+      <select id="album-type-filter">
+        <option value="">All</option>
+        <option value="manual">manual</option>
+        <option value="scheduled">scheduled</option>
+        <option value="normal">normal Immich album</option>
+      </select></label>
   </div>
   <div id="album-list" class="cards"></div>
 </section>

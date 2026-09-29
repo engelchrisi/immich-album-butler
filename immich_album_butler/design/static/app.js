@@ -134,7 +134,7 @@ function renderAlbums() {
     return;
   }
 
-  const TYPE_LABEL = { fixed: "fixed", updating: "updating",
+  const TYPE_LABEL = { manual: "manual", scheduled: "scheduled",
                        normal: "normal Immich album" };
 
   for (const album of shown) {

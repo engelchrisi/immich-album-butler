@@ -722,13 +722,13 @@ def _load_recurring(data: dict) -> tuple[str, str, int | None]:
     """Read `on_from` / `on_to` / `since_year` (N28), each refusal naming why."""
     raw_from = data.get("on_from")
     raw_to = data.get("on_to")
-    if raw_from is None:
-        if raw_to is not None:
+    if not raw_from:
+        if raw_to:
             raise ConfigError("[match] on_to needs an on_from")
         on_from = on_to = ""
     else:
         on_from = _parse_mmdd(raw_from, "on_from")
-        on_to = _parse_mmdd(raw_to, "on_to") if raw_to is not None else on_from
+        on_to = _parse_mmdd(raw_to, "on_to") if raw_to else on_from
         span = _recur_span_days(on_from, on_to)
         if span > MAX_RECUR_SPAN_DAYS:
             raise ConfigError(f"[match] on_from/on_to must span at most "
