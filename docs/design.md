@@ -80,3 +80,12 @@ installs `immich-album-butler.service` (daemon) and `immich-album-butler-design.
   assets per year, which shows in Immich's activity feed and can leave a caching client (e.g.
   PyImmichFrame's pool cache) behind for its refresh interval — so a weekly cadence is right and a
   sub-day one is warned about.
+
+## 7. Versioning
+
+`__version__` is read at import time from `pyproject.toml`'s `[project] version` field via
+`tomllib`, not hardcoded. `deploy/install.sh` copies `pyproject.toml` into `$PREFIX` alongside
+the package so this file exists at runtime; if missing or unreadable, `__version__` falls back
+to `"0.0.0+unknown"` rather than crashing. It feeds the design-mode HTTP `Server` header and a
+label next to "Album Butler" on the design UI's main heading. See CLAUDE.md for the bump/branch
+convention.

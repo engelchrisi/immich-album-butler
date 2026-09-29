@@ -30,6 +30,7 @@ fi
 install -d -m 755 "$PREFIX"
 rm -rf "$PREFIX/immich_album_butler"
 cp -r "$source_dir/immich_album_butler" "$PREFIX/"
+cp "$source_dir/pyproject.toml" "$PREFIX/"
 find "$PREFIX" -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
 
 # Group-writable: design mode saves config.toml by writing a temp file next to

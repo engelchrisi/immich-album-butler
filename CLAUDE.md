@@ -79,3 +79,20 @@ explicitly instructed for that specific step.
 
 Read `docs/requirements.md` before changing behaviour and `docs/design.md` before adding a module;
 update them in the same change. Shared conventions for all my repos: `~/.claude/CLAUDE.md`.
+
+## Versioning
+
+Semantic versioning, `major.minor.patch`, with `pyproject.toml`'s `version` field as the
+single source of truth — no separate `__version__` constant to hand-sync. `immich_album_butler/__init__.py`
+reads it at runtime via `tomllib` (never `importlib.metadata`: nothing here is pip-installed,
+so no distribution metadata exists on a deployed host); `deploy/install.sh` copies
+`pyproject.toml` into `$PREFIX` so it's present there too.
+
+Bump rules, by convention only (no CI check):
+- **Patch** — a fix, no behaviour change for anyone relying on the current contract.
+- **Minor** — a backward-compatible feature or addition.
+- **Major** — a breaking change. Also cut a `release/N` branch (e.g. `release/1`) from the
+  commit right before the breaking change lands on `main`, so the old major can still get
+  critical fixes later.
+
+Update `changes.md` with every bump.

@@ -29,6 +29,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+from .. import __version__
 from ..config import DesignUser
 from ..immich import ImmichError
 from .api import ASSET_ID, ApiError, DesignApi
@@ -121,7 +122,7 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
-        server_version = "immich-album-butler"
+        server_version = f"immich-album-butler/{__version__}"
         sys_version = ""
 
         def log_message(self, fmt: str, *args) -> None:
@@ -418,7 +419,10 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
             path = (STATIC / name).resolve()
             if not path.is_file() or STATIC.resolve() not in path.parents:
                 return self._error(404, f"no file {name}")
-            self._send(200, path.read_bytes(),
+            data = path.read_bytes()
+            if name == "index.html":
+                data = data.replace(b"%VERSION%", __version__.encode())
+            self._send(200, data,
                        CONTENT_TYPES.get(path.suffix, "application/octet-stream"),
                        {"Cache-Control": "no-cache"})
 
