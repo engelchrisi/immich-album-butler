@@ -378,9 +378,9 @@ python3 -m immich_album_butler passwd alex      # asks twice, prints a block; ne
 - **Albums** — every Immich album this key can see, not only the butler's:
   each is tagged "manual", "scheduled" or "normal Immich album", filterable by
   that kind as well as by name. **View** opens an
-  album's media (see Browsing an album, below) for any of the three kinds; an
-  unmanaged one offers **New rule…** instead of Edit/Run, seeded with its
-  existing name so saving extends it rather than making a second copy.
+  album's media (see Browsing an album, below) for any of the three kinds;
+  an unmanaged one only offers View, since giving a new rule the same name
+  as an existing album already extends it instead of making a second copy.
 - **Builder** — Who / When / Where pickers over one live preview: how many
   assets match, how many are already in the album, a thumbnail strip, and when
   the album would next run. The preview is produced by the same code a real run

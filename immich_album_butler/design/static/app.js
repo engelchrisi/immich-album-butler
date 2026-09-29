@@ -157,10 +157,10 @@ function renderAlbums() {
     const bar = managed
       ? [button("Edit", () => editAlbum(album)),
          button("Run now", () => runAlbum(album.slug, false))]
-      : [button("New rule…", () => newRuleFor(album))];
+      : [];
     bar.push(button("View", () => openAlbumView(album.album_id)));
 
-    const card = el("div", { class: "card album" },
+    const card = el("div", { class: `card album type-${album.type}` },
       el("div", { class: "album-top" },
         album.cover_asset
           ? el("img", { class: "album-cover", src: `/api/thumb/${album.cover_asset}`,
@@ -241,15 +241,6 @@ $("album-type-filter").onchange = () => {
 };
 $("new-album").onclick = () => { state.draft = emptyDraft(); fillForm(); showTab("builder"); };
 $("run-all-albums").onclick = runAllAlbums;
-
-function newRuleFor(album) {
-  state.draft = emptyDraft();
-  state.draft.name = album.immich_name || album.name;
-  fillForm();
-  showTab("builder");
-  banner(`Pick what belongs in “${state.draft.name}” -- saving extends the ` +
-         "existing Immich album, it never makes a second copy.", true);
-}
 
 $("new-person-album").onclick = () => {
   state.draft = emptyDraft();
