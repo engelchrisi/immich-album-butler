@@ -78,6 +78,9 @@ class MatchRule:
     people: tuple[str, ...] = ()
     people_mode: str = "any"
     include_unlocated: bool = True
+    # Skip videos and keep only images -- most player integrations (e.g. a
+    # photo frame) cannot show a video anyway.
+    include_videos: bool = True
     # Exact bounds within the first and the last day, to the second, when the
     # album starts or ends at a picked photo rather than at midnight. Wall
     # clock, like Asset.taken_at; the dates above still hold the days.
@@ -665,6 +668,10 @@ def _load_match(data: object, groups: dict[str, tuple[str, ...]]) -> MatchRule:
     if not isinstance(include_unlocated, bool):
         raise ConfigError("[match] include_unlocated must be true or false")
 
+    include_videos = data.get("include_videos", True)
+    if not isinstance(include_videos, bool):
+        raise ConfigError("[match] include_videos must be true or false")
+
     on_from, on_to, since_year = _load_recurring(data)
     if on_from and (from_date or to_date):
         raise ConfigError("[match] 'on_from'/'on_to' is a recurring window and "
@@ -678,6 +685,7 @@ def _load_match(data: object, groups: dict[str, tuple[str, ...]]) -> MatchRule:
         states=_as_names(data.get("states"), "states"),
         cities=_as_names(data.get("cities"), "cities"),
         people=people, people_mode=mode, include_unlocated=include_unlocated,
+        include_videos=include_videos,
         on_from=on_from, on_to=on_to, since_year=since_year)
 
     if rule.is_empty:
@@ -901,6 +909,9 @@ def dump_album(album: Album) -> str:
     if match.has_places or match.has_dates:
         lines.append(f"  include_unlocated = {str(match.include_unlocated).lower()}"
                      f"   # photos in the window that carry no GPS\n")
+    if not match.include_videos:
+        lines.append(f"  include_videos = {str(match.include_videos).lower()}"
+                     f"   # skip videos, keep only images\n")
 
     for share in album.share_with:
         lines.append(f"\n  [[albums.{_toml_key(album.slug)}.share]]\n")

@@ -133,6 +133,11 @@ class BrokenAlbumTests(unittest.TestCase):
         self.assertEqual(config.albums, [])
         self.assertIn("whole library", config.errors[0])
 
+    def test_include_videos_must_be_a_bool(self):
+        with ConfigDir(albums={"x": 'name = "X"\n[match]\npeople = ["Alex"]\n'
+                                    'include_videos = "no"\n'}) as d:
+            self.assertIn("include_videos", cfg.load(d.path).errors[0])
+
     def test_a_backwards_date_range_is_refused(self):
         with ConfigDir(albums={"backwards": 'name = "B"\n[match]\n'
                                             "from = 2019-07-21\nto = 2019-07-01\n"}) as d:
@@ -220,6 +225,21 @@ class WritingTests(unittest.TestCase):
         self.assertEqual(original.match.to_time, dt.datetime(2019, 7, 21, 18, 5, 44))
         self.assertIn("from = 2019-07-01T14:32:10", text)
         self.assertEqual(original.match, reloaded.match)
+
+    def test_include_videos_false_round_trips_and_defaults_true(self):
+        with ConfigDir(albums={"photos-of-alex": PERSON_ALBUM}) as d:
+            default = cfg.load(d.path).albums[0]
+        self.assertTrue(default.match.include_videos)
+
+        album = PERSON_ALBUM + "include_videos = false\n"
+        with ConfigDir(albums={"photos-of-alex": album}) as d:
+            config = cfg.load(d.path)
+            self.assertFalse(config.albums[0].match.include_videos)
+            cfg.write_config(d.path, config)
+            text = (d.path / "config.toml").read_text(encoding="utf-8")
+            reloaded = cfg.load(d.path).albums[0]
+        self.assertIn("include_videos = false", text)
+        self.assertFalse(reloaded.match.include_videos)
 
     def test_a_person_album_round_trips_without_a_sync_key(self):
         with ConfigDir(albums={"photos-of-alex": PERSON_ALBUM}) as d:

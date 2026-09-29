@@ -76,6 +76,17 @@ sudo systemctl start immich-album-butler-design
 It shuts itself down after `design_idle_minutes` (default 30) of nobody using it.
 It listens on the LAN, so make a login first — see [Starting it](#starting-it).
 
+### Updating a running install
+
+```sh
+git pull
+sudo deploy/install.sh
+sudo systemctl restart immich-album-butler immich-album-butler-design
+```
+
+Re-running the installer keeps `config.toml`, the env file and both state files; it only
+refreshes the package and the units.
+
 ## Configuration
 
 **One file**, `/etc/immich-album-butler/config.toml` by default: the global

@@ -8,6 +8,8 @@
 /scan.json
 *.env
 !deploy/*.env.example
+# local deploy tooling -- not for the public repo
+/scripts/deploy.sh
 
 # --- Python ------------------------------------------------------------------
 __pycache__/

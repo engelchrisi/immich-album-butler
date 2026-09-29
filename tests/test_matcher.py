@@ -132,6 +132,23 @@ class MatchAgainstStubTests(unittest.TestCase):
             found = match(self.client(stub), rule, PEOPLE)
         self.assertEqual(set(found.ids), {fake_id(2)})
 
+    def test_videos_are_kept_by_default(self):
+        assets = self.assets + [make_asset(5, when=day(2019, 7, 5), kind="VIDEO",
+                                           people=(ALEX,))]
+        rule = MatchRule(from_date=dt.date(2019, 7, 1), to_date=dt.date(2019, 7, 31))
+        with StubImmich(assets, page_size=2) as stub:
+            found = match(self.client(stub), rule, PEOPLE)
+        self.assertIn(fake_id(5), found.ids)
+
+    def test_include_videos_false_drops_videos_only(self):
+        assets = self.assets + [make_asset(5, when=day(2019, 7, 5), kind="VIDEO",
+                                           people=(ALEX,))]
+        rule = MatchRule(from_date=dt.date(2019, 7, 1), to_date=dt.date(2019, 7, 31),
+                         include_videos=False)
+        with StubImmich(assets, page_size=2) as stub:
+            found = match(self.client(stub), rule, PEOPLE)
+        self.assertEqual(set(found.ids), {fake_id(1), fake_id(2), fake_id(3)})
+
     def test_a_person_album_is_just_the_people_criterion(self):
         rule = MatchRule(people=("Alex",))
         with StubImmich(self.assets, page_size=2) as stub:

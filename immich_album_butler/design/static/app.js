@@ -28,6 +28,7 @@ function emptyDraft() {
     match: {
       from: null, to: null, countries: [], states: [], cities: [],
       people: [], people_mode: "any", include_unlocated: true,
+      include_videos: true,
       on_from: "", on_to: "", since_year: null,
     },
   };
@@ -252,6 +253,7 @@ function fillForm() {
   fillDates();
   $("people-mode").value = draft.match.people_mode;
   $("include-unlocated").checked = draft.match.include_unlocated;
+  $("include-videos").checked = draft.match.include_videos;
   $("recur-since").value = draft.match.since_year ?? "";
   $("pick").value = draft.pick || "all";
   fillPicsPerYear();
@@ -388,6 +390,7 @@ function bindDraft() {
   $("date-to").onchange = applyDateFields;
   $("people-mode").onchange = (e) => set("people_mode", e.target.value);
   $("include-unlocated").onchange = (e) => set("include_unlocated", e.target.checked);
+  $("include-videos").onchange = (e) => set("include_videos", e.target.checked);
   $("recur-since").onchange = (e) =>
     set("since_year", e.target.value ? parseInt(e.target.value, 10) : null);
   $("pics-per-year").onchange = (e) => {

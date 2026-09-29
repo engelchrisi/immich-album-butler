@@ -138,7 +138,8 @@ def match(client: ImmichClient, rule: MatchRule,
     # The server narrows by whole days; a picked first or last photo cuts the
     # first and the last day to the second, which is done here.
     kept = [a for a in assets.values()
-            if place_matches(a, rule) and rule.time_allows(a.taken_at)]
+            if place_matches(a, rule) and rule.time_allows(a.taken_at)
+            and (rule.include_videos or not a.is_video)]
     dropped = len(assets) - len(kept)
     if dropped and rule.has_places:
         log.debug("%d asset(s) fell outside the rule's places", dropped)

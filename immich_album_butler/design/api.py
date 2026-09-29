@@ -892,6 +892,7 @@ class DesignApi:
             people=_as_names(data.get("people")),
             people_mode=str(data.get("people_mode") or "any").lower(),
             include_unlocated=bool(data.get("include_unlocated", True)),
+            include_videos=bool(data.get("include_videos", True)),
             on_from=on_from, on_to=on_to, since_year=since_year)
 
         if rule.people_mode not in config_module.PEOPLE_MODES:
@@ -926,6 +927,7 @@ def rule_to_json(rule: MatchRule) -> dict:
         "cities": list(rule.cities), "people": list(rule.people),
         "people_mode": rule.people_mode,
         "include_unlocated": rule.include_unlocated,
+        "include_videos": rule.include_videos,
         "on_from": rule.on_from, "on_to": rule.on_to,
         "since_year": rule.since_year,
     }

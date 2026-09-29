@@ -216,6 +216,21 @@ class PreviewTests(DesignTestCase):
         self.assertIn("daily HH:MM", str(caught.exception))
 
 
+class VideoFilterTests(DesignTestCase):
+    """N32: a rule can keep images only."""
+
+    assets = LIBRARY + [make_asset(5, when=day(2019, 7, 4), lat=41.9, lon=12.5,
+                                   city="Rome", country="Italy", kind="VIDEO",
+                                   people=(ALEX,))]
+
+    def test_videos_are_matched_by_default(self):
+        self.assertEqual(self.api.preview(ITALY)["matched"], 4)
+
+    def test_include_videos_false_drops_only_the_video(self):
+        payload = {**ITALY, "match": {**ITALY["match"], "include_videos": False}}
+        self.assertEqual(self.api.preview(payload)["matched"], 3)
+
+
 class FirstLastPhotoTests(DesignTestCase):
     """Picking an album's first or last photo in the builder preview."""
 

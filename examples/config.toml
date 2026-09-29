@@ -161,6 +161,10 @@ cover   = "everyone"
   # usually the majority of a holiday's pictures.
   include_unlocated = true
 
+  # Videos are included by default; uncheck this to keep only images, e.g. for
+  # a photo frame that cannot play them.
+  # include_videos = false
+
 # Other accounts on this server that should see this album, named the way you
 # name a person: an account name, or an e-mail address. One block per account,
 # each with its own role. The role is only what a NEW share is granted with --
