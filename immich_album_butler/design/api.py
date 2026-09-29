@@ -25,6 +25,7 @@ import random
 import re
 import time
 from pathlib import Path
+from typing import Callable
 
 from .. import analyze as analyze_module
 from .. import config as config_module
@@ -132,9 +133,13 @@ class ApiError(Exception):
 
 
 class DesignApi:
-    def __init__(self, client: ImmichClient, config_dir: Path,
-                 state_dir: Path) -> None:
-        self.client = client
+    def __init__(self, client: ImmichClient | Callable[[object], ImmichClient],
+                 config_dir: Path, state_dir: Path) -> None:
+        # Tests pass a fixed fake client; real use passes a factory (`_client`
+        # in cli.py) so the client is rebuilt when `[immich]` server changes.
+        self._client_factory = client if callable(client) else (lambda _config: client)
+        self._client: ImmichClient | None = None
+        self._client_server: str | None = None
         self.config_dir = Path(config_dir)
         self.state_dir = Path(state_dir)
         self._scan: list[trips_module.Point] | None = None
@@ -143,6 +148,26 @@ class DesignApi:
         self._albums_read: float = 0.0
         self._dups: list[dict] | None = None
         self._dups_at: dt.datetime | None = None
+        # Set by design/server.py once the bind-watcher exists, so the UI's
+        # "Reload config" button has something to trigger.
+        self.reload_trigger: Callable[[], None] | None = None
+
+    @property
+    def client(self) -> ImmichClient:
+        """Rebuilt whenever `[immich]` server changes, so an edited server URL
+        takes effect without restarting design mode."""
+        server = self.config().settings.server
+        if self._client is None or self._client_server != server:
+            self._client = self._client_factory(self.config())
+            self._client_server = server
+        return self._client
+
+    def request_reload(self) -> dict:
+        """Manual trigger: apply any pending restart-requiring change now,
+        instead of waiting out the debounce."""
+        if self.reload_trigger:
+            self.reload_trigger()
+        return {"status": "requested"}
 
     # -- one picture, for the hover card ----------------------------------
 

@@ -123,8 +123,7 @@ def _check(args) -> int:
 
 def _run(args) -> int:
     if not args.once and not args.album:
-        config = config_module.load(args.config_dir)
-        run_forever(_client(config), args.config_dir, args.state_dir)
+        run_forever(_client, args.config_dir, args.state_dir)
         return 0
 
     config = config_module.load(args.config_dir)
@@ -200,10 +199,13 @@ def _design(args) -> int:
     for problem in config.errors:
         logging.error("config: %s", problem)
 
-    api = DesignApi(_client(config), args.config_dir, args.state_dir)
+    api = DesignApi(_client, args.config_dir, args.state_dir)
     serve(api, host=args.host, port=args.port or config.settings.design_port,
           users=list(config.settings.design_users),
-          idle_minutes=config.settings.design_idle_minutes)
+          idle_minutes=config.settings.design_idle_minutes,
+          # An explicit --port always wins, so only watch config.toml's
+          # design_port for a live restart when nothing overrode it.
+          watch_port=args.port is None)
     return 0
 
 

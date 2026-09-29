@@ -15,6 +15,7 @@ import logging
 import random
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -789,12 +790,14 @@ def run_once(client: ImmichClient, config: Config, state: State,
     return reports
 
 
-def run_forever(client: ImmichClient, config_dir: Path, state_dir: Path,
+def run_forever(client_factory: Callable[[Config], ImmichClient],
+                config_dir: Path, state_dir: Path,
                 tick: int = TICK_SECONDS) -> None:
     """The daemon: re-read the config each tick, run whatever is due.
 
     Re-reading every tick is what lets design mode save a rule and have it take
-    effect without anyone restarting a service.
+    effect without anyone restarting a service -- including a changed Immich
+    server URL or API key, since `client_factory` runs fresh each tick too.
     """
     log.info("runtime mode started; watching %s", config_dir)
     shares_checked: float | None = None
@@ -805,6 +808,7 @@ def run_forever(client: ImmichClient, config_dir: Path, state_dir: Path,
             for problem in config.errors:
                 log.error("config: %s", problem)
             state = State.load(state_dir)
+            client = client_factory(config)
             butler = Butler(client, config, state)
             tz = timezone_of(config)
             now = _now(tz)

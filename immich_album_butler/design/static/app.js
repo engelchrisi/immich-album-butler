@@ -1440,6 +1440,12 @@ async function start() {
     $("whoami-name").textContent = who.protected ? `signed in as ${who.user}` : "";
     $("sign-out").hidden = !who.protected;
   } catch (_) { /* the redirect above already handled it */ }
+  $("reload-config").addEventListener("click", async () => {
+    try {
+      await post("/api/reload-config", {});
+      banner("Config reload requested.", true);
+    } catch (error) { banner(error.message); }
+  });
   await loadAlbums();
   try { state.groups = (await api("/api/groups")).groups; }
   catch (error) { banner(error.message); }

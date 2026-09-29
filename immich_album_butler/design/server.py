@@ -32,6 +32,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from .. import __version__
 from ..config import DesignUser
 from ..immich import ImmichError
+from ..reload import BindWatcher
 from .api import ASSET_ID, ApiError, DesignApi
 from .auth import SESSION_COOKIE, Sessions, Throttle, User, Users
 
@@ -76,7 +77,8 @@ class Idle:
 
 
 def serve(api: DesignApi, host: str = "127.0.0.1", port: int = 8081,
-          users: list[DesignUser] | None = None, idle_minutes: int = 30) -> None:
+          users: list[DesignUser] | None = None, idle_minutes: int = 30,
+          watch_port: bool = True) -> None:
     """Run design mode until it is stopped or goes idle."""
     accounts = Users([User(u.name, u.password_hash) for u in (users or [])])
     if not accounts and host not in LOOPBACK:
@@ -96,6 +98,18 @@ def serve(api: DesignApi, host: str = "127.0.0.1", port: int = 8081,
     server.daemon_threads = True
     threading.Thread(target=idle.watch, args=(server,), daemon=True).start()
 
+    stop = threading.Event()
+    if watch_port:
+        # design_port lives in config.toml but is baked into the socket above
+        # once bound, so a later edit needs a restart -- debounced, or applied
+        # right away by the UI's "Reload config" button (api.reload_trigger).
+        watcher = BindWatcher(port)
+        threading.Thread(
+            target=watcher.watch,
+            args=(lambda: api.config().settings.design_port, stop),
+            daemon=True).start()
+        api.reload_trigger = watcher.force
+
     shown = host if host not in ("0.0.0.0", "::") else _best_address()
     log.info("design mode on http://%s:%d  (config %s, %d login(s))",
              shown, port, api.config_dir, len(accounts))
@@ -104,6 +118,7 @@ def serve(api: DesignApi, host: str = "127.0.0.1", port: int = 8081,
     except KeyboardInterrupt:
         pass
     finally:
+        stop.set()
         server.server_close()
 
 
@@ -386,6 +401,8 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
                 return api.remove_duplicates(body)
             if path == "/api/cover":
                 return api.set_cover(body)
+            if path == "/api/reload-config":
+                return api.request_reload()
             raise ApiError(f"no route {path}", status=404)
 
         def _call(self, work) -> None:
