@@ -178,6 +178,9 @@ button.link { background: none; border: none; color: var(--accent); padding: 0.2
 .album-cover { float: left; width: 88px; height: 88px; margin: 0 0.8rem 0.4rem 0;
                object-fit: cover; border-radius: 6px; background: var(--thumb-bg); }
 .card.no-album { border-left: 4px solid var(--accent); }
+.card.album.type-manual { background: color-mix(in srgb, var(--accent) 6%, var(--panel)); }
+.card.album.type-scheduled { background: color-mix(in srgb, var(--good) 6%, var(--panel)); }
+.card.album.type-normal { background: color-mix(in srgb, var(--muted) 8%, var(--panel)); }
 .card .pills { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: -0.1rem 0 0.4rem; }
 .card .pills .pill { white-space: nowrap; }
 .card.has-album { opacity: 0.55; }
