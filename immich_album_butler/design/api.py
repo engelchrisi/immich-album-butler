@@ -286,7 +286,7 @@ class DesignApi:
                 # What Immich calls it: the name plus the fixed/updating suffix.
                 "immich_name": butler.marked_name(album),
                 "album_id": info.id if info else None,
-                "type": "schedule" if album.schedule.automatic else "fixed",
+                "type": "updating" if album.schedule.automatic else "fixed",
                 "cover_asset": info.cover_asset_id if info else None,
                 "asset_count": info.asset_count if info else None,
                 "shared": shared(info),

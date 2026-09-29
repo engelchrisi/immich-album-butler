@@ -376,8 +376,8 @@ python3 -m immich_album_butler passwd alex      # asks twice, prints a block; ne
 ```
 
 - **Albums** — every Immich album this key can see, not only the butler's:
-  each is tagged "AlbButler: fixed", "AlbButler: schedule" or "normal Immich
-  album", filterable by that kind as well as by name. **View** opens an
+  each is tagged "fixed", "updating" or "normal Immich album", filterable by
+  that kind as well as by name. **View** opens an
   album's media (see Browsing an album, below) for any of the three kinds; an
   unmanaged one offers **New rule…** instead of Edit/Run, seeded with its
   existing name so saving extends it rather than making a second copy.

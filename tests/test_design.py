@@ -401,7 +401,7 @@ class SaveTests(DesignTestCase):
         self.api.save_album({**ITALY, "auto-update-schedule": "manual"})
         self.assertEqual(self.api.albums()["albums"][0]["type"], "fixed")
         self.api.save_album({**ITALY, "auto-update-schedule": "weekly sun 04:00"})
-        self.assertEqual(self.api.albums()["albums"][0]["type"], "schedule")
+        self.assertEqual(self.api.albums()["albums"][0]["type"], "updating")
 
     def test_an_immich_album_with_no_rule_is_listed_as_normal(self):
         self.stub.add_album("Holiday import", [fake_id(1)])

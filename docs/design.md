@@ -55,7 +55,7 @@ Login in front of everything. Read: `/api/whoami`, `/api/people`, `/api/places`,
 `/api/cover`.
 
 `/api/albums` lists every Immich album this key can see, not only the ones with a rule: a row's
-`type` is `"fixed"` or `"schedule"` (from `[match]`'s owning album, N33) or `"normal"` (no rule at
+`type` is `"fixed"` or `"updating"` (the album's schedule kind, N33) or `"normal"` (no rule at
 all -- `slug` is `null`, most fields are `null`/empty). The Albums page's "View" button opens
 `/api/browse/album` for any of the three; `/api/cover` writes a chosen asset as an album's cover
 the same way, butler-managed or not (N34).
