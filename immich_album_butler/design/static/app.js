@@ -77,7 +77,6 @@ $("tabs").addEventListener("click", (event) => {
   if (button.dataset.tab === "albums") loadAlbums();
   if (button.dataset.tab === "trips") loadTrips(false);
   if (button.dataset.tab === "duplicates") loadDuplicates();
-  if (button.dataset.tab === "browse" && !browse.albums) loadBrowse();
 });
 
 function showTab(name) {
@@ -102,7 +101,9 @@ async function loadAlbums() {
 }
 
 function filteredAlbums() {
-  const albums = state.saved || [];
+  let albums = state.saved || [];
+  const type = $("album-type-filter").value;
+  if (type) albums = albums.filter(a => a.type === type);
   const needle = ($("album-filter").value || "").trim().toLowerCase();
   return needle
     ? albums.filter(a => (a.immich_name || a.name).toLowerCase().includes(needle))
@@ -133,10 +134,31 @@ function renderAlbums() {
     return;
   }
 
+  const TYPE_LABEL = { fixed: "AlbButler: fixed", schedule: "AlbButler: schedule",
+                       normal: "normal Immich album" };
+
   for (const album of shown) {
+    const managed = album.type !== "normal";
     const status = album.last_error
       ? el("span", { class: "pill err" }, "last run failed")
-      : album.enabled ? "" : el("span", { class: "pill off" }, "disabled");
+      : !managed || album.enabled ? "" : el("span", { class: "pill off" }, "disabled");
+
+    const meta = managed
+      ? [describe(album.match), el("br"),
+         `${album.schedule}${album.schedule_inherited ? " (inherited)" : ""}`,
+         album.pics_per_year ? ` · ${album.pics_per_year}/year (${album.pick})` : "",
+         album.cover && album.cover !== "auto" ? ` · cover: ${album.cover}` : "",
+         (album.shares || []).length
+           ? ` · shared with ${album.shares.map(s => s.account).join(", ")}` : ""]
+      : [album.asset_count == null ? "" :
+         `${album.asset_count} item${album.asset_count === 1 ? "" : "s"}`,
+         album.shared ? " · shared with me" : ""];
+
+    const bar = managed
+      ? [button("Edit", () => editAlbum(album)),
+         button("Run now", () => runAlbum(album.slug, false))]
+      : [button("New rule…", () => newRuleFor(album))];
+    bar.push(button("View", () => openAlbumView(album.album_id)));
 
     const card = el("div", { class: "card album" },
       el("div", { class: "album-top" },
@@ -144,24 +166,15 @@ function renderAlbums() {
           ? el("img", { class: "album-cover", src: `/api/thumb/${album.cover_asset}`,
                         loading: "lazy", alt: "" })
           : el("div", { class: "album-cover none" }),
-        el("h3", {}, album.immich_name || album.name, " ", status),
-        el("div", { class: "meta" },
-          describe(album.match), el("br"),
-          `${album.schedule}${album.schedule_inherited ? " (inherited)" : ""}`,
-          album.pics_per_year ? ` · ${album.pics_per_year}/year (${album.pick})` : "",
-          album.cover && album.cover !== "auto" ? ` · cover: ${album.cover}` : "",
-          (album.shares || []).length
-            ? ` · shared with ${album.shares.map(s => s.account).join(", ")}` : ""),
-        album.last_error
+        el("h3", {}, album.immich_name || album.name, " ",
+           el("span", { class: "pill" }, TYPE_LABEL[album.type] || album.type), " ", status),
+        el("div", { class: "meta" }, ...meta),
+        managed && album.last_error
           ? el("div", { class: "warn bad" }, album.last_error)
-          : el("div", { class: "muted" },
-               album.last_result || "not run yet"),
-        el("div", { class: "muted" },
-          album.last_run ? `last run: ${formatLastRun(album.last_run)}` : "never run")),
-      el("div", { class: "bar" },
-        button("Edit", () => editAlbum(album)),
-        button("Dry run", () => runAlbum(album.slug, true)),
-        button("Run now", () => runAlbum(album.slug, false))));
+          : managed ? el("div", { class: "muted" }, album.last_result || "not run yet") : "",
+        managed ? el("div", { class: "muted" },
+          album.last_run ? `last run: ${formatLastRun(album.last_run)}` : "never run") : ""),
+      el("div", { class: "bar" }, ...bar));
     list.append(card);
   }
 }
@@ -198,7 +211,7 @@ async function runAlbum(slug, dryRun) {
 }
 
 async function runAllAlbums() {
-  const albums = filteredAlbums();
+  const albums = filteredAlbums().filter(a => a.slug);
   if (!albums.length) return banner("No albums to run.");
 
   let ok = 0, failed = 0;
@@ -219,8 +232,24 @@ $("album-filter").oninput = () => {
   try { localStorage.setItem(ALBUM_FILTER, $("album-filter").value); } catch {}
   renderAlbums();
 };
+
+const ALBUM_TYPE_FILTER = "album-type-filter";
+try { $("album-type-filter").value = localStorage.getItem(ALBUM_TYPE_FILTER) || ""; } catch {}
+$("album-type-filter").onchange = () => {
+  try { localStorage.setItem(ALBUM_TYPE_FILTER, $("album-type-filter").value); } catch {}
+  renderAlbums();
+};
 $("new-album").onclick = () => { state.draft = emptyDraft(); fillForm(); showTab("builder"); };
 $("run-all-albums").onclick = runAllAlbums;
+
+function newRuleFor(album) {
+  state.draft = emptyDraft();
+  state.draft.name = album.immich_name || album.name;
+  fillForm();
+  showTab("builder");
+  banner(`Pick what belongs in “${state.draft.name}” -- saving extends the ` +
+         "existing Immich album, it never makes a second copy.", true);
+}
 
 $("new-person-album").onclick = () => {
   state.draft = emptyDraft();
@@ -1009,20 +1038,19 @@ async function openDupAlbum(albumId) {
   }
 }
 
-/* -- browse tab --------------------------------------------------------- */
+/* -- album viewer --------------------------------------------------------- */
 
-/* Every Immich album, the butler's or not, and one album's media grouped by
- * folder, date, camera, place or kind. View only. The server sends the whole
- * album once; regrouping happens here. */
+/* One album's media, grouped by folder, date, camera, place or kind, opened
+ * with the "View" button on an Albums card -- a butler album or a plain
+ * Immich one alike. View only, apart from picking a cover (N-cover). The
+ * server sends the whole album once; regrouping happens here. */
 
-const browse = { albums: null, album: null, order: [] };
+const browse = { album: null, order: [] };
 const BROWSE_GROUP = "butler.browse.groupBy";
 try { $("browse-group").value = localStorage.getItem(BROWSE_GROUP) || "folder"; } catch {}
 if (!$("browse-group").value) $("browse-group").value = "folder";
 
-$("browse-reload").onclick = () => loadBrowse();
-$("browse-back").onclick = () => showBrowsePage("list");
-$("browse-filter").oninput = () => renderBrowseList();
+$("browse-back").onclick = () => showTab("albums");
 $("browse-group").onchange = () => {
   try { localStorage.setItem(BROWSE_GROUP, $("browse-group").value); } catch {}
   renderBrowseAlbum();
@@ -1033,55 +1061,28 @@ function foldGroups(open) {
 $("browse-collapse").onclick = () => foldGroups(false);
 $("browse-expand").onclick = () => foldGroups(true);
 
-function showBrowsePage(page) {
-  $("browse-list-page").hidden = page !== "list";
-  $("browse-album").hidden = page !== "album";
-}
-
-async function loadBrowse() {
-  showBrowsePage("list");
-  $("browse-note").textContent = "";
-  $("browse-list").replaceChildren(el("div", { class: "spin" }, "Loading…"));
-  try { browse.albums = (await api("/api/browse")).albums; }
-  catch (error) { $("browse-list").replaceChildren(); return banner(error.message); }
-  renderBrowseList();
-}
-
-function renderBrowseList() {
-  const list = $("browse-list");
-  const all = browse.albums || [];
-  const needle = $("browse-filter").value.trim().toLocaleLowerCase();
-  const shown = all.filter((a) => !needle || a.name.toLocaleLowerCase().includes(needle));
-  $("browse-note").textContent = `${shown.length} of ${all.length} albums`;
-  list.replaceChildren();
-  for (const album of shown) {
-    const card = el("div", { class: "card dup-album-card", title: "Open" },
-      album.cover ? el("img", { class: "dup-cover", src: `/api/thumb/${album.cover}`,
-                                loading: "lazy", alt: "" })
-                  : el("div", { class: "dup-cover" }),
-      el("div", {},
-        el("h3", {}, album.name),
-        el("div", { class: "meta" },
-          `${album.asset_count} item${album.asset_count === 1 ? "" : "s"}`),
-        album.butler || album.shared
-          ? el("div", { class: "pills" },
-              album.butler ? el("span", { class: "pill on" }, "butler") : "",
-              album.shared ? el("span", { class: "pill" }, "shared with me") : "")
-          : ""));
-    card.onclick = () => openBrowseAlbum(album.album_id);
-    list.append(card);
+async function openAlbumView(albumId) {
+  if (!albumId) return banner("This album has no picture yet.");
+  for (const el of document.querySelectorAll(".tab")) el.classList.remove("active");
+  for (const panel of document.querySelectorAll(".panel")) {
+    panel.classList.toggle("active", panel.id === "browse-album");
   }
-}
-
-async function openBrowseAlbum(albumId) {
-  showBrowsePage("album");
   $("browse-title").textContent = "";
   $("browse-album-note").textContent = "";
   $("browse-groups").replaceChildren(el("div", { class: "spin" }, "Loading…"));
   try { browse.album = await api(`/api/browse/album?id=${encodeURIComponent(albumId)}`); }
-  catch (error) { banner(error.message); return showBrowsePage("list"); }
+  catch (error) { banner(error.message); return showTab("albums"); }
   $("browse-title").textContent = browse.album.name;
   renderBrowseAlbum();
+}
+
+async function setCover(assetId) {
+  const album = browse.album;
+  if (!album) return;
+  try {
+    await post("/api/cover", { album_id: album.album_id, asset_id: assetId });
+    banner(`Cover set for “${album.name}”.`, true);
+  } catch (error) { banner(error.message); }
 }
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July",
@@ -1137,6 +1138,11 @@ function renderBrowseAlbum() {
       const cell = el("div", { class: `browse-cell${asset.kind === "VIDEO" ? " video" : ""}` },
         el("img", { src: `/api/thumb/${asset.id}`, loading: "lazy", alt: "" }));
       cell.onclick = () => openLightbox(index);
+      if (asset.kind !== "VIDEO") {
+        const star = el("button", { class: "cover-pick", title: "Set as album cover" }, "★");
+        star.onclick = (event) => { event.stopPropagation(); setCover(asset.id); };
+        cell.append(star);
+      }
       grid.append(cell);
     }
     if (by === "none") { box.append(grid); continue; }

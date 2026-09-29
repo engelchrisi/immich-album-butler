@@ -397,6 +397,29 @@ class SaveTests(DesignTestCase):
         album["albumThumbnailAssetId"] = fake_id(1)
         self.assertEqual(self.api.albums()["albums"][0]["cover_asset"], fake_id(1))
 
+    def test_a_manual_album_is_typed_fixed_and_a_scheduled_one_typed_schedule(self):
+        self.api.save_album({**ITALY, "auto-update-schedule": "manual"})
+        self.assertEqual(self.api.albums()["albums"][0]["type"], "fixed")
+        self.api.save_album({**ITALY, "auto-update-schedule": "weekly sun 04:00"})
+        self.assertEqual(self.api.albums()["albums"][0]["type"], "schedule")
+
+    def test_an_immich_album_with_no_rule_is_listed_as_normal(self):
+        self.stub.add_album("Holiday import", [fake_id(1)])
+        rows = self.api.albums()["albums"]
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertEqual(row["type"], "normal")
+        self.assertEqual(row["name"], "Holiday import")
+        self.assertIsNone(row["slug"])
+        self.assertEqual(row["asset_count"], 1)
+
+    def test_a_rule_managed_album_is_not_listed_twice(self):
+        self.stub.add_album("Italy 2019", [fake_id(1)])
+        self.api.save_album({**ITALY, "auto-update-schedule": "manual"})
+        rows = self.api.albums()["albums"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["type"], "fixed")
+
 
 class ExistingAlbumTests(DesignTestCase):
     """Extending an Immich album the butler has never kept, e.g. an import."""
@@ -510,6 +533,32 @@ class RunTests(DesignTestCase):
         with self.assertRaises(ApiError) as caught:
             self.api.run({"slug": "never-saved"})
         self.assertEqual(caught.exception.status, 404)
+
+
+class SetCoverTests(DesignTestCase):
+    """The album viewer's "pick a cover by hand" write -- any album, ruled or not."""
+
+    def test_setting_a_cover_by_hand_works_on_a_plain_immich_album(self):
+        album = self.stub.add_album("Holiday import", [fake_id(1), fake_id(2)])
+        self.api.set_cover({"album_id": album["id"], "asset_id": fake_id(2)})
+        self.assertEqual(album["albumThumbnailAssetId"], fake_id(2))
+
+    def test_setting_a_cover_by_hand_works_on_a_butler_album_too(self):
+        self.stub.add_album("Italy 2019", [fake_id(1)])
+        self.api.save_album(ITALY)
+        self.api.run({"slug": "italy-2019"})
+        album = self.stub.album_named("Italy 2019")
+        self.api.set_cover({"album_id": album["id"], "asset_id": fake_id(1)})
+        self.assertEqual(album["albumThumbnailAssetId"], fake_id(1))
+
+    def test_a_cover_asset_not_in_the_album_is_refused(self):
+        album = self.stub.add_album("Holiday import", [fake_id(1)])
+        with self.assertRaises(ApiError):
+            self.api.set_cover({"album_id": album["id"], "asset_id": fake_id(99)})
+
+    def test_a_missing_album_or_asset_id_is_refused(self):
+        with self.assertRaises(ApiError):
+            self.api.set_cover({"album_id": "", "asset_id": fake_id(1)})
 
 
 class AnalyzeTests(DesignTestCase):
@@ -890,6 +939,13 @@ class RoutingTests(ServerTestCase):
         self.assertEqual(self.fetch("/api/preview", method="POST",
                                     body=ITALY)["matched"], 3)
 
+    def test_the_cover_route_sets_an_albums_cover_over_http(self):
+        album = self.stub.add_album("Holiday import", [fake_id(1)])
+        result = self.fetch("/api/cover", method="POST",
+                            body={"album_id": album["id"], "asset_id": fake_id(1)})
+        self.assertTrue(result["ok"])
+        self.assertEqual(album["albumThumbnailAssetId"], fake_id(1))
+
     def test_an_api_error_comes_back_as_json_with_its_status(self):
         with self.assertRaises(urllib.error.HTTPError) as caught:
             self.fetch("/api/preview", method="POST",
@@ -934,9 +990,7 @@ class RoutingTests(ServerTestCase):
         self.assertEqual(details["file_name"], "IMG_0001.jpg")
         self.assertNotIn(API_KEY, json.dumps(details))
 
-    def test_the_browse_tab_is_served_over_http(self):
-        albums = self.fetch("/api/browse")["albums"]
-        self.assertIsInstance(albums, list)
+    def test_one_albums_media_is_served_over_http(self):
         with self.assertRaises(urllib.error.HTTPError) as caught:
             self.fetch("/api/browse/album?id=not/an/id")
         self.assertEqual(caught.exception.code, 400)

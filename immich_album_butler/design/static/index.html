@@ -12,7 +12,6 @@
 <header>
   <h1><img class="logo" src="/favicon.svg" alt="">Album Butler</h1>
   <nav id="tabs">
-    <button class="tab" data-tab="browse">Browse</button>
     <button class="tab active" data-tab="albums">Albums</button>
     <button class="tab" data-tab="builder">Builder</button>
     <button class="tab" data-tab="trips">Trips</button>
@@ -33,6 +32,12 @@
     <button id="new-person-album">New person album</button>
     <button id="run-all-albums">Run all now</button>
     <span class="muted" id="albums-note"></span>
+    <select id="album-type-filter">
+      <option value="">every kind of album</option>
+      <option value="fixed">AlbButler: fixed</option>
+      <option value="schedule">AlbButler: schedule</option>
+      <option value="normal">normal Immich album</option>
+    </select>
     <input id="album-filter" type="search" placeholder="Filter albums by name…"
            autocomplete="off">
   </div>
@@ -240,38 +245,31 @@
 </section>
 
 <!-- ---------------------------------------------------------------- -->
-<section id="browse" class="panel">
-  <div id="browse-list-page">
-    <div class="toolbar">
-      <input id="browse-filter" type="search" placeholder="Filter albums…" autocomplete="off">
-      <button id="browse-reload">Reload</button>
-    </div>
-    <div class="muted scan-note" id="browse-note"></div>
-    <div id="browse-list" class="cards"></div>
+<!-- One album's media, opened with the "View" button on an Albums card;
+     works for a butler album or a plain Immich one alike. -->
+<section id="browse-album" class="panel">
+  <div class="toolbar">
+    <button id="browse-back">← Albums</button>
+    <h3 class="dup-title" id="browse-title"></h3>
+    <label class="field inline"><span>Group by</span>
+      <select id="browse-group">
+        <option value="none">nothing</option>
+        <option value="folder">folder</option>
+        <option value="day">day</option>
+        <option value="month">month</option>
+        <option value="year">year</option>
+        <option value="camera">camera</option>
+        <option value="place">place</option>
+        <option value="kind">photo / video</option>
+      </select></label>
+    <span id="browse-fold" class="fold">
+      <button id="browse-collapse" title="Collapse all groups">▸ Collapse all</button>
+      <button id="browse-expand" title="Expand all groups">▾ Expand all</button>
+    </span>
   </div>
-  <div id="browse-album" hidden>
-    <div class="toolbar">
-      <button id="browse-back">← All albums</button>
-      <h3 class="dup-title" id="browse-title"></h3>
-      <label class="field inline"><span>Group by</span>
-        <select id="browse-group">
-          <option value="none">nothing</option>
-          <option value="folder">folder</option>
-          <option value="day">day</option>
-          <option value="month">month</option>
-          <option value="year">year</option>
-          <option value="camera">camera</option>
-          <option value="place">place</option>
-          <option value="kind">photo / video</option>
-        </select></label>
-      <span id="browse-fold" class="fold">
-        <button id="browse-collapse" title="Collapse all groups">▸ Collapse all</button>
-        <button id="browse-expand" title="Expand all groups">▾ Expand all</button>
-      </span>
-    </div>
-    <div class="muted scan-note" id="browse-album-note"></div>
-    <div id="browse-groups"></div>
-  </div>
+  <div class="muted scan-note" id="browse-album-note"></div>
+  <div class="muted" id="browse-cover-hint">Hover a picture and click ★ to set it as the album cover.</div>
+  <div id="browse-groups"></div>
 </section>
 
 <div id="lightbox" hidden>

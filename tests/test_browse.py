@@ -1,4 +1,5 @@
-"""The Browse tab: any Immich album's media, with what they are grouped by.
+"""Browsing: any Immich album's media, with what they are grouped by, and the
+Albums page listing every album -- butler-managed or not.
 
 Run against the fake Immich copied from PyImmichFrame, over a real socket.
 """
@@ -50,24 +51,26 @@ class BrowseTestCase(unittest.TestCase):
 
 
 class AlbumListTests(BrowseTestCase):
+    """The Albums page: every album this key can see, butler-managed or not."""
+
     def test_every_album_is_listed_not_only_the_butlers(self):
-        albums = self.api.browse_albums()["albums"]
+        albums = self.api.albums()["albums"]
         self.assertEqual([a["name"] for a in albums], ["Italy 2019", "Spain"])
         self.assertEqual([a["asset_count"] for a in albums], [3, 2])
-        self.assertEqual([a["butler"] for a in albums], [True, False])
+        self.assertEqual([a["type"] for a in albums], ["fixed", "normal"])
         self.assertFalse(any(a["shared"] for a in albums))
 
     def test_albums_of_another_owner_are_marked_shared(self):
         other = User(id="00000000-0000-0000-0000-000000000009", name="Sam")
         with mock.patch.object(ImmichClient, "me", return_value=other):
-            albums = self.api.browse_albums()["albums"]
+            albums = self.api.albums()["albums"]
         self.assertTrue(all(a["shared"] for a in albums))
 
-    def test_an_unreachable_immich_is_a_502(self):
+    def test_an_unreachable_immich_still_lists_the_butlers_own_albums(self):
+        """A listing failure for the wider library leaves the ruled albums shown."""
         self.fake.denied.add("/api/albums")
-        with self.assertRaises(ApiError) as caught:
-            self.api.browse_albums()
-        self.assertEqual(caught.exception.status, 502)
+        albums = self.api.albums()["albums"]
+        self.assertEqual([a["name"] for a in albums], ["Italy 2019"])
 
 
 class AlbumPageTests(BrowseTestCase):

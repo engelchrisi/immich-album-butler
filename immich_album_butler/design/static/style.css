@@ -313,9 +313,8 @@ body.login .message {
 .dup-title { margin: 0; font-size: 1rem; flex: 1; }
 .dup-group { padding-bottom: 0.6rem; border-bottom: 1px solid var(--line); }
 
-/* -- the browse tab ------------------------------------------------------ */
+/* -- the album viewer ----------------------------------------------------- */
 
-#browse-filter { min-width: 16rem; height: 2.2rem; }
 #browse-album .toolbar select { height: 2.2rem; }
 div.dup-cover { background: var(--thumb-bg); }
 .browse-group { margin-top: 0.6rem; padding-bottom: 0.6rem;
@@ -331,6 +330,13 @@ div.dup-cover { background: var(--thumb-bg); }
   content: "\25B6"; position: absolute; right: 5px; bottom: 2px;
   color: #fff; font-size: 0.8rem; text-shadow: 0 0 3px rgba(0, 0, 0, 0.8);
 }
+.cover-pick {
+  position: absolute; right: 3px; top: 3px; z-index: 2;
+  width: 1.6rem; height: 1.6rem; padding: 0; line-height: 1.6rem;
+  border: none; border-radius: 4px; background: rgba(20, 30, 45, 0.75);
+  color: #fff; cursor: pointer; opacity: 0; transition: opacity 0.1s;
+}
+.browse-cell:hover .cover-pick, .cover-pick:focus { opacity: 1; }
 
 /* -- the lightbox -------------------------------------------------------- */
 

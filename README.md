@@ -375,6 +375,12 @@ python3 -m immich_album_butler passwd alex      # asks twice, prints a block; ne
 # paste the printed [[design.users]] block into config.toml, then start design mode
 ```
 
+- **Albums** — every Immich album this key can see, not only the butler's:
+  each is tagged "AlbButler: fixed", "AlbButler: schedule" or "normal Immich
+  album", filterable by that kind as well as by name. **View** opens an
+  album's media (see Browsing an album, below) for any of the three kinds; an
+  unmanaged one offers **New rule…** instead of Edit/Run, seeded with its
+  existing name so saving extends it rather than making a second copy.
 - **Builder** — Who / When / Where pickers over one live preview: how many
   assets match, how many are already in the album, a thumbnail strip, and when
   the album would next run. The preview is produced by the same code a real run
@@ -442,15 +448,18 @@ other album. An album a scheduled rule keeps filling (↻) is flagged: its rule
 still matches the removed copies, so the next run adds them back. Needs
 `duplicate.read` and `albumAsset.delete` on the key.
 
-### Browse
+### Browsing an album
 
-The **Browse** tab looks into any Immich album the key can see — the butler's,
-your own hand-made ones, and those shared with you. Opening one shows all its
-media, grouped by folder (where the original file is stored), day, month,
-year, camera, place or photo/video; the choice is remembered in the browser.
-Hovering a thumbnail shows the large picture with its details; clicking opens
-it full-screen, and ←/→ step through the album in the order shown. Browsing is
-view-only: it changes nothing.
+**View** on an Albums card looks into any Immich album the key can see — the
+butler's, your own hand-made ones, and those shared with you. It shows all the
+album's media, grouped by folder (where the original file is stored), day,
+month, year, camera, place or photo/video; the choice is remembered in the
+browser. Hovering a thumbnail shows the large picture with its details;
+clicking opens it full-screen, and ←/→ step through the album in the order
+shown. The only write it offers is the cover: hovering a picture and clicking
+★ sets it as the album's cover (needs `album.update`, like every other cover
+write) — for any album, whether or not the butler has a rule for it. It
+otherwise changes nothing.
 
 ## Development
 

@@ -260,7 +260,17 @@ class DesignApi:
         config = self.config()
         state = State.load(self.state_dir)
         butler = Butler(self.client, config, state)
+        try:
+            me_id = self.client.me().id
+        except ImmichError:
+            me_id = None
+
+        def shared(info) -> bool:
+            return (me_id is not None and info is not None
+                    and info.owner_id is not None and info.owner_id != me_id)
+
         rows = []
+        managed_ids = set()
         for album in config.albums:
             record = state.albums.get(album.slug)
             # The cover the album has in Immich now; the list is a nicety, so
@@ -269,11 +279,17 @@ class DesignApi:
                 info = butler.find_album(album)
             except ImmichError:
                 info = None
+            if info is not None:
+                managed_ids.add(info.id)
             rows.append({
                 "slug": album.slug, "name": album.name,
                 # What Immich calls it: the name plus the fixed/updating suffix.
                 "immich_name": butler.marked_name(album),
+                "album_id": info.id if info else None,
+                "type": "schedule" if album.schedule.automatic else "fixed",
                 "cover_asset": info.cover_asset_id if info else None,
+                "asset_count": info.asset_count if info else None,
+                "shared": shared(info),
                 "enabled": album.enabled,
                 "cover": album.cover,
                 "pics_per_year": album.pics_per_year, "pick": album.pick,
@@ -286,9 +302,49 @@ class DesignApi:
                 "last_result": getattr(record, "last_result", None),
                 "last_error": getattr(record, "last_error", None),
             })
+
+        # Every other Immich album this key can see, the butler's or not, so
+        # the Albums page is the one place that shows the whole library --
+        # shared-with-me ones too, since looking is harmless.
+        try:
+            everything = self.client.albums()
+        except ImmichError:
+            everything = []
+        for info in everything:
+            if info.id in managed_ids:
+                continue
+            rows.append({
+                "slug": None, "name": info.name, "immich_name": info.name,
+                "album_id": info.id, "type": "normal",
+                "cover_asset": info.cover_asset_id, "asset_count": info.asset_count,
+                "shared": shared(info),
+                "enabled": True, "cover": None, "pics_per_year": None, "pick": None,
+                "shares": [], "schedule": "", "schedule_inherited": False,
+                "match": None, "last_run": None, "last_result": None, "last_error": None,
+            })
+
         return {"albums": rows,
                 "default_schedule": str(config.settings.schedule),
                 "errors": config.errors}
+
+    def set_cover(self, payload: dict) -> dict:
+        """Point any album's cover at one of its own pictures, chosen by hand.
+
+        Works for a butler-managed album (schedule = "manual" or automatic)
+        and for a plain Immich album alike -- the butler owns the "everyone" /
+        "newest" / etc. rule for its own albums, but a manual override here is
+        just the same Immich write, so it applies to any album this key can
+        see. It sticks until the album's own cover rule next overwrites it.
+        """
+        album_id = str(payload.get("album_id") or "")
+        asset_id = str(payload.get("asset_id") or "")
+        if not ASSET_ID.fullmatch(album_id) or not ASSET_ID.fullmatch(asset_id):
+            raise ApiError("no album or no picture given")
+        try:
+            self.client.set_album_cover(album_id, asset_id)
+        except ImmichError as exc:
+            raise ApiError(str(exc), status=502) from None
+        return {"ok": True}
 
     def accounts(self) -> dict:
         """The other accounts on this server, for the share picker.
@@ -664,30 +720,6 @@ class DesignApi:
 
     # -- browse -----------------------------------------------------------
 
-    def browse_albums(self) -> dict:
-        """Every Immich album this key can see, the butler's or not.
-
-        Albums shared with this account are listed too: looking is all the
-        Browse tab does, and anyone who may see an album may look into it.
-        """
-        try:
-            everything = self.client.albums()
-        except ImmichError as exc:
-            raise ApiError(str(exc), status=502) from None
-        try:
-            me_id = self.client.me().id
-        except ImmichError:
-            me_id = None
-        managed = self._rule_ids()
-        rows = [{"album_id": info.id, "name": info.name,
-                 "asset_count": info.asset_count, "cover": info.cover_asset_id,
-                 "shared": (me_id is not None and info.owner_id is not None
-                            and info.owner_id != me_id),
-                 "butler": info.id in managed}
-                for info in everything]
-        rows.sort(key=lambda row: row["name"].casefold())
-        return {"albums": rows}
-
     def browse_album(self, album_id: str) -> dict:
         """One album's media with what the Browse tab groups them by.
 
@@ -716,20 +748,6 @@ class DesignApi:
                 "camera": a.camera, "city": a.city, "country": a.country,
             } for a in assets],
         }
-
-    def _rule_ids(self) -> set[str]:
-        """Albums some rule of the butler keeps, scheduled or not."""
-        try:
-            config = self.config()
-            butler = self._butler(config)
-            ids = set()
-            for album in config.albums:
-                info = butler.find_album(album)
-                if info is not None:
-                    ids.add(info.id)
-            return ids
-        except (ImmichError, config_module.ConfigError):
-            return set()
 
     # -- trips ------------------------------------------------------------
 
