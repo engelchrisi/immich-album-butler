@@ -123,24 +123,6 @@
         </label>
       </fieldset>
 
-    </div>
-
-    <div class="column">
-      <div class="sticky-head">
-        <div id="preview" class="preview">
-          <div class="muted">Pick something on the left to see a preview.</div>
-        </div>
-
-        <div class="bar">
-          <button id="save" class="primary">Save</button>
-          <button id="dry-run">Dry run</button>
-          <button id="run-now">Run now</button>
-          <button id="analyze">Analyze</button>
-          <button id="delete-config" class="danger" hidden>Delete config</button>
-        </div>
-        <div id="run-result" class="muted"></div>
-      </div>
-
       <fieldset>
         <legend>Options</legend>
 
@@ -189,6 +171,48 @@
                      placeholder="all"></label>
           </div>
         </fieldset>
+
+        <fieldset class="subgroup">
+          <legend>Sharing</legend>
+          <div class="row">
+            <input id="share-search" type="search" placeholder="Add an account…"
+                   autocomplete="off" list="share-accounts">
+            <datalist id="share-accounts"></datalist>
+          </div>
+          <span class="muted" id="share-note"></span>
+          <div id="share-list" class="share-list muted-empty"
+               data-empty="Not shared with anyone."></div>
+          <p class="muted">
+            Access is only ever granted here, never taken away: dropping an
+            account stops it being shared again on the next run, it does not
+            revoke access already given -- unshare in Immich first, then drop
+            it here. The role picked here is only what a <em>new</em> share
+            starts at: once an account has access, later runs never change
+            its role again, even if it is changed here -- change it in
+            Immich instead.
+          </p>
+        </fieldset>
+      </fieldset>
+    </div>
+
+    <div class="column">
+      <div class="sticky-head">
+        <div id="preview" class="preview">
+          <div class="muted">Pick something on the left to see a preview.</div>
+        </div>
+
+        <div class="bar">
+          <button id="save" class="primary">Save</button>
+          <button id="dry-run">Dry run</button>
+          <button id="run-now">Run now</button>
+          <button id="analyze">Analyze</button>
+          <button id="delete-config" class="danger" hidden>Delete config</button>
+        </div>
+        <div id="run-result" class="muted"></div>
+      </div>
+
+      <fieldset>
+        <legend>Optional</legend>
 
         <fieldset class="subgroup">
           <legend>Description hint</legend>
@@ -246,27 +270,6 @@
             </label>
           </div>
           <div class="muted" id="hint-preview"></div>
-        </fieldset>
-
-        <fieldset class="subgroup">
-          <legend>Sharing</legend>
-          <div class="row">
-            <input id="share-search" type="search" placeholder="Add an account…"
-                   autocomplete="off" list="share-accounts">
-            <datalist id="share-accounts"></datalist>
-          </div>
-          <span class="muted" id="share-note"></span>
-          <div id="share-list" class="share-list muted-empty"
-               data-empty="Not shared with anyone."></div>
-          <p class="muted">
-            Access is only ever granted here, never taken away: dropping an
-            account stops it being shared again on the next run, it does not
-            revoke access already given -- unshare in Immich first, then drop
-            it here. The role picked here is only what a <em>new</em> share
-            starts at: once an account has access, later runs never change
-            its role again, even if it is changed here -- change it in
-            Immich instead.
-          </p>
         </fieldset>
       </fieldset>
 
