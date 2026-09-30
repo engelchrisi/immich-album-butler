@@ -1,5 +1,14 @@
 # Changes
 
+## 0.6.1 — 2026-09-30
+- Design UI: split the builder's Options group — Album/Schedule/Sharing stay
+  on the left, Description hint moved into a new "Optional" group on the
+  right, under the preview.
+- Design UI: editing a Description hint field (Kind, Order, Slot size, Dwell,
+  Active window, Caption, Activity) no longer re-runs the full Immich match
+  and recount; a new `/api/hint-preview` recomputes just the description
+  line, since those fields never affect which media match.
+
 ## 0.6.0 — 2026-09-30
 - Album hints (N35/N36): per-album `hint_kind`/`hint_order` overrides and
   `slot`/`dwell`/`active`/`caption`/`activity` playback fields, a closed

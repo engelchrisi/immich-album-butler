@@ -386,6 +386,8 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
         def _post_api(self, path: str, body: dict):
             if path == "/api/preview":
                 return api.preview(body)
+            if path == "/api/hint-preview":
+                return api.hint_preview(body)
             if path == "/api/analyze":
                 return api.analyze(body)
             if path == "/api/albums":

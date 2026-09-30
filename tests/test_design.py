@@ -187,6 +187,17 @@ class PreviewTests(DesignTestCase):
         self.assertFalse(result["creates_album"])
         self.assertIn(album["id"], self.stub.albums)
 
+    def test_hint_preview_gives_the_same_line_as_the_full_preview(self):
+        self.assertEqual(self.api.hint_preview(ITALY)["hint"],
+                         self.api.preview(ITALY)["hint"])
+
+    def test_hint_preview_does_not_touch_immich(self):
+        """The Optional group's fields don't affect matching, so this must
+        not query Immich at all -- unlike preview(), which always does."""
+        requests_before = len(self.stub.requests)
+        self.api.hint_preview(ITALY)
+        self.assertEqual(len(self.stub.requests), requests_before)
+
     def test_an_empty_rule_is_refused_rather_than_matching_everything(self):
         with self.assertRaises(ApiError) as caught:
             self.api.preview({"name": "Everything", "match": {}})

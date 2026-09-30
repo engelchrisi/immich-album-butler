@@ -491,6 +491,16 @@ class DesignApi:
             "next_run": self._next_run(album, config),
         }
 
+    def hint_preview(self, payload: dict) -> dict:
+        """Just the description-hint line, without matching against Immich.
+
+        `hint_line()` only reads the rule shape and the hint fields off
+        `album`, not the matched media, so a change to the "Optional" group
+        alone does not need `preview()`'s full (and slow) Immich query.
+        """
+        album = self._album_from(payload, require_name=False)
+        return {"hint": describe_module.hint_line(album)}
+
     @staticmethod
     def _extends(butler: Butler, plan) -> dict | None:
         """The Immich album a run would take over, or None.

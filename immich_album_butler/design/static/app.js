@@ -15,6 +15,7 @@ const state = {
   groups: [],
   people: [],           // last search result
   previewToken: 0,
+  hintPreviewToken: 0,
   accounts: [],         // other accounts on this server, for sharing
   accountsNote: "",
   extends: null,        // the unmanaged Immich album the preview would take over
@@ -438,16 +439,16 @@ function bindDraft() {
     fillPicsPerYear();
     refreshPreview();
   };
-  $("hint-kind").onchange = (e) => { state.draft.hint_kind = e.target.value; refreshPreview(); };
-  $("hint-order").onchange = (e) => { state.draft.hint_order = e.target.value; refreshPreview(); };
-  $("hint-slot").onchange = (e) => { state.draft.slot = e.target.value.trim(); refreshPreview(); };
+  $("hint-kind").onchange = (e) => { state.draft.hint_kind = e.target.value; refreshHintPreview(); };
+  $("hint-order").onchange = (e) => { state.draft.hint_order = e.target.value; refreshHintPreview(); };
+  $("hint-slot").onchange = (e) => { state.draft.slot = e.target.value.trim(); refreshHintPreview(); };
   $("hint-dwell").onchange = (e) => {
     state.draft.dwell = e.target.value ? parseInt(e.target.value, 10) : null;
-    refreshPreview();
+    refreshHintPreview();
   };
-  $("hint-active").onchange = (e) => { state.draft.active = e.target.value.trim(); refreshPreview(); };
-  $("hint-caption").onchange = (e) => { state.draft.caption = e.target.value; refreshPreview(); };
-  $("hint-activity").onchange = (e) => { state.draft.activity = e.target.value; refreshPreview(); };
+  $("hint-active").onchange = (e) => { state.draft.active = e.target.value.trim(); refreshHintPreview(); };
+  $("hint-caption").onchange = (e) => { state.draft.caption = e.target.value; refreshHintPreview(); };
+  $("hint-activity").onchange = (e) => { state.draft.activity = e.target.value; refreshHintPreview(); };
   $("schedule").onchange = (e) => {
     const value = e.target.value;
     if (value === "none") {
@@ -802,6 +803,22 @@ const refreshPreview = debounce(async () => {
   // See docs/hints.md for what this line means.
   $("hint-preview").textContent = data.hint ? `description hint: ${data.hint}` : "";
   box.replaceChildren(...children);
+}, 350);
+
+/* The "Optional" group's fields only change the description-hint line, never
+   which media match -- so this skips the expensive full /api/preview (which
+   re-queries Immich) and hits the cheap, local-only /api/hint-preview instead. */
+const refreshHintPreview = debounce(async () => {
+  const token = ++state.hintPreviewToken;
+  let data;
+  try { data = await post("/api/hint-preview", state.draft); }
+  catch (error) {
+    if (token !== state.hintPreviewToken) return;   // a newer request already won
+    $("hint-preview").textContent = "";
+    return;
+  }
+  if (token !== state.hintPreviewToken) return;      // a newer request already won
+  $("hint-preview").textContent = data.hint ? `description hint: ${data.hint}` : "";
 }, 350);
 
 /* A run on this rule takes over an album the butler has never kept -- an
