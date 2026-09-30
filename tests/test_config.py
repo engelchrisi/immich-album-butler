@@ -524,6 +524,17 @@ class HintOverrideTests(unittest.TestCase):
         self.assertEqual(original.caption, reloaded.caption)
         self.assertEqual(original.activity, reloaded.activity)
 
+    def test_empty_strings_mean_unset_like_the_design_ui_sends(self):
+        # The album builder's "auto" option posts "" rather than omitting the
+        # key, and an unset number input posts null for dwell. None of that
+        # should be treated as an invalid value.
+        payload = {"hint_kind": "", "hint_order": "", "slot": "",
+                   "dwell": None, "active": "", "caption": "", "activity": ""}
+        hint = cfg._load_hint(payload)
+        self.assertEqual(hint, dict(hint_kind="", hint_order="", slot="",
+                                     dwell=None, active="", caption="",
+                                     activity=""))
+
     def test_none_is_normalised_away_for_caption_and_activity(self):
         with ConfigDir(albums={"x":
                 'name = "X"\ncaption = "none"\nactivity = "none"\n'

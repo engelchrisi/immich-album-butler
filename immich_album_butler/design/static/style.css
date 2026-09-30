@@ -23,6 +23,7 @@
   --ok-bg: #e6f5ea;
   --ok-ink: #1d5a30;
   --ok-line: #a9d8b7;
+  --header-h: 3.4rem;
   color-scheme: light;
 }
 
@@ -38,6 +39,7 @@ body {
 header {
   display: flex; align-items: center; gap: 1.5rem;
   padding: 0.75rem 1.25rem;
+  height: var(--header-h);
   border-bottom: 1px solid var(--line);
   background: var(--panel);
   position: sticky; top: 0; z-index: 5;
@@ -64,6 +66,17 @@ nav { display: flex; gap: 0.25rem; }
 .split { display: flex; gap: 1.25rem; align-items: flex-start; flex-wrap: wrap; }
 .column { flex: 1 1 380px; min-width: 340px; display: flex;
           flex-direction: column; gap: 0.9rem; }
+#builder .split { max-width: 1600px; margin: 0 auto; }
+
+.sticky-head { display: flex; flex-direction: column; gap: 0.9rem; }
+@media (min-width: 761px) {
+  .sticky-head {
+    position: sticky; top: calc(var(--header-h) + 1.25rem); z-index: 4;
+    background: var(--bg); padding-bottom: 0.75rem;
+  }
+  .sticky-head .preview { max-height: calc(100vh - var(--header-h) - 12rem);
+                           overflow-y: auto; }
+}
 
 .bar { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;
        margin-bottom: 1rem; }

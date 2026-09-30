@@ -570,7 +570,7 @@ def _load_hint(data: dict) -> dict:
     activity = "" if activity == "none" else activity
 
     slot = data.get("slot")
-    if slot is None:
+    if not slot:
         slot = ""
     else:
         slot = str(slot).strip()
@@ -596,7 +596,7 @@ def _load_hint(data: dict) -> dict:
                 f"{describe_module.MAX_DWELL} seconds, got {dwell!r}")
 
     active = data.get("active")
-    if active is None:
+    if not active:
         active = ""
     else:
         active = str(active).strip()
@@ -610,9 +610,12 @@ def _load_hint(data: dict) -> dict:
 
 
 def _load_enum(data: dict, key: str, allowed: tuple[str, ...]) -> str:
-    """A key that, if present, must be one of `allowed` -- never free text."""
+    """A key that, if present and non-empty, must be one of `allowed` --
+    never free text. Empty/missing both mean "unset" (the design UI's "auto"
+    option submits "" rather than omitting the key).
+    """
     value = data.get(key)
-    if value is None:
+    if value is None or value == "":
         return ""
     value = str(value).strip().lower()
     if value not in allowed:
