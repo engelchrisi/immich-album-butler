@@ -38,13 +38,12 @@ album_suffix = "[AB]"
 # album_suffix_fixed    = "◆"
 # album_suffix_updating = "↻"
 
-# Publish a one-line hint in each album's Immich description saying what kind of
-# album it is (trip, person, recurring-day) and whether it rotates, so a player
-# like PyImmichFrame can order it without being told. The butler owns only that
-# one "[butler v1] …" line and leaves the rest of a hand-written description
-# alone; "off" (the default) removes any line a previous run left. "hint" needs
-# "album.update" on the key; without it the run warns and fills the album anyway.
-# describe = "hint"
+# Every album's Immich description always carries a one-line hint saying what
+# kind of album it is (trip, person, recurring-day) and whether it rotates, so
+# a player like PyImmichFrame can order it without being told. The butler owns
+# only that one "[butler v1] …" line and leaves the rest of a hand-written
+# description alone. It needs "album.update" on the key; without it the run
+# warns and fills the album anyway.
 
 log_level = "info"
 

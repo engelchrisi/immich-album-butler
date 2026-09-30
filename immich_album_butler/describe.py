@@ -115,29 +115,18 @@ def hint_line(album: Album) -> str:
     return " ".join(parts)
 
 
-def apply_hint(description: str, line: str, enabled: bool) -> str:
-    """Return `description` with the butler's line set, replaced or removed.
+def apply_hint(description: str, line: str) -> str:
+    """Return `description` with the butler's line set, replacing or adding it.
 
-    `enabled` false removes the line (a clean uninstall). Otherwise the last
-    marker line is replaced in place, or the line is appended after a blank
-    line; an empty description becomes the hint alone. Replacing the line
-    always substitutes the whole thing, so a key the butler no longer writes
-    -- an old field, or one from a future version this build does not know --
-    never survives a rewrite; only a hand-written description around the
-    marker line is kept.
+    The last marker line is replaced in place, or the line is appended after
+    a blank line; an empty description becomes the hint alone. Replacing the
+    line always substitutes the whole thing, so a key the butler no longer
+    writes -- an old field, or one from a future version this build does not
+    know -- never survives a rewrite; only a hand-written description around
+    the marker line is kept.
     """
     lines = description.split("\n")
     marker_at = _last_marker(lines)
-
-    if not enabled:
-        if marker_at is None:
-            return description
-        del lines[marker_at]
-        # Drop a blank separator left dangling before the removed line.
-        if marker_at > 0 and not lines[marker_at - 1].strip() and (
-                marker_at == len(lines) or marker_at - 1 == len(lines) - 1):
-            del lines[marker_at - 1]
-        return "\n".join(lines).rstrip("\n")
 
     if marker_at is not None:
         lines[marker_at] = line

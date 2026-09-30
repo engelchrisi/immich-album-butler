@@ -799,8 +799,7 @@ const refreshPreview = debounce(async () => {
   $("next-run").textContent = !state.draft.enabled
     ? "disabled — this album is skipped by every run"
     : data.next_run ? `next automatic run: ${data.next_run.replace("T", " ")}` : "";
-  // Shown regardless of `describe = "hint"`, so a change is visible before
-  // that setting is ever turned on -- see docs/hints.md.
+  // See docs/hints.md for what this line means.
   $("hint-preview").textContent = data.hint ? `description hint: ${data.hint}` : "";
   box.replaceChildren(...children);
 }, 350);

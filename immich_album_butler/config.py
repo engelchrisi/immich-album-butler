@@ -55,7 +55,6 @@ CONFIG_NAME = "config.toml"
 
 PEOPLE_MODES = ("any", "all")
 PICK_MODES = ("all", "rotate", "random", "best")
-DESCRIBE_MODES = ("off", "hint")
 
 # A recurring window spanning more than half the year is a mistake, not a
 # recurring day.
@@ -237,9 +236,6 @@ class Settings:
     # falls back to `album_suffix` when empty.
     album_suffix_fixed: str = ""
     album_suffix_updating: str = ""
-    # N31: "hint" keeps a one-line kind/order marker in each album's Immich
-    # description; "off" (the default) removes any the butler left behind.
-    describe: str = "off"
     log_level: str = "info"
     design_idle_minutes: int = 30
     design_port: int = DEFAULT_PORT
@@ -377,14 +373,9 @@ def _load_settings(data: dict, filename: str) -> Settings:
     suffix_fixed = _load_suffix(data, "album_suffix_fixed", "●", filename)
     suffix_updating = _load_suffix(data, "album_suffix_updating", "↻", filename)
 
-    describe = str(data.get("describe", "off")).lower()
-    if describe not in DESCRIBE_MODES:
-        raise ConfigError(f"{filename}: describe must be one of "
-                          f"{', '.join(DESCRIBE_MODES)}, got {describe!r}")
-
     return Settings(server=server, schedule=schedule, timezone=timezone,
                     album_suffix=suffix, album_suffix_fixed=suffix_fixed,
-                    album_suffix_updating=suffix_updating, describe=describe,
+                    album_suffix_updating=suffix_updating,
                     log_level=str(data.get("log_level", "info")).lower(),
                     design_idle_minutes=idle, design_port=port,
                     design_users=_load_users(data.get("design"), filename),
@@ -895,10 +886,6 @@ def dump_config(config: Config) -> str:
         out.append(f"album_suffix_updating = "
                    f"{_toml_str(settings.album_suffix_updating)}"
                    f"   # albums that update on a schedule\n")
-    if settings.describe != "off":
-        out.append(f"describe = {_toml_str(settings.describe)}"
-                   f"   # keep a kind/order hint line in each album's "
-                   f"description\n")
     out.append(f"log_level = {_toml_str(settings.log_level)}\n")
     out.append(f"design_port = {settings.design_port}\n")
     out.append(f"design_idle_minutes = {settings.design_idle_minutes}\n")

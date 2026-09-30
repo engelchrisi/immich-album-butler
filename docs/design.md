@@ -48,8 +48,8 @@ older file loads unchanged. Asset UUIDs stay in `state.json`, never in `config.t
 
 ## 4. Album description hints (N31/N35/N36)
 
-`describe.py` derives the hint line from an album's rule shape; `describe = "hint"` / `"off"`
-(default `"off"`) decides only whether the line is written at all. The rule is checked in this
+`describe.py` derives the hint line from an album's rule shape; the line is always kept in every
+butler-managed album's Immich description, no setting required. The rule is checked in this
 order — the first match wins:
 
 | Rule shape | `kind` | `order` |
@@ -73,8 +73,7 @@ and `hint_line()` itself asserts its own output against the same tables as a sec
 defence. A description line is therefore never built from a free-form string; an unrecognised
 value is refused at the point it was written, naming the allowed list. The design UI's album
 builder exposes all seven as bounded `<select>`/number inputs (a "Description hint" fieldset),
-with a live preview of the resulting line from `/api/preview`'s `hint` field, regardless of
-whether `describe = "hint"` is currently on.
+with a live preview of the resulting line from `/api/preview`'s `hint` field.
 
 Example line: `[butler v1] kind=recurring-day order=one-per-year rotating=yes`.
 

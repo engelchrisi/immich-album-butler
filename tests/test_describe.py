@@ -110,30 +110,23 @@ class ApplyHintTests(unittest.TestCase):
     LINE = "[butler v1] kind=trip order=trip"
 
     def test_an_empty_description_becomes_the_hint(self):
-        self.assertEqual(apply_hint("", self.LINE, True), self.LINE)
+        self.assertEqual(apply_hint("", self.LINE), self.LINE)
 
     def test_a_hand_written_line_is_preserved_above_the_hint(self):
-        out = apply_hint("Our two weeks in Tuscany.", self.LINE, True)
+        out = apply_hint("Our two weeks in Tuscany.", self.LINE)
         self.assertEqual(out, "Our two weeks in Tuscany.\n\n" + self.LINE)
 
     def test_the_hint_is_replaced_in_place(self):
         old = "Note.\n\n[butler v1] kind=person order=person"
-        out = apply_hint(old, self.LINE, True)
+        out = apply_hint(old, self.LINE)
         self.assertEqual(out, "Note.\n\n" + self.LINE)
 
     def test_other_lines_survive_a_replace(self):
         old = "Line one.\n[butler v1] kind=person order=person\nLine three."
-        out = apply_hint(old, self.LINE, True)
+        out = apply_hint(old, self.LINE)
         self.assertIn("Line one.", out)
         self.assertIn("Line three.", out)
         self.assertIn(self.LINE, out)
-
-    def test_off_removes_the_line(self):
-        old = "Our trip.\n\n[butler v1] kind=trip order=trip"
-        self.assertEqual(apply_hint(old, self.LINE, False), "Our trip.")
-
-    def test_off_with_no_line_changes_nothing(self):
-        self.assertEqual(apply_hint("Just a note.", self.LINE, False), "Just a note.")
 
 
 if __name__ == "__main__":

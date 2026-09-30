@@ -283,13 +283,11 @@ class Butler:
     def _describe(self, album: Album, current: str, plan: Plan) -> None:
         """Set plan.describe_to when the album's hint line should change (N31).
 
-        Computed whether the feature is on or off: "off" removes a line a
-        previous run left, and either way nothing is written unless the
-        resulting description differs from what Immich holds.
+        Always on: nothing is written unless the resulting description
+        differs from what Immich already holds.
         """
-        enabled = self.config.settings.describe == "hint"
         line = describe_module.hint_line(album)
-        want = describe_module.apply_hint(current, line, enabled)
+        want = describe_module.apply_hint(current, line)
         if want != current:
             plan.describe_to = want
 

@@ -483,8 +483,7 @@ class DesignApi:
             "cover": album.cover,
             "cover_asset": plan.cover_asset_id,
             # The description hint a run would write, live -- N31/N35/N36 --
-            # regardless of whether `describe = "hint"` is on, so the builder
-            # can preview it before turning the setting on.
+            # so the builder can preview it before saving.
             "hint": describe_module.hint_line(album),
             # How many accounts would gain access, so the builder can say so
             # before anything is saved.

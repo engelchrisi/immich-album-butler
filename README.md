@@ -221,9 +221,8 @@ or more.
 
 ### Publishing the album kind
 
-A player like PyImmichFrame can order an album if it knows what kind it is. With
-`describe = "hint"` (top level) the butler keeps one line in each album's Immich
-description:
+A player like PyImmichFrame can order an album if it knows what kind it is. The
+butler always keeps one line in each album's Immich description:
 
 ```
 [butler v1] kind=recurring-day order=one-per-year rotating=yes
@@ -232,8 +231,7 @@ description:
 `kind` is `trip` (a dated window), `person`, `recurring-day`, or `place`;
 `rotating=yes` is set whenever the contents change each run. The butler owns
 **only** that line — the last one matching `[butler v…]` — and leaves any
-hand-written text around it verbatim; `describe = "off"` (the default) removes a
-line a previous run left. It is written only when it would change, so an
+hand-written text around it verbatim. It is written only when it would change, so an
 ordinary run touches nothing, and it needs `album.update` on the key (a 403 is a
 warning, never a failed run).
 
@@ -410,7 +408,7 @@ run on every update; the **optional** ones depend on which features you use:
 | `album.create` | **required** | Create new albums |
 | `albumAsset.create` | **required** | Add assets to albums |
 | `albumAsset.delete` | **required** | Every album mirrors its rule: remove assets that stop matching, or duplicates from the Duplicates tab |
-| `album.update` | optional | Rename with `album_suffix`, set `cover`, write the `describe = "hint"` line |
+| `album.update` | optional | Rename with `album_suffix`, set `cover`, write the description hint line |
 | `user.read` | optional | Resolve account names for sharing |
 | `albumUser.create` | optional | Share albums with other accounts |
 | `albumUser.update` | optional | Keep `[[shares]]` accounts' roles in sync (per-album sharing never uses this) |

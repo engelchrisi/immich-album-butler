@@ -254,15 +254,9 @@ class RotationTests(unittest.TestCase):
 
 
 class DescribeTests(unittest.TestCase):
-    def _enable_hint(self, fx):
-        path = fx.config_dir / "config.toml"
-        path.write_text('describe = "hint"\n' + path.read_text(encoding="utf-8"),
-                        encoding="utf-8")
-
     def test_the_hint_is_written_and_not_rewritten_when_unchanged(self):
         with StubImmich(assets(), people=PEOPLE, page_size=2) as stub:
             with Fixture({"italy-2019": ITALY}, stub) as fx:
-                self._enable_hint(fx)
                 config, state = fx.load()
                 run_once(fx.client, config, state)
                 description = stub.album_named("Italy 2019")["description"]

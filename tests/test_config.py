@@ -479,25 +479,6 @@ class RecurringAndRotateTests(unittest.TestCase):
             self.assertEqual(cfg.load(d.path).errors, [])
 
 
-class DescribeSettingTests(unittest.TestCase):
-    def test_describe_defaults_to_off(self):
-        with ConfigDir() as d:
-            self.assertEqual(cfg.load(d.path).settings.describe, "off")
-
-    def test_describe_hint_loads_and_round_trips(self):
-        settings = GLOBAL + '\ndescribe = "hint"\n'
-        with ConfigDir(settings=settings, albums={"italy-2019": ITALY}) as d:
-            config = cfg.load(d.path)
-            self.assertEqual(config.settings.describe, "hint")
-            cfg.write_config(d.path, config)
-            self.assertEqual(cfg.load(d.path).settings.describe, "hint")
-
-    def test_a_bad_describe_is_refused(self):
-        with ConfigDir(settings=GLOBAL + '\ndescribe = "yes"\n') as d:
-            with self.assertRaises(cfg.ConfigError):
-                cfg.load(d.path)
-
-
 HINTED = """
 name = "Geburtstag"
 auto-update-schedule = "weekly sun 04:00"

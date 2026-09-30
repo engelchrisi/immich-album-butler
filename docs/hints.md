@@ -124,9 +124,9 @@ should fall back to its own default rather than failing.
 
 ## 6. What a player must do with no hint, or one it cannot use
 
-- **No `[butler vN]` line at all** (`describe = "off"`, or the butler has never touched this
-  album): treat the album with whatever default behaviour the player already has for an
-  unlabelled album. This is the common case for any album not built by immich-album-butler.
+- **No `[butler vN]` line at all** (the album was not built by immich-album-butler, or predates
+  this feature and has not been re-run since): treat the album with whatever default behaviour
+  the player already has for an unlabelled album.
 - **A line with an unknown version**: treat it exactly like "no hint line" (previous bullet).
   Never guess at a future version's field meanings.
 - **A recognised version, with an unrecognised key or value on some field**: ignore that one
