@@ -173,6 +173,65 @@
         </fieldset>
 
         <fieldset class="subgroup">
+          <legend>Description hint</legend>
+          <p class="muted">Only written when the server has <code>describe = "hint"</code> on. A
+            player such as PyImmichFrame reads these from the album's Immich description to
+            decide how to play it — see <code>docs/hints.md</code>. Leave a field on "auto" to
+            let it follow the rule.</p>
+          <div class="row">
+            <label class="field"><span>Kind</span>
+              <select id="hint-kind">
+                <option value="">auto</option>
+                <option value="trip">trip</option>
+                <option value="recurring-day">recurring-day</option>
+                <option value="person">person</option>
+                <option value="place">place</option>
+                <option value="album">album</option>
+              </select>
+            </label>
+            <label class="field"><span>Order</span>
+              <select id="hint-order">
+                <option value="">auto</option>
+                <option value="trip">trip</option>
+                <option value="one-per-year">one-per-year</option>
+                <option value="person">person</option>
+                <option value="time-asc">time, oldest first</option>
+                <option value="time-desc">time, newest first</option>
+                <option value="random">random</option>
+                <option value="slots">slots (neighbours per jump)</option>
+              </select>
+            </label>
+          </div>
+          <div class="row">
+            <label class="field"><span>Slot size</span>
+              <input id="hint-slot" type="text" placeholder="e.g. 3 or 2-3"></label>
+            <label class="field"><span>Dwell (seconds)</span>
+              <input id="hint-dwell" type="number" min="1" step="1" placeholder="player default"></label>
+          </div>
+          <div class="row">
+            <label class="field"><span>Active window</span>
+              <input id="hint-active" type="text" placeholder="e.g. 12-01..12-31"></label>
+            <label class="field"><span>Caption</span>
+              <select id="hint-caption">
+                <option value="">none</option>
+                <option value="year">year</option>
+                <option value="place">place</option>
+                <option value="title">title</option>
+              </select>
+            </label>
+            <label class="field"><span>Activity</span>
+              <select id="hint-activity">
+                <option value="">none</option>
+                <option value="kenburns">kenburns</option>
+                <option value="face-zoom">face-zoom</option>
+                <option value="map-fly">map-fly</option>
+              </select>
+            </label>
+          </div>
+          <div class="muted" id="hint-preview"></div>
+        </fieldset>
+
+        <fieldset class="subgroup">
           <legend>Sharing</legend>
           <div class="row">
             <input id="share-search" type="search" placeholder="Add an account…"

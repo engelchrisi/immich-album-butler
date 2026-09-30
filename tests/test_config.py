@@ -498,5 +498,103 @@ class DescribeSettingTests(unittest.TestCase):
                 cfg.load(d.path)
 
 
+HINTED = """
+name = "Geburtstag"
+auto-update-schedule = "weekly sun 04:00"
+hint_order = "slots"
+slot = "2-3"
+dwell = 12
+active = "12-01..12-31"
+caption = "year"
+activity = "kenburns"
+
+[match]
+on_from = "05-16"
+"""
+
+
+class HintOverrideTests(unittest.TestCase):
+    def _err(self, album):
+        with ConfigDir(albums={"x": album}) as d:
+            errors = cfg.load(d.path).errors
+        return errors[0] if errors else ""
+
+    def test_overrides_load(self):
+        with ConfigDir(albums={"x": HINTED}) as d:
+            album = cfg.load(d.path).albums[0]
+        self.assertEqual(album.hint_kind, "")
+        self.assertEqual(album.hint_order, "slots")
+        self.assertEqual(album.slot, "2-3")
+        self.assertEqual(album.dwell, 12)
+        self.assertEqual(album.active, "12-01..12-31")
+        self.assertEqual(album.caption, "year")
+        self.assertEqual(album.activity, "kenburns")
+
+    def test_overrides_round_trip_through_toml(self):
+        with ConfigDir(albums={"x": HINTED}) as d:
+            config = cfg.load(d.path)
+            original = config.albums[0]
+            cfg.write_config(d.path, config)
+            reloaded = cfg.load(d.path).albums[0]
+        self.assertEqual(original.hint_order, reloaded.hint_order)
+        self.assertEqual(original.slot, reloaded.slot)
+        self.assertEqual(original.dwell, reloaded.dwell)
+        self.assertEqual(original.active, reloaded.active)
+        self.assertEqual(original.caption, reloaded.caption)
+        self.assertEqual(original.activity, reloaded.activity)
+
+    def test_none_is_normalised_away_for_caption_and_activity(self):
+        with ConfigDir(albums={"x":
+                'name = "X"\ncaption = "none"\nactivity = "none"\n'
+                '[match]\npeople = ["Alex"]\n'}) as d:
+            album = cfg.load(d.path).albums[0]
+        self.assertEqual(album.caption, "")
+        self.assertEqual(album.activity, "")
+
+    def test_an_unknown_hint_kind_is_refused(self):
+        self.assertIn("hint_kind", self._err(
+            'name = "X"\nhint_kind = "vacation"\n[match]\npeople = ["Alex"]\n'))
+
+    def test_an_unknown_hint_order_is_refused(self):
+        self.assertIn("hint_order", self._err(
+            'name = "X"\nhint_order = "backwards"\n[match]\npeople = ["Alex"]\n'))
+
+    def test_an_unknown_caption_is_refused(self):
+        self.assertIn("caption", self._err(
+            'name = "X"\ncaption = "subtitle"\n[match]\npeople = ["Alex"]\n'))
+
+    def test_an_unknown_activity_is_refused(self):
+        self.assertIn("activity", self._err(
+            'name = "X"\nactivity = "spin"\n[match]\npeople = ["Alex"]\n'))
+
+    def test_a_bad_slot_shape_is_refused(self):
+        self.assertIn("slot", self._err(
+            'name = "X"\nslot = "two"\n[match]\npeople = ["Alex"]\n'))
+
+    def test_a_slot_range_out_of_order_is_refused(self):
+        self.assertIn("slot", self._err(
+            'name = "X"\nslot = "5-2"\n[match]\npeople = ["Alex"]\n'))
+
+    def test_a_slot_above_the_max_is_refused(self):
+        self.assertIn("slot", self._err(
+            'name = "X"\nslot = "20"\n[match]\npeople = ["Alex"]\n'))
+
+    def test_dwell_must_be_an_integer(self):
+        self.assertIn("dwell", self._err(
+            'name = "X"\ndwell = "soon"\n[match]\npeople = ["Alex"]\n'))
+
+    def test_dwell_out_of_range_is_refused(self):
+        self.assertIn("dwell", self._err(
+            'name = "X"\ndwell = 99999\n[match]\npeople = ["Alex"]\n'))
+
+    def test_active_must_be_two_mmdd_values(self):
+        self.assertIn("active", self._err(
+            'name = "X"\nactive = "december"\n[match]\npeople = ["Alex"]\n'))
+
+    def test_active_halves_must_each_be_valid_mmdd(self):
+        self.assertIn("active", self._err(
+            'name = "X"\nactive = "13-01..12-31"\n[match]\npeople = ["Alex"]\n'))
+
+
 if __name__ == "__main__":
     unittest.main()

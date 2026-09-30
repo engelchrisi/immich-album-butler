@@ -162,6 +162,18 @@ class Album:
     # and how to choose which -- see PICK_MODES and picker.py.
     pics_per_year: int | None = None
     pick: str = "all"
+    # N35/N36: overrides of the hint line's otherwise-derived kind/order, plus
+    # the playback-only fields. Empty/None means "not set": derived (kind,
+    # order) or omitted from the line (slot, dwell, active, caption, activity).
+    # Every value here has already been checked against describe.py's closed
+    # vocabulary by _load_hint() -- see docs/hints.md for what each one means.
+    hint_kind: str = ""
+    hint_order: str = ""
+    slot: str = ""
+    dwell: int | None = None
+    active: str = ""
+    caption: str = ""
+    activity: str = ""
 
     @property
     def rotating(self) -> bool:
@@ -509,11 +521,12 @@ def _load_album(slug: str, data: object, settings: Settings,
     cover = _load_cover(data.get("cover"), match)
     share_with = _load_album_shares(data.get("share"))
     pics_per_year, pick = _load_pick(data, schedule)
+    hint = _load_hint(data)
 
     return Album(slug=slug, name=name, match=match, schedule=schedule,
                  schedule_inherited=inherited, enabled=enabled,
                  cover=cover, share_with=share_with,
-                 pics_per_year=pics_per_year, pick=pick)
+                 pics_per_year=pics_per_year, pick=pick, **hint)
 
 
 def _load_pick(data: dict, schedule: Schedule) -> tuple[int | None, str]:
@@ -543,6 +556,77 @@ def _load_pick(data: dict, schedule: Schedule) -> tuple[int | None, str]:
         raise ConfigError('pick = "rotate" needs an automatic schedule, not '
                           '"manual" -- a rotation nobody runs')
     return pics, pick
+
+
+def _load_hint(data: dict) -> dict:
+    """Read the N31 hint overrides (N35/N36), each checked against
+    describe.py's closed vocabulary -- the one place that decides what may
+    ever be written into a description. Nothing here is free text: an
+    unrecognised value is refused at load, naming the allowed list, exactly
+    like `pick` above.
+    """
+    # Imported lazily: describe.py imports Album from this module, so a
+    # module-level import here would be circular.
+    from . import describe as describe_module
+
+    kind = _load_enum(data, "hint_kind", describe_module.KIND_VALUES)
+    order = _load_enum(data, "hint_order", describe_module.ORDER_VALUES)
+    # "none" is the default for these two and is never written to the line --
+    # its absence means the same thing -- so it is normalised away here.
+    caption = _load_enum(data, "caption", describe_module.CAPTION_VALUES)
+    caption = "" if caption == "none" else caption
+    activity = _load_enum(data, "activity", describe_module.ACTIVITY_VALUES)
+    activity = "" if activity == "none" else activity
+
+    slot = data.get("slot")
+    if slot is None:
+        slot = ""
+    else:
+        slot = str(slot).strip()
+        match = re.match(r"^(\d+)(?:-(\d+))?$", slot)
+        if not match:
+            raise ConfigError(f'slot must be a number or a range such as "2-3", '
+                              f"got {slot!r}")
+        low = int(match.group(1))
+        high = int(match.group(2)) if match.group(2) else low
+        if not (describe_module.MIN_SLOT <= low <= high <= describe_module.MAX_SLOT):
+            raise ConfigError(
+                f"slot must be between {describe_module.MIN_SLOT} and "
+                f"{describe_module.MAX_SLOT}, low to high, got {slot!r}")
+        slot = str(low) if low == high else f"{low}-{high}"
+
+    dwell = data.get("dwell")
+    if dwell is not None:
+        if not isinstance(dwell, int) or isinstance(dwell, bool):
+            raise ConfigError("dwell must be a whole number of seconds")
+        if not describe_module.MIN_DWELL <= dwell <= describe_module.MAX_DWELL:
+            raise ConfigError(
+                f"dwell must be between {describe_module.MIN_DWELL} and "
+                f"{describe_module.MAX_DWELL} seconds, got {dwell!r}")
+
+    active = data.get("active")
+    if active is None:
+        active = ""
+    else:
+        active = str(active).strip()
+        halves = active.split("..")
+        if len(halves) != 2:
+            raise ConfigError(f'active must be "MM-DD..MM-DD", got {active!r}')
+        active = f"{_parse_mmdd(halves[0], 'active')}..{_parse_mmdd(halves[1], 'active')}"
+
+    return dict(hint_kind=kind, hint_order=order, slot=slot, dwell=dwell,
+                active=active, caption=caption, activity=activity)
+
+
+def _load_enum(data: dict, key: str, allowed: tuple[str, ...]) -> str:
+    """A key that, if present, must be one of `allowed` -- never free text."""
+    value = data.get(key)
+    if value is None:
+        return ""
+    value = str(value).strip().lower()
+    if value not in allowed:
+        raise ConfigError(f"{key} must be one of {', '.join(allowed)}, got {value!r}")
+    return value
 
 
 def _load_share_with(value: object) -> tuple[str, ...]:
@@ -873,6 +957,27 @@ def dump_album(album: Album) -> str:
     if album.pick != "all":
         lines.append(f'pick    = "{album.pick}"'
                      f"   # which of each year's matches to keep\n")
+    if album.hint_kind:
+        lines.append(f"hint_kind = {_toml_str(album.hint_kind)}"
+                     f"   # override the description hint's auto-derived kind\n")
+    if album.hint_order:
+        lines.append(f"hint_order = {_toml_str(album.hint_order)}"
+                     f"   # override the description hint's auto-derived order\n")
+    if album.slot:
+        lines.append(f"slot    = {_toml_str(album.slot)}"
+                     f'   # neighbours per jump, for order = "slots"\n')
+    if album.dwell is not None:
+        lines.append(f"dwell   = {album.dwell}"
+                     f"   # seconds per photo, for a player that reads it\n")
+    if album.active:
+        lines.append(f"active  = {_toml_str(album.active)}"
+                     f"   # only play in this calendar window\n")
+    if album.caption:
+        lines.append(f"caption = {_toml_str(album.caption)}"
+                     f"   # what a player should overlay\n")
+    if album.activity:
+        lines.append(f"activity = {_toml_str(album.activity)}"
+                     f"   # a moving-photo effect, for a player that supports one\n")
     if album.schedule_inherited:
         lines.append(f"# auto-update-schedule = \"{album.schedule}\"   "
                      f"# inherited from the global default\n")

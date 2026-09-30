@@ -237,6 +237,12 @@ line a previous run left. It is written only when it would change, so an
 ordinary run touches nothing, and it needs `album.update` on the key (a 403 is a
 warning, never a failed run).
 
+An album can also override `kind`/`order` (`hint_kind`, `hint_order`) and add extra
+playback fields — `slot`, `dwell`, `active`, `caption`, `activity` — all validated
+against a closed set of values, never free text, and all editable from the design
+UI's album builder. See **[docs/hints.md](docs/hints.md)** for what every field and
+value means and what a player should do with one it does not recognise.
+
 ### Sharing an album with another account
 
 Another account on the same Immich server can be given access to an album, named

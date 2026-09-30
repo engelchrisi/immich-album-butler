@@ -46,7 +46,43 @@ and `pick` (N29); the top level gains `describe` (N31). State gains `pick_bag`, 
 keyed by calendar year) and `pick_cycle`, all additive so `state.json` stays `version: 1` and an
 older file loads unchanged. Asset UUIDs stay in `state.json`, never in `config.toml`.
 
-## 4. Design-mode HTTP
+## 4. Album description hints (N31/N35/N36)
+
+`describe.py` derives the hint line from an album's rule shape; `describe = "hint"` / `"off"`
+(default `"off"`) decides only whether the line is written at all. The rule is checked in this
+order — the first match wins:
+
+| Rule shape | `kind` | `order` |
+|---|---|---|
+| has a date window (`from`/`to`) | `trip` | `trip` |
+| recurring calendar window (`on_from`/`on_to`, N28) | `recurring-day` | `one-per-year` |
+| has `people` | `person` | `person` |
+| places only (`countries`/`states`/`cities`) | `place` | — |
+| none of the above | `album` | — |
+
+Independently of the row matched above, `rotating=yes` is appended whenever `album.rotating` is
+true (`pick = "rotate"` or `"random"`, N29) — it's an extra flag, not a different kind/order.
+
+`hint_kind` / `hint_order` (N35) override either value per album, and `slot`, `dwell`, `active`,
+`caption`, `activity` (N36) add optional playback-only fields to the line. All seven are a
+**closed vocabulary**: every enum is checked against a table in `describe.py`
+(`KIND_VALUES`/`ORDER_VALUES`/`CAPTION_VALUES`/`ACTIVITY_VALUES`) and every number against a
+range (`MIN_DWELL`/`MAX_DWELL`, `MIN_SLOT`/`MAX_SLOT`) at three points: `config.py` on load and
+on a design-mode save (`design/api.py`'s `_load_hint`, the same function both call),
+and `hint_line()` itself asserts its own output against the same tables as a second line of
+defence. A description line is therefore never built from a free-form string; an unrecognised
+value is refused at the point it was written, naming the allowed list. The design UI's album
+builder exposes all seven as bounded `<select>`/number inputs (a "Description hint" fieldset),
+with a live preview of the resulting line from `/api/preview`'s `hint` field, regardless of
+whether `describe = "hint"` is currently on.
+
+Example line: `[butler v1] kind=recurring-day order=one-per-year rotating=yes`.
+
+The full field reference — every value, its meaning, and what a player such as PyImmichFrame
+must do with an unknown or absent field — is `docs/hints.md`; `tests/test_describe.py` checks
+that every value in the registry is documented there.
+
+## 5. Design-mode HTTP
 
 Login in front of everything. Read: `/api/whoami`, `/api/people`, `/api/places`, `/api/albums`,
 `/api/groups`, `/api/accounts`, `/api/immich-albums`, `/api/trips`, `/api/duplicates[/album]`,
@@ -60,13 +96,13 @@ all -- `slug` is `null`, most fields are `null`/empty). The Albums page's "View"
 `/api/browse/album` for any of the three; `/api/cover` writes a chosen asset as an album's cover
 the same way, butler-managed or not (N34).
 
-## 5. Deployment
+## 6. Deployment
 
 `deploy/install.sh` copies the package to `/opt/immich-album-butler`, seeds config and env file,
 installs `immich-album-butler.service` (daemon) and `immich-album-butler-design.service`
 (not enabled; `ReadWritePaths` on the config directory because design mode writes it).
 
-## 6. Decisions and risks
+## 7. Decisions and risks
 
 - Names, not UUIDs, in the config: a UUID is meaningless to a reader and breaks if an album is recreated.
 - Fake servers over mocks (`tests/stub_immich.py`, `tests/fake_immich.py`): the HTTP layer is under test.
@@ -81,7 +117,7 @@ installs `immich-album-butler.service` (daemon) and `immich-album-butler-design.
   PyImmichFrame's pool cache) behind for its refresh interval — so a weekly cadence is right and a
   sub-day one is warned about.
 
-## 7. Versioning
+## 8. Versioning
 
 `__version__` is read at import time from `pyproject.toml`'s `[project] version` field via
 `tomllib`, not hardcoded. `deploy/install.sh` copies `pyproject.toml` into `$PREFIX` alongside

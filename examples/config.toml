@@ -221,6 +221,13 @@ auto-update-schedule = "weekly sun 04:00"
 pics_per_year = 5
 pick    = "rotate"
 
+# The hint line (N31) this album gets is derived automatically --
+# "kind=recurring-day order=one-per-year rotating=yes" -- and needs no
+# config. These two just add optional extras to that line for a player that
+# reads them (docs/hints.md has the full list and what each one means):
+# dwell = 8                  # seconds per photo, for a player that honours it
+# caption = "year"           # overlay the year each photo was taken
+
   [albums.alex-birthday.match]
   people     = ["Alex"]    # narrow every yearly window to this person
   on_from    = "05-16"     # this calendar day, every year...

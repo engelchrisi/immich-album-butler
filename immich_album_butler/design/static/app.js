@@ -25,6 +25,10 @@ function emptyDraft() {
     slug: "", name: "", enabled: true, schedule: "inherit",
     cover: "auto", share_with: [],   // [{ account, role }]
     pics_per_year: null, pick: "all",
+    // N35/N36: description-hint overrides. "" (not null) is "not set" here,
+    // so a bare select/text input maps to it directly -- see docs/hints.md.
+    hint_kind: "", hint_order: "", slot: "", dwell: null,
+    active: "", caption: "", activity: "",
     match: {
       from: null, to: null, countries: [], states: [], cities: [],
       people: [], people_mode: "any", include_unlocated: true,
@@ -258,6 +262,10 @@ function editAlbum(album) {
     cover: album.cover || "auto",
     share_with: (album.shares || []).map(s => ({ ...s })),
     pics_per_year: album.pics_per_year ?? null, pick: album.pick || "all",
+    hint_kind: album.hint_kind || "", hint_order: album.hint_order || "",
+    slot: album.slot || "", dwell: album.dwell ?? null,
+    active: album.active || "", caption: album.caption || "",
+    activity: album.activity || "",
     schedule: album.schedule_inherited ? "inherit" : album.schedule,
     match: { ...album.match },
   };
@@ -277,6 +285,13 @@ function fillForm() {
   $("recur-since").value = draft.match.since_year ?? "";
   $("pick").value = draft.pick || "all";
   fillPicsPerYear();
+  $("hint-kind").value = draft.hint_kind || "";
+  $("hint-order").value = draft.hint_order || "";
+  $("hint-slot").value = draft.slot || "";
+  $("hint-dwell").value = draft.dwell ?? "";
+  $("hint-active").value = draft.active || "";
+  $("hint-caption").value = draft.caption || "";
+  $("hint-activity").value = draft.activity || "";
   updateWhenExclusivity();
   fillCover(draft.cover || "auto");
   fillSharing();
@@ -423,6 +438,16 @@ function bindDraft() {
     fillPicsPerYear();
     refreshPreview();
   };
+  $("hint-kind").onchange = (e) => { state.draft.hint_kind = e.target.value; refreshPreview(); };
+  $("hint-order").onchange = (e) => { state.draft.hint_order = e.target.value; refreshPreview(); };
+  $("hint-slot").onchange = (e) => { state.draft.slot = e.target.value.trim(); refreshPreview(); };
+  $("hint-dwell").onchange = (e) => {
+    state.draft.dwell = e.target.value ? parseInt(e.target.value, 10) : null;
+    refreshPreview();
+  };
+  $("hint-active").onchange = (e) => { state.draft.active = e.target.value.trim(); refreshPreview(); };
+  $("hint-caption").onchange = (e) => { state.draft.caption = e.target.value; refreshPreview(); };
+  $("hint-activity").onchange = (e) => { state.draft.activity = e.target.value; refreshPreview(); };
   $("schedule").onchange = (e) => {
     const value = e.target.value;
     if (value === "none") {
@@ -729,6 +754,7 @@ const refreshPreview = debounce(async () => {
   if (empty) {
     box.replaceChildren(el("div", { class: "muted" },
       "Pick a date range, a recurring day, a place or a person to see a preview."));
+    $("hint-preview").textContent = "";
     return;
   }
 
@@ -739,6 +765,7 @@ const refreshPreview = debounce(async () => {
   catch (error) {
     if (token !== state.previewToken) return;
     box.replaceChildren(el("div", { class: "warn bad" }, error.message));
+    $("hint-preview").textContent = "";
     return;
   }
   if (token !== state.previewToken) return;   // a newer preview already won
@@ -772,6 +799,9 @@ const refreshPreview = debounce(async () => {
   $("next-run").textContent = !state.draft.enabled
     ? "disabled — this album is skipped by every run"
     : data.next_run ? `next automatic run: ${data.next_run.replace("T", " ")}` : "";
+  // Shown regardless of `describe = "hint"`, so a change is visible before
+  // that setting is ever turned on -- see docs/hints.md.
+  $("hint-preview").textContent = data.hint ? `description hint: ${data.hint}` : "";
   box.replaceChildren(...children);
 }, 350);
 

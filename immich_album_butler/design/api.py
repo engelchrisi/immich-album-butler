@@ -30,6 +30,7 @@ from typing import Callable
 from .. import analyze as analyze_module
 from .. import config as config_module
 from .. import cover as cover_module
+from .. import describe as describe_module
 from .. import immich as immich_module
 from .. import trips as trips_module
 from ..config import Album, MatchRule, slugify
@@ -318,6 +319,17 @@ class DesignApi:
                 "enabled": album.enabled,
                 "cover": album.cover,
                 "pics_per_year": album.pics_per_year, "pick": album.pick,
+                # N35/N36: the description-hint overrides, so the builder can
+                # show and edit them; empty/None means "not set" (derived, or
+                # omitted from the line) -- see docs/hints.md.
+                "hint_kind": album.hint_kind or None,
+                "hint_order": album.hint_order or None,
+                "slot": album.slot or None,
+                "dwell": album.dwell,
+                "active": album.active or None,
+                "caption": album.caption or None,
+                "activity": album.activity or None,
+                "hint": describe_module.hint_line(album),
                 "shares": [{"account": s.account, "role": s.role}
                           for s in album.share_with],
                 "schedule": str(album.schedule),
@@ -344,6 +356,8 @@ class DesignApi:
                 "cover_asset": info.cover_asset_id, "asset_count": info.asset_count,
                 "shared": shared(info),
                 "enabled": True, "cover": None, "pics_per_year": None, "pick": None,
+                "hint_kind": None, "hint_order": None, "slot": None, "dwell": None,
+                "active": None, "caption": None, "activity": None, "hint": None,
                 "shares": [], "schedule": "", "schedule_inherited": False,
                 "match": None, "last_run": None, "last_result": None, "last_error": None,
             })
@@ -468,6 +482,10 @@ class DesignApi:
             # would end up on the front before anything is saved.
             "cover": album.cover,
             "cover_asset": plan.cover_asset_id,
+            # The description hint a run would write, live -- N31/N35/N36 --
+            # regardless of whether `describe = "hint"` is on, so the builder
+            # can preview it before turning the setting on.
+            "hint": describe_module.hint_line(album),
             # How many accounts would gain access, so the builder can say so
             # before anything is saved.
             "to_share": len(plan.to_share),
@@ -881,6 +899,7 @@ class DesignApi:
         share_with = self._sharing_from(payload)
         try:
             pics_per_year, pick = config_module._load_pick(payload, schedule)
+            hint = config_module._load_hint(payload)
         except config_module.ConfigError as exc:
             raise ApiError(str(exc)) from None
 
@@ -888,7 +907,7 @@ class DesignApi:
                      schedule=schedule, schedule_inherited=inherited,
                      enabled=bool(payload.get("enabled", True)),
                      cover=cover, share_with=share_with,
-                     pics_per_year=pics_per_year, pick=pick)
+                     pics_per_year=pics_per_year, pick=pick, **hint)
 
     def _sharing_from(self, payload: dict) -> tuple[config_module.AlbumShare, ...]:
         """Read the builder's share picker: one account, one role, each.

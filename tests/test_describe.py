@@ -1,16 +1,23 @@
 import datetime as dt
+import re
 import unittest
+from pathlib import Path
 
+from immich_album_butler import describe
 from immich_album_butler.config import Album, MatchRule
 from immich_album_butler.describe import apply_hint, hint_line
 from immich_album_butler.schedule import parse as parse_schedule
 
 
 def album(rule: MatchRule, *, pick: str = "all",
-          pics_per_year: int | None = None) -> Album:
+          pics_per_year: int | None = None, hint_kind: str = "",
+          hint_order: str = "", slot: str = "", dwell: int | None = None,
+          active: str = "", caption: str = "", activity: str = "") -> Album:
     return Album(slug="x", name="X", match=rule,
                  schedule=parse_schedule("weekly sun 04:00"),
-                 pick=pick, pics_per_year=pics_per_year)
+                 pick=pick, pics_per_year=pics_per_year,
+                 hint_kind=hint_kind, hint_order=hint_order, slot=slot,
+                 dwell=dwell, active=active, caption=caption, activity=activity)
 
 
 class HintLineTests(unittest.TestCase):
@@ -39,6 +46,64 @@ class HintLineTests(unittest.TestCase):
         line = hint_line(album(rule, pick="rotate", pics_per_year=5))
         self.assertEqual(
             line, "[butler v1] kind=recurring-day order=one-per-year rotating=yes")
+
+
+class HintOverrideTests(unittest.TestCase):
+    def test_hint_kind_overrides_the_derived_kind(self):
+        rule = MatchRule(people=("Alex",))
+        line = hint_line(album(rule, hint_kind="place"))
+        self.assertEqual(line, "[butler v1] kind=place order=person")
+
+    def test_hint_order_overrides_the_derived_order(self):
+        rule = MatchRule(people=("Alex",))
+        line = hint_line(album(rule, hint_order="slots"))
+        self.assertEqual(line, "[butler v1] kind=person order=slots")
+
+    def test_places_with_an_order_override_get_one(self):
+        rule = MatchRule(countries=("Italy",))
+        line = hint_line(album(rule, hint_order="random"))
+        self.assertEqual(line, "[butler v1] kind=place order=random")
+
+    def test_playback_fields_are_appended_in_order(self):
+        rule = MatchRule(people=("Alex",))
+        line = hint_line(album(rule, slot="2-3", dwell=8, active="12-01..12-31",
+                                caption="year", activity="kenburns"))
+        self.assertEqual(
+            line,
+            "[butler v1] kind=person order=person slot=2-3 dwell=8 "
+            "active=12-01..12-31 caption=year activity=kenburns")
+
+    def test_unset_playback_fields_are_omitted(self):
+        rule = MatchRule(people=("Alex",))
+        line = hint_line(album(rule))
+        self.assertEqual(line, "[butler v1] kind=person order=person")
+
+
+class ClosedVocabularyTests(unittest.TestCase):
+    """No value can reach a description that isn't in describe.py's registry.
+
+    Also guards docs/hints.md: every registry value must be documented there,
+    so a value cannot be added to the vocabulary without documenting it.
+    """
+
+    def test_hint_line_refuses_an_unregistered_kind(self):
+        rule = MatchRule(people=("Alex",))
+        with self.assertRaises(AssertionError):
+            hint_line(album(rule, hint_kind="vacation"))
+
+    def test_hint_line_refuses_an_unregistered_order(self):
+        rule = MatchRule(people=("Alex",))
+        with self.assertRaises(AssertionError):
+            hint_line(album(rule, hint_order="backwards"))
+
+    def test_every_registry_value_is_documented(self):
+        docs = Path(__file__).resolve().parent.parent / "docs" / "hints.md"
+        text = docs.read_text(encoding="utf-8")
+        for value in (*describe.KIND_VALUES, *describe.ORDER_VALUES,
+                      *describe.CAPTION_VALUES, *describe.ACTIVITY_VALUES):
+            self.assertIn(f"`{value}`", text,
+                          f"{value!r} is in describe.py's registry but not "
+                          f"documented in docs/hints.md")
 
 
 class ApplyHintTests(unittest.TestCase):
