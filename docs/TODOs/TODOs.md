@@ -1,0 +1,1 @@
+- Redesign the album tiles, especially the chaotic text info
