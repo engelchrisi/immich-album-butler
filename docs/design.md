@@ -91,7 +91,9 @@ Login in front of everything. Read: `/api/whoami`, `/api/people`, `/api/places`,
 
 `/api/albums` lists every Immich album this key can see, not only the ones with a rule: a row's
 `type` is `"manual"` or `"scheduled"` (the album's schedule kind, N33) or `"normal"` (no rule at
-all -- `slug` is `null`, most fields are `null`/empty). The Albums page's "View" button opens
+all -- `slug` is `null`, most fields are `null`/empty). Each Albums card shows a status dot (OK /
+failed / disabled / not run), labelled rows (Rule, Schedule, Last run or Error), chips for extras,
+and a footer with the actions. The Albums page's "View" button opens
 `/api/browse/album` for any of the three; `/api/cover` writes a chosen asset as an album's cover
 the same way, butler-managed or not (N34).
 

@@ -144,44 +144,81 @@ function renderAlbums() {
 
   for (const album of shown) {
     const managed = album.type !== "normal";
-    const status = album.last_error
-      ? el("span", { class: "pill err" }, "last run failed")
-      : !managed || album.enabled ? "" : el("span", { class: "pill off" }, "disabled");
+    const name = album.immich_name || album.name;
 
-    const meta = managed
-      ? [describe(album.match), el("br"),
-         `${album.schedule}${album.schedule_inherited ? " (inherited)" : ""}`,
-         album.pics_per_year ? ` · ${album.pics_per_year}/year (${album.pick})` : "",
-         album.cover && album.cover !== "auto" ? ` · cover: ${album.cover}` : "",
-         (album.shares || []).length
-           ? ` · shared with ${album.shares.map(s => s.account).join(", ")}` : ""]
-      : [album.asset_count == null ? "" :
-         `${album.asset_count} item${album.asset_count === 1 ? "" : "s"}`,
-         album.shared ? " · shared with me" : ""];
+    // Status word for managed albums only; the dot's colour carries it.
+    const [statusText, statusClass] = !managed ? [null]
+      : album.last_error ? ["failed", "err"]
+      : !album.enabled ? ["disabled", "off"]
+      : !album.last_run ? ["not run", "off"]
+      : ["OK", "ok"];
+    const status = statusText
+      ? el("span", { class: `status ${statusClass}` }, statusText) : "";
 
-    const bar = managed
+    // Labelled rows: one fixed label column, one value column.
+    const rows = managed
+      ? [infoRow("Rule", describe(album.match), "", ""),
+         infoRow("Schedule",
+           `${album.schedule}${album.schedule_inherited ? " (inherited)" : ""}`),
+         album.last_error
+           ? infoRow("Error", album.last_error, "bad clamp", "")
+           : album.last_run
+             ? infoRow("Last run", `${album.last_result || "ran"} · ${relativeTime(album.last_run)}`,
+                       "", formatLastRun(album.last_run))
+             : infoRow("Last run", "never")]
+      : [infoRow("Items", album.asset_count == null ? "—" : String(album.asset_count)),
+         album.shared ? infoRow("Shared", "with me") : ""];
+
+    // Extras as small chips, only when there are any.
+    const chips = managed ? [
+      (album.shares || []).length
+        ? `shared with ${album.shares.map(s => s.account).join(", ")}` : "",
+      album.pics_per_year ? `${album.pics_per_year}/yr (${album.pick})` : "",
+      album.cover && album.cover !== "auto" ? `cover: ${album.cover}` : "",
+    ].filter(Boolean) : [];
+
+    const actions = managed
       ? [button("Edit", () => editAlbum(album)),
          button("Run now", () => runAlbum(album.slug, false))]
       : [];
-    bar.push(button("View", () => openAlbumView(album.album_id)));
 
     const card = el("div", { class: `card album type-${album.type}` },
-      el("div", { class: "album-top" },
+      el("div", { class: "album-body" },
         album.cover_asset
           ? el("img", { class: "album-cover", src: `/api/thumb/${album.cover_asset}`,
                         loading: "lazy", alt: "" })
           : el("div", { class: "album-cover none" }),
-        el("h3", {}, album.immich_name || album.name, " ",
-           el("span", { class: "pill" }, TYPE_LABEL[album.type] || album.type), " ", status),
-        el("div", { class: "meta" }, ...meta),
-        managed && album.last_error
-          ? el("div", { class: "warn bad" }, album.last_error)
-          : managed ? el("div", { class: "muted" }, album.last_result || "not run yet") : "",
-        managed ? el("div", { class: "muted" },
-          album.last_run ? `last run: ${formatLastRun(album.last_run)}` : "never run") : ""),
-      el("div", { class: "bar" }, ...bar));
+        el("div", { class: "album-main" },
+          el("div", { class: "album-head" },
+            el("h3", { title: name }, name),
+            status),
+          el("span", { class: "pill" }, TYPE_LABEL[album.type] || album.type),
+          el("dl", { class: "album-info" }, ...rows.flat().filter(Boolean)))),
+      chips.length
+        ? el("div", { class: "album-chips" },
+            ...chips.map(c => el("span", { class: "pill" }, c)))
+        : "",
+      el("div", { class: "bar" }, ...actions, el("span", { class: "push" }),
+         button("View", () => openAlbumView(album.album_id))));
     list.append(card);
   }
+}
+
+// One label/value pair for the album card's <dl>. `cls` styles the value;
+// `title` (optional) is the hover text, e.g. the absolute time.
+function infoRow(label, value, cls = "", title = "") {
+  return [el("dt", {}, label),
+          el("dd", { class: cls, title: title || value }, value)];
+}
+
+// "5m ago", "3h ago", "2d ago"; falls back to the absolute time.
+function relativeTime(iso) {
+  const mins = Math.round((Date.now() - new Date(iso)) / 60000);
+  if (!(mins >= 0)) return formatLastRun(iso);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1440) return `${Math.round(mins / 60)}h ago`;
+  return `${Math.round(mins / 1440)}d ago`;
 }
 
 function describe(match) {

@@ -1,5 +1,12 @@
 # Changes
 
+## 0.6.2 — 2026-10-06
+- Design UI: Albums page tiles redesigned. Cover on the left, labelled rows
+  (Rule, Schedule, Last run / Error) on the right, a status dot (OK, failed,
+  disabled, not run), extras (shares, picks, cover) as chips, and the actions
+  in a footer with View on the right. Long rules and errors are clamped, with
+  the full text on hover.
+
 ## 0.6.1 — 2026-09-30
 - Design UI: split the builder's Options group — Album/Schedule/Sharing stay
   on the left, Description hint moved into a new "Optional" group on the
