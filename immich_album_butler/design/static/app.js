@@ -117,7 +117,10 @@ function filteredAlbums() {
 
 function formatLastRun(iso) {
   if (!iso) return "";
-  try { return new Date(iso).toLocaleString(); } catch { return iso; }
+  try {
+    return new Date(iso).toLocaleString(undefined,
+      { dateStyle: "medium", timeStyle: "short" });
+  } catch { return iso; }
 }
 
 function renderAlbums() {
@@ -163,8 +166,8 @@ function renderAlbums() {
          album.last_error
            ? infoRow("Error", album.last_error, "bad clamp", "")
            : album.last_run
-             ? infoRow("Last run", `${album.last_result || "ran"} · ${relativeTime(album.last_run)}`,
-                       "", formatLastRun(album.last_run))
+             ? infoRow("Last run", formatLastRun(album.last_run), "",
+                       album.last_result || "")
              : infoRow("Last run", "never")]
       : [infoRow("Items", album.asset_count == null ? "—" : String(album.asset_count)),
          album.shared ? infoRow("Shared", "with me") : ""];
@@ -191,8 +194,8 @@ function renderAlbums() {
         el("div", { class: "album-main" },
           el("div", { class: "album-head" },
             el("h3", { title: name }, name),
+            el("span", { class: "pill" }, TYPE_LABEL[album.type] || album.type),
             status),
-          el("span", { class: "pill" }, TYPE_LABEL[album.type] || album.type),
           el("dl", { class: "album-info" }, ...rows.flat().filter(Boolean)))),
       chips.length
         ? el("div", { class: "album-chips" },
@@ -209,16 +212,6 @@ function renderAlbums() {
 function infoRow(label, value, cls = "", title = "") {
   return [el("dt", {}, label),
           el("dd", { class: cls, title: title || value }, value)];
-}
-
-// "5m ago", "3h ago", "2d ago"; falls back to the absolute time.
-function relativeTime(iso) {
-  const mins = Math.round((Date.now() - new Date(iso)) / 60000);
-  if (!(mins >= 0)) return formatLastRun(iso);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  if (mins < 1440) return `${Math.round(mins / 60)}h ago`;
-  return `${Math.round(mins / 1440)}d ago`;
 }
 
 function describe(match) {

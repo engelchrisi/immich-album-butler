@@ -18,6 +18,7 @@ photo library:
 
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import logging
@@ -39,6 +40,9 @@ from .auth import SESSION_COOKIE, Sessions, Throttle, User, Users
 log = logging.getLogger(__name__)
 
 STATIC = Path(__file__).parent / "static"
+# The files whose served/on-disk hashes are logged, so a stale browser cache
+# can be told apart from a stale deploy.
+UI_ASSETS = ("index.html", "app.js", "style.css")
 
 CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css",
                  ".js": "text/javascript", ".svg": "image/svg+xml"}
@@ -111,8 +115,12 @@ def serve(api: DesignApi, host: str = "127.0.0.1", port: int = 8081,
         api.reload_trigger = watcher.force
 
     shown = host if host not in ("0.0.0.0", "::") else _best_address()
-    log.info("design mode on http://%s:%d  (config %s, %d login(s))",
-             shown, port, api.config_dir, len(accounts))
+    log.info("design mode on http://%s:%d  (config %s, %d login(s), version %s)",
+             shown, port, api.config_dir, len(accounts), __version__)
+    for name in UI_ASSETS:
+        data = (STATIC / name).read_bytes()
+        log.info("design UI on disk %s: %d bytes, sha256 %s", name, len(data),
+                 hashlib.sha256(data).hexdigest()[:12])
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -441,6 +449,10 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
             data = path.read_bytes()
             if name == "index.html":
                 data = data.replace(b"%VERSION%", __version__.encode())
+            if name in UI_ASSETS:
+                # What the browser actually got, to compare with the file on disk.
+                log.info("design UI served %s: %d bytes, sha256 %s", name,
+                         len(data), hashlib.sha256(data).hexdigest()[:12])
             self._send(200, data,
                        CONTENT_TYPES.get(path.suffix, "application/octet-stream"),
                        {"Cache-Control": "no-cache"})

@@ -187,15 +187,16 @@ button.link { background: none; border: none; color: var(--accent); padding: 0.2
 .card .bar { margin: 0.7rem 0 0; }
 .card.album { display: flex; flex-direction: column; height: 100%; }
 .card.album .bar { margin-top: auto; }
-.album-body { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 0.8rem;
-              align-items: start; }
-.album-cover { width: 88px; height: 88px; object-fit: cover; border-radius: 6px;
-               background: var(--thumb-bg); }
+.album-body { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 0.8rem;
+              align-items: stretch; }
+/* The cover fills the height of the rows beside it, so no gap is left below it. */
+.album-cover { width: 96px; min-height: 96px; height: 100%; object-fit: cover;
+               border-radius: 6px; background: var(--thumb-bg); }
 .album-main { min-width: 0; display: flex; flex-direction: column; gap: 0.3rem; }
 .album-head { display: flex; align-items: baseline; gap: 0.5rem; min-width: 0; }
 .album-head h3 { flex: 1 1 auto; min-width: 0; overflow: hidden;
                  text-overflow: ellipsis; white-space: nowrap; }
-.album-main .pill { align-self: flex-start; }
+.album-head .pill { flex: 0 0 auto; }
 .album-info { display: grid; grid-template-columns: max-content minmax(0, 1fr);
               gap: 0.15rem 0.6rem; margin: 0; font-size: 0.85rem; }
 .album-info dt { color: var(--muted); }

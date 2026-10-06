@@ -1,5 +1,12 @@
 # Changes
 
+## 0.6.3 — 2026-10-06
+- Design UI: album tiles show the type tag beside the name, and "Last run" is
+  a short readable timestamp (the run summary is on hover). The cover fills
+  the height of the rows, so no gap is left below it.
+- Design UI: the log records the UI files on disk at startup and the hash of
+  each one served, so a stale page can be told apart from a stale deploy.
+
 ## 0.6.2 — 2026-10-06
 - Design UI: Albums page tiles redesigned. Cover on the left, labelled rows
   (Rule, Schedule, Last run / Error) on the right, a status dot (OK, failed,
