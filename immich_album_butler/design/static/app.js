@@ -24,7 +24,7 @@ const state = {
 function emptyDraft() {
   return {
     slug: "", name: "", enabled: true, schedule: "inherit",
-    cover: "auto", share_with: [],   // [{ account, role }]
+    cover: "favorite", share_with: [],   // [{ account, role }]
     pics_per_year: null, pick: "all",
     // N35/N36: description-hint overrides. "" (not null) is "not set" here,
     // so a bare select/text input maps to it directly -- see docs/hints.md.
@@ -33,7 +33,7 @@ function emptyDraft() {
     match: {
       from: null, to: null, countries: [], states: [], cities: [],
       people: [], people_mode: "any", include_unlocated: true,
-      include_videos: true,
+      include_videos: false,
       on_from: "", on_to: "", since_year: null,
     },
   };
@@ -1391,6 +1391,8 @@ function fromTrip(trip) {
   state.draft.match.to = trip.end;
   state.draft.match.countries = trip.countries.slice(0, 3);
   state.draft.match.include_unlocated = true;
+  state.draft.hint_kind = "trip";
+  state.draft.hint_order = "trip";
   fillForm();
   showTab("builder");
 }

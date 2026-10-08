@@ -1,5 +1,11 @@
 # Changes
 
+## 0.7.0 — 2026-10-08
+- Design UI: Builder defaults changed — Include Videos now off, cover
+  defaults to a favourited picture (else Immich's own pick). Starting a
+  build from the Trips page defaults both description-hint kind and order
+  to "trip".
+
 ## 0.6.3 — 2026-10-06
 - Design UI: album tiles show the type tag beside the name, and "Last run" is
   a short readable timestamp (the run summary is on hover). The cover fills
