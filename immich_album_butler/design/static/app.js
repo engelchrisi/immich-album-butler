@@ -74,7 +74,7 @@ function banner(message, ok = false) {
  * driven by the History API -- no page reload, but back/forward and
  * bookmarks work as expected. */
 
-const TABS = ["albums", "builder", "trips", "duplicates"];
+const TABS = ["albums", "builder", "trips", "duplicates", "backup"];
 
 function activateTab(name) {
   for (const el of document.querySelectorAll(".tab")) {
@@ -86,6 +86,7 @@ function activateTab(name) {
   if (name === "albums") loadAlbums();
   if (name === "trips") loadTrips(false);
   if (name === "duplicates") loadDuplicates();
+  if (name === "backup") loadBackups();
 }
 
 function route(path) {
@@ -1018,6 +1019,75 @@ async function addNow(group) {
       { ...state.draft, asset_ids: group.asset_ids });
     banner(`Added ${result.added} of ${result.requested} to ${result.album}.`, true);
     refreshPreview();
+  } catch (error) { banner(error.message); }
+}
+
+/* -- backup tab ---------------------------------------------------------- */
+
+/* Backups are files on the server. Restore always shows a dry run first and
+ * only goes ahead on confirmation; it adds, it never removes. */
+
+$("backup-create").onclick = async () => {
+  try {
+    const made = await post("/api/backups", {});
+    banner(`Saved ${made.name}`, true);
+  } catch (error) { banner(error.message); }
+  loadBackups();
+};
+
+async function loadBackups() {
+  const list = $("backup-list");
+  let data;
+  try { data = await api("/api/backups"); }
+  catch (error) { return banner(error.message); }
+  if (!data.backups.length) {
+    list.replaceChildren(el("div", { class: "muted" }, "No backups yet."));
+    return;
+  }
+  list.replaceChildren(...data.backups.map((b) => el("div", { class: "card" },
+    el("b", {}, b.name),
+    el("div", { class: "muted" },
+      `${b.created.replace("T", " ").slice(0, 16)} · ${b.albums} albums · ` +
+      `${b.assets} assets · ${Math.max(1, Math.round(b.size / 1024))} KiB`),
+    button("Restore…", () => restoreBackup(b.name)))));
+}
+
+function describeRestore(result) {
+  const lines = result.albums.map((a) => {
+    if (a.action === "skip") return `= ${a.name}: complete`;
+    const verb = a.action === "create" ? "create" : "extend";
+    const count = result.dry_run ? a.to_add : a.added;
+    let line = `+ ${verb} ${a.name}: ${count} assets`;
+    if (a.remapped) line += ` (${a.remapped} found again by checksum)`;
+    return line + a.unmatched.map((n) => `
+    not in the library: ${n}`).join("") +
+      a.warnings.map((w) => `
+    ${w}`).join("");
+  });
+  if (result.config_restored) lines.push("~ config.toml restored");
+  for (const w of result.warnings) lines.push(`! ${w}`);
+  return lines.join("
+") || "nothing to restore";
+}
+
+async function restoreBackup(name) {
+  const body = { name, album: $("backup-album").value.trim(),
+                 config: $("backup-config").checked };
+  const out = $("backup-result");
+  let preview;
+  try { preview = await post("/api/backups/restore", { ...body, dry_run: true }); }
+  catch (error) { return banner(error.message); }
+  out.textContent = "Would do:
+" + describeRestore(preview);
+  out.hidden = false;
+  if (!confirm(`Restore from ${name}?
+
+${describeRestore(preview)}`)) return;
+  try {
+    const done = await post("/api/backups/restore", { ...body, dry_run: false });
+    out.textContent = "Done:
+" + describeRestore(done);
+    banner("Restore finished", true);
   } catch (error) { banner(error.message); }
 }
 

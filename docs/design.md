@@ -17,7 +17,7 @@ mode's preview, so the preview cannot drift from what a run does.
 
 | Module | Role |
 |---|---|
-| `cli.py` | `run`, `design`, `trips`, `passwd`, `check`; API key read from the environment |
+| `cli.py` | `run`, `design`, `trips`, `backup`, `backups`, `restore`, `passwd`, `check`; API key read from the environment |
 | `config.py` | Read and write `config.toml` (settings, design users, groups, album rules); people by name |
 | `immich.py` | Narrow Immich API client: read assets/people/albums, create albums, add assets |
 | `matcher.py` | Album rule → asset set; places OR'd client-side, `people_mode` independent of server semantics; a recurring day (N28) is one windowed query per year |
@@ -26,6 +26,7 @@ mode's preview, so the preview cannot drift from what a run does.
 | `runtime.py` | `plan()` (read-only) and `apply()` (the only writer); per-album failure isolation |
 | `schedule.py` | The `auto-update-schedule` grammar |
 | `state.py` | Album ids and last run per album; atomic rewrite |
+| `backup.py` | Album backup and additive restore (N37-N39): one 0600 JSON file per backup; restore by id, then checksum |
 | `cover.py` | Cover choice by rule or file name |
 | `trips.py` | Trip detection from geotagged photos away from home |
 | `analyze.py` | Near-miss suggestions for a rule |
@@ -85,7 +86,7 @@ that every value in the registry is documented there.
 
 Login in front of everything. Read: `/api/whoami`, `/api/people`, `/api/places`, `/api/albums`,
 `/api/groups`, `/api/accounts`, `/api/immich-albums`, `/api/trips`, `/api/duplicates[/album]`,
-`/api/browse/album`, `/api/thumb/…`, `/api/asset/…`. Write: `/api/preview`, `/api/analyze`,
+`/api/browse/album`, `/api/backups`, `/api/thumb/…`, `/api/asset/…`. Write: `/api/backups` (create), `/api/backups/restore` (`dry_run`, `config`, `album`), `/api/preview`, `/api/analyze`,
 `/api/albums`, `/api/groups`, `/api/run`, `/api/add-assets`, `/api/duplicates/remove`,
 `/api/cover`.
 
@@ -104,6 +105,13 @@ installs `immich-album-butler.service` (daemon) and `immich-album-butler-design.
 (not enabled; `ReadWritePaths` on the config directory because design mode writes it).
 
 ## 7. Decisions and risks
+
+- Backup (N37-N39) is a metadata file, not an export: ids and checksums are enough to rebuild an
+  album on the same library, and the checksum finds a photo again if the library was re-imported.
+  Restore is additive on purpose -- a restore that removed things could damage a library that has
+  moved on since the backup. Cover and sharing are restored only for albums the restore creates.
+  The file includes config.toml (login hashes), hence 0600; the butler's albums are in the Immich
+  list too, and `state.json` ids are remapped so recreated albums stay owned by their rule.
 
 - Names, not UUIDs, in the config: a UUID is meaningless to a reader and breaks if an album is recreated.
 - Fake servers over mocks (`tests/stub_immich.py`, `tests/fake_immich.py`): the HTTP layer is under test.

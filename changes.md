@@ -1,5 +1,14 @@
 # Changes
 
+## 0.9.0 — 2026-10-08
+- Album backup and restore: `backup`, `backups` and `restore` commands and a
+  Backup tab (`/backup`) in design mode. A backup is one private JSON file with
+  every owned album's metadata and assets (id, checksum, path, EXIF — no
+  images), `config.toml` and the album-id map. Restore only adds: it recreates
+  missing albums (cover and sharing too), extends existing ones, finds
+  re-imported assets by checksum, and optionally restores `config.toml`
+  (keeping `config.toml.bak`). `--dry-run` previews.
+
 ## 0.8.1 — 2026-10-08
 - Design UI: editing an album in the Builder now gets its own URL
   (`/builder/<slug>`) too — it was missed in 0.8.0, which only gave the

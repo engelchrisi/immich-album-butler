@@ -14,6 +14,9 @@ from pathlib import Path
 
 from . import config as config_module
 from . import trips as trips_module
+from .backup import (BackupError, backups_dir, create_backup, list_backups,
+                     load_backup, resolve_backup)
+from .backup import restore as restore_backup
 from .config import DEFAULT_CONFIG_DIR, DEFAULT_STATE_DIR, ConfigError
 from .immich import ImmichClient, ImmichError
 from .runtime import run_forever, run_once
@@ -61,6 +64,24 @@ def build_parser() -> argparse.ArgumentParser:
     passwd = sub.add_parser("passwd", help="make a design-mode login for config.toml")
     passwd.add_argument("name", help="the user name to sign in with")
 
+    backup = sub.add_parser("backup", help="save all albums' metadata to a file")
+    backup.add_argument("--dir", type=Path, default=None,
+                        help="where to write it (default: <state-dir>/backups)")
+
+    sub.add_parser("backups", help="list the backups").add_argument(
+        "--dir", type=Path, default=None)
+
+    restore = sub.add_parser("restore", help="rebuild albums from a backup")
+    restore.add_argument("backup", help="'latest', a file name or a path")
+    restore.add_argument("--dir", type=Path, default=None,
+                         help="where backups are kept (default: <state-dir>/backups)")
+    restore.add_argument("--album", help="only the Immich album of this name")
+    restore.add_argument("--config", action="store_true",
+                         help="also put the backed-up config.toml back "
+                              "(the current one is kept as config.toml.bak)")
+    restore.add_argument("--dry-run", action="store_true",
+                         help="report what would change, change nothing")
+
     sub.add_parser("check", help="validate the configuration and exit")
     return parser
 
@@ -82,12 +103,21 @@ def main(argv: list[str] | None = None) -> int:
             return _design(args)
         if args.command == "passwd":
             return _passwd(args)
+        if args.command == "backup":
+            return _backup(args)
+        if args.command == "backups":
+            return _backups(args)
+        if args.command == "restore":
+            return _restore(args)
     except ConfigError as exc:
         print(f"configuration error: {exc}", file=sys.stderr)
         return 2
     except ImmichError as exc:
         print(f"Immich: {exc}", file=sys.stderr)
         return 3
+    except BackupError as exc:
+        print(f"backup: {exc}", file=sys.stderr)
+        return 1
     except KeyboardInterrupt:
         return 130
     return 1
@@ -207,6 +237,56 @@ def _design(args) -> int:
           # design_port for a live restart when nothing overrode it.
           watch_port=args.port is None)
     return 0
+
+
+def _backup(args) -> int:
+    config = config_module.load(args.config_dir)
+    path = create_backup(_client(config), args.config_dir, args.state_dir, args.dir)
+    data = load_backup(path)
+    albums = data["immich_albums"]
+    print(f"{path}: {len(albums)} albums, "
+          f"{sum(len(a['assets']) for a in albums)} assets "
+          f"(holds the login hashes: keep it private)")
+    return 0
+
+
+def _backups(args) -> int:
+    found = list_backups(backups_dir(args.state_dir, args.dir))
+    if not found:
+        print("no backups")
+    for info in found:
+        print(f"{info.name}  {info.created}  {info.albums} albums  "
+              f"{info.assets} assets  {info.size // 1024} KiB")
+    return 0
+
+
+def _restore(args) -> int:
+    config = config_module.load(args.config_dir)
+    path = resolve_backup(backups_dir(args.state_dir, args.dir), args.backup)
+    data = load_backup(path)
+    report = restore_backup(_client(config), data, args.config_dir, args.state_dir,
+                            dry_run=args.dry_run, restore_config=args.config,
+                            only=args.album)
+    prefix = "would " if args.dry_run else ""
+    for item in report.albums:
+        if item.action == "skip":
+            print(f"  =  {item.name}: complete")
+        else:
+            verb = "create" if item.action == "create" else "extend"
+            count = item.to_add if args.dry_run else item.added
+            print(f"  +  {prefix}{verb} {item.name!r}: {count} assets")
+        if item.remapped:
+            print(f"     {item.remapped} found again by checksum")
+        for name in item.unmatched:
+            print(f"     not in the library: {name}")
+        for warning in item.warnings:
+            print(f"     {warning}")
+    if report.config_restored:
+        kept = f" (old one kept as {report.config_backup})" if report.config_backup else ""
+        print(f"  ~  {prefix}restore config.toml{kept}")
+    for warning in report.warnings:
+        print(f"  !  {warning}")
+    return 1 if any(i.warnings for i in report.albums) else 0
 
 
 def _passwd(args) -> int:

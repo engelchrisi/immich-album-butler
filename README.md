@@ -309,6 +309,10 @@ immich-album-butler run --once italy-2019   # update one album now
 immich-album-butler design                  # web UI on http://127.0.0.1:8081 (this machine only)
 immich-album-butler design --host 0.0.0.0 --port 9000  # reachable from the LAN, port 9000 (needs a login)
 immich-album-butler passwd alex             # make a design-mode login
+immich-album-butler backup                  # save all albums' metadata (no photos) + config.toml
+immich-album-butler backups                 # list the backups
+immich-album-butler restore latest --dry-run  # show what a restore would do
+immich-album-butler restore latest [--config] [--album NAME]
 ```
 
 Configuration directory: `--config-dir`. The API key comes from `IMMICH_KEY`,
@@ -451,6 +455,23 @@ takes the others out of that album only; they stay in your library and in any
 other album. An album a scheduled rule keeps filling (↻) is flagged: its rule
 still matches the removed copies, so the next run adds them back. Needs
 `duplicate.read` and `albumAsset.delete` on the key.
+
+### Backup and restore
+
+`backup` (or **Back up now** on the **Backup** tab) writes
+`<state-dir>/backups/backup-<date>.json`: every album you own with description,
+cover, sharing and each asset's id, checksum, original path and basic EXIF —
+never an image — plus `config.toml` and the album-id map. It holds the login
+hashes, so it is created private (0600); keep it that way.
+
+`restore <file|latest>` only **adds**: missing albums are recreated, existing
+ones gain the assets they lack, nothing is removed or deleted. An asset whose id
+is gone is found again by checksum; one that is not in the library is listed.
+`--dry-run` shows the plan. `--config` also puts the backed-up `config.toml`
+back (the current one is kept as `config.toml.bak`). `--album NAME` limits it
+to one album. Needs `album.read`/`asset.read` for backup, and `album.create`,
+`albumAsset.create` (plus the optional `album.update`, `albumUser.create`,
+`user.read` for cover and sharing) for restore.
 
 ### Browsing an album
 

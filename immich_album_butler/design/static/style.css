@@ -409,3 +409,5 @@ div.dup-cover { background: var(--thumb-bg); }
   #lightbox figcaption { flex: 0 0 35%; }
 }
 .fold { display: inline-flex; gap: 0.4rem; }
+
+#backup-result { white-space: pre-wrap; margin-top: 1rem; }

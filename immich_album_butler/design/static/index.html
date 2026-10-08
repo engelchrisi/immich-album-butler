@@ -16,6 +16,7 @@
     <button class="tab" data-tab="builder">Builder</button>
     <button class="tab" data-tab="trips">Trips</button>
     <button class="tab" data-tab="duplicates">Duplicates</button>
+    <button class="tab" data-tab="backup">Backup</button>
   </nav>
   <div id="whoami">
     <button id="reload-config" title="Apply a config.toml edit now, without waiting">Reload config</button>
@@ -308,6 +309,23 @@
   <div class="muted scan-note" id="dup-note"></div>
   <div id="dup-list" class="cards"></div>
   <div id="dup-album" hidden></div>
+</section>
+
+<!-- ---------------------------------------------------------------- -->
+<section id="backup" class="panel">
+  <div class="toolbar">
+    <button id="backup-create" class="primary">Back up now</button>
+    <label class="field inline"><span>Album</span>
+      <input id="backup-album" type="text" placeholder="all albums"
+             autocomplete="off"></label>
+    <label class="inline"><input id="backup-config" type="checkbox">
+      also restore config.toml (the current one is kept as config.toml.bak)</label>
+  </div>
+  <div class="muted scan-note">Backups hold album metadata only, never photos,
+    plus config.toml with its login hashes: keep them private. Restore only adds;
+    it never removes assets or deletes albums.</div>
+  <div id="backup-list" class="cards"></div>
+  <pre id="backup-result" hidden></pre>
 </section>
 
 <!-- ---------------------------------------------------------------- -->

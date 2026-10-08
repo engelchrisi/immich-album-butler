@@ -313,7 +313,7 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
             # the app shell is the same for all of them, and app.js decides
             # which panel to show from the URL.
             if path in ("/", "/index.html", "/albums", "/builder", "/trips",
-                        "/duplicates") \
+                        "/duplicates", "/backup") \
                     or path.startswith("/albums/") or path.startswith("/builder/"):
                 return self._static("index.html")
             if path.startswith("/static/"):
@@ -383,6 +383,8 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
                 return api.existing_albums()
             if path == "/api/groups":
                 return api.groups()
+            if path == "/api/backups":
+                return api.backups()
             if path == "/api/duplicates":
                 return api.duplicates(rescan=query.get("rescan") == "1")
             if path == "/api/duplicates/album":
@@ -414,6 +416,10 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
                 return api.add_assets(body)
             if path == "/api/duplicates/remove":
                 return api.remove_duplicates(body)
+            if path == "/api/backups":
+                return api.create_backup()
+            if path == "/api/backups/restore":
+                return api.restore_backup(body)
             if path == "/api/cover":
                 return api.set_cover(body)
             if path == "/api/reload-config":

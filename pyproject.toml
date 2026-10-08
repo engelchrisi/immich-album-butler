@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "immich-album-butler"
-version = "0.8.1"
+version = "0.9.0"
 description = "A butler that keeps your Immich albums in order: by people, places and dates."
 readme = "README.md"
 license = { file = "LICENSE" }

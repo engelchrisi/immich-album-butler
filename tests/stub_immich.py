@@ -43,6 +43,7 @@ def make_asset(number: int, *, when: str, lat: float | None = None,
         "type": kind,
         "localDateTime": when,
         "originalFileName": file_name or f"IMG_{number:04d}.jpg",
+        "checksum": f"checksum-{number:04d}",
         "originalPath": f"/photos/example-folder/{file_name or f'IMG_{number:04d}.jpg'}",
         "isFavorite": favorite,
         "_people": list(people),          # stub-only, used for personIds filtering
@@ -142,6 +143,8 @@ class StubImmich:
                 album = self.albums.get(album_id)
                 in_albums |= {a["id"] for a in (album or {}).get("assets", [])}
             items = [a for a in items if a["id"] in in_albums]
+        if checksum := body.get("checksum"):
+            items = [a for a in items if a.get("checksum") == checksum]
         if after := body.get("takenAfter"):
             items = [a for a in items if a["localDateTime"] >= _norm(after)]
         if before := body.get("takenBefore"):
@@ -354,6 +357,11 @@ def _make_handler(stub: StubImmich):
                     if asset_id in present:
                         results.append({"id": asset_id, "success": False,
                                         "error": "duplicate"})
+                    elif stub.assets and not any(a["id"] == asset_id
+                                                 for a in stub.assets):
+                        # Like Immich: an id it does not know is refused.
+                        results.append({"id": asset_id, "success": False,
+                                        "error": "not_found"})
                     else:
                         album["assets"].append({"id": asset_id})
                         present.add(asset_id)

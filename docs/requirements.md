@@ -23,6 +23,10 @@ Priority: P1 = needed, P2 = wanted.
 | N32 | A rule may exclude videos and keep images only (`include_videos = false`, default `true`) | P2 |
 | N35 | **An album's `kind`/`order` hint can be overridden.** `hint_kind` and `hint_order` replace the value N31 would otherwise derive from the rule shape, each checked against the same closed vocabulary the derivation uses (`describe.py`'s registry) -- an unrecognised value is refused at load, naming the allowed list, the same as `pick`. | P2 |
 | N36 | **An album may carry extra playback hints in its description line.** `slot` (a neighbour count or range, for a player's `order = "slots"`), `dwell` (seconds per photo), `active` (a `MM-DD..MM-DD` calendar window the album prefers to be shown in), `caption` and `activity` (what a player should overlay or animate) are each optional, each validated against a closed set of values or a numeric range, and each omitted from the description line entirely when not set -- adding one is not a version bump (N31). The full field reference, including every value and what a player should do with an unknown or absent one, is `docs/hints.md`. | P2 |
+| N37 | **Backup.** `backup` (CLI) and the Backup tab save one JSON file per run, in `<state-dir>/backups/`: every album the account owns with its description, cover, sharing and, per asset, the id, checksum, original path and a few EXIF fields -- no image data -- plus `config.toml` verbatim and the slug-to-album-id map from `state.json`. The file holds the login hashes, so it is written 0600 and treated as a secret. | P1 |
+| N38 | **Restore only adds.** A missing album is created (description, cover and sharing included); an existing one only gains the assets it lacks. Restore never removes an asset from an album, never deletes an album or a library asset (N22). An asset whose id Immich no longer knows is found again by checksum; one found nowhere is reported, not fatal. `state.json` is pointed at recreated albums. `--dry-run` / the UI preview show the plan and write nothing. | P1 |
+| N39 | **Config restore is opt-in.** `restore --config` (UI: a checkbox) puts the backed-up `config.toml` back, only if it parses, after keeping the current one as `config.toml.bak`. | P1 |
+| N40 | **Backups are reachable at `/backup`** in design mode (own bookmarkable URL), list the files, and ask for confirmation after a dry-run preview before restoring. | P2 |
 
 ### 1.2 Runtime mode
 | # | Requirement | Prio |
@@ -38,7 +42,7 @@ Priority: P1 = needed, P2 = wanted.
 |---|---|---|
 | N14 | A web UI to explore people, places and trips, build rules with a live preview, and save them to `config.toml` | P1 |
 | N15 | Preview builds the same plan as a real run and never writes | P1 |
-| N16 | Saving the config is the only write to disk; it is atomic | P1 |
+| N16 | Saving the config is the only write to disk besides backups (N37) and a requested config restore (N39); every write is atomic | P1 |
 | N17 | Trips are detected from geotagged photos far from home; unlocated photos join by date window | P2 |
 | N18 | Analyze suggests near-misses for a rule (adjust the rule or add assets) and never edits by itself | P2 |
 | N19 | A Duplicates tab; removal from an album only on explicit confirmation and never the last copy | P2 |

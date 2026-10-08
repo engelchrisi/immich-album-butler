@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Callable
 
 from .. import analyze as analyze_module
+from .. import backup as backup_module
 from .. import config as config_module
 from .. import cover as cover_module
 from .. import describe as describe_module
@@ -519,6 +520,44 @@ class DesignApi:
         return {"name": info.name, "asset_count": plan.existing,
                 "cover_asset": info.cover_asset_id,
                 "rename_to": plan.rename_to}
+
+    # -- backup and restore (N37-N40) --------------------------------------
+
+    def backups(self) -> dict:
+        directory = backup_module.backups_dir(self.state_dir)
+        return {"backups": [
+            {"name": b.name, "created": b.created, "albums": b.albums,
+             "assets": b.assets, "size": b.size}
+            for b in backup_module.list_backups(directory)]}
+
+    def create_backup(self) -> dict:
+        path = backup_module.create_backup(self.client, self.config_dir,
+                                           self.state_dir)
+        return {"name": path.name}
+
+    def restore_backup(self, body: dict) -> dict:
+        name = str(body.get("name") or "")
+        # A bare file name inside the backup directory, never a path.
+        if not name or Path(name).name != name:
+            raise ApiError("choose a backup from the list")
+        directory = backup_module.backups_dir(self.state_dir)
+        try:
+            data = backup_module.load_backup(directory / name)
+            report = backup_module.restore(
+                self.client, data, self.config_dir, self.state_dir,
+                dry_run=bool(body.get("dry_run")),
+                restore_config=bool(body.get("config")),
+                only=body.get("album") or None)
+        except backup_module.BackupError as exc:
+            raise ApiError(str(exc)) from None
+        return {"dry_run": report.dry_run,
+                "config_restored": report.config_restored,
+                "config_backup": report.config_backup,
+                "warnings": report.warnings,
+                "albums": [{"name": a.name, "action": a.action,
+                            "to_add": a.to_add, "added": a.added,
+                            "remapped": a.remapped, "unmatched": a.unmatched,
+                            "warnings": a.warnings} for a in report.albums]}
 
     def existing_albums(self) -> dict:
         """The user's own Immich albums no rule keeps, for the name picker.

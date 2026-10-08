@@ -306,6 +306,27 @@ class ImmichClient:
 
         Dates are inclusive: `taken_before` is sent as the end of that day.
         """
+        for item in self.search_metadata_raw(
+                taken_after=taken_after, taken_before=taken_before,
+                person_ids=person_ids, album_ids=album_ids, country=country,
+                state=state, city=city, with_exif=with_exif,
+                page_size=page_size):
+            yield Asset.from_api(item)
+
+    def search_metadata_raw(self, *, taken_after: dt.date | None = None,
+                            taken_before: dt.date | None = None,
+                            person_ids: list[str] | None = None,
+                            album_ids: list[str] | None = None,
+                            country: str | None = None,
+                            state: str | None = None,
+                            city: str | None = None,
+                            checksum: str | None = None,
+                            with_exif: bool = True,
+                            page_size: int = PAGE_SIZE) -> Iterator[dict]:
+        """search_metadata, but the API's own dicts (checksum, paths, EXIF).
+
+        What a backup needs: `Asset` keeps only what album rules read.
+        """
         body: dict[str, Any] = {"size": page_size, "withExif": with_exif}
         if taken_after:
             body["takenAfter"] = _start_of_day(taken_after)
@@ -321,6 +342,8 @@ class ImmichClient:
             body["state"] = state
         if city:
             body["city"] = city
+        if checksum:
+            body["checksum"] = checksum
 
         page = 1
         seen = 0
@@ -328,8 +351,7 @@ class ImmichClient:
             data = self.request("POST", "search/metadata", {**body, "page": page})
             bucket = (data or {}).get("assets") or {}
             items = bucket.get("items") or []
-            for item in items:
-                yield Asset.from_api(item)
+            yield from items
             seen += len(items)
             next_page = bucket.get("nextPage")
             if not next_page or not items:
@@ -369,12 +391,26 @@ class ImmichClient:
 
     def add_assets(self, album_id: str, asset_ids: list[str]) -> int:
         """Add assets in chunks. Returns how many Immich accepted as new."""
-        added = 0
+        return len(self.add_assets_detailed(album_id, asset_ids)[0])
+
+    def add_assets_detailed(self, album_id: str,
+                            asset_ids: list[str]) -> tuple[list[str], list[str]]:
+        """Like add_assets, but says which ids were accepted and which refused.
+
+        A restore needs the refused ones: an id that no longer exists in the
+        library is looked up by checksum instead.
+        """
+        added: list[str] = []
+        refused: list[str] = []
         for chunk in _chunks(asset_ids, ADD_CHUNK):
             results = self.request("PUT", f"albums/{album_id}/assets",
                                    {"ids": chunk}) or []
-            added += sum(1 for r in results if r.get("success"))
-        return added
+            answered = set()
+            for result in results:
+                answered.add(result.get("id"))
+                (added if result.get("success") else refused).append(result.get("id"))
+            refused.extend(i for i in chunk if i not in answered)
+        return added, refused
 
     def rename_album(self, album_id: str, name: str) -> None:
         """Rename an album, e.g. to add the marker suffix to an adopted one.
