@@ -1059,15 +1059,12 @@ function describeRestore(result) {
     const count = result.dry_run ? a.to_add : a.added;
     let line = `+ ${verb} ${a.name}: ${count} assets`;
     if (a.remapped) line += ` (${a.remapped} found again by checksum)`;
-    return line + a.unmatched.map((n) => `
-    not in the library: ${n}`).join("") +
-      a.warnings.map((w) => `
-    ${w}`).join("");
+    return line + a.unmatched.map((n) => `\n    not in the library: ${n}`).join("") +
+      a.warnings.map((w) => `\n    ${w}`).join("");
   });
   if (result.config_restored) lines.push("~ config.toml restored");
   for (const w of result.warnings) lines.push(`! ${w}`);
-  return lines.join("
-") || "nothing to restore";
+  return lines.join("\n") || "nothing to restore";
 }
 
 async function restoreBackup(name) {
@@ -1077,16 +1074,12 @@ async function restoreBackup(name) {
   let preview;
   try { preview = await post("/api/backups/restore", { ...body, dry_run: true }); }
   catch (error) { return banner(error.message); }
-  out.textContent = "Would do:
-" + describeRestore(preview);
+  out.textContent = "Would do:\n" + describeRestore(preview);
   out.hidden = false;
-  if (!confirm(`Restore from ${name}?
-
-${describeRestore(preview)}`)) return;
+  if (!confirm(`Restore from ${name}?\n\n${describeRestore(preview)}`)) return;
   try {
     const done = await post("/api/backups/restore", { ...body, dry_run: false });
-    out.textContent = "Done:
-" + describeRestore(done);
+    out.textContent = "Done:\n" + describeRestore(done);
     banner("Restore finished", true);
   } catch (error) { banner(error.message); }
 }

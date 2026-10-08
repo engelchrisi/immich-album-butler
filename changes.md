@@ -1,5 +1,9 @@
 # Changes
 
+## 0.9.1 — 2026-10-08
+- Design UI: fix a JavaScript syntax error in the Backup tab (unescaped line
+  breaks in `app.js`) that stopped the whole page script from loading.
+
 ## 0.9.0 — 2026-10-08
 - Album backup and restore: `backup`, `backups` and `restore` commands and a
   Backup tab (`/backup`) in design mode. A backup is one private JSON file with
