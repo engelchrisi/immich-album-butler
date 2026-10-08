@@ -309,7 +309,11 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
             if not self._require_login(api_call=path.startswith("/api/")):
                 return
 
-            if path in ("/", "/index.html"):
+            # These are virtual, client-side routes (see app.js's router):
+            # the app shell is the same for all of them, and app.js decides
+            # which panel to show from the URL.
+            if path in ("/", "/index.html", "/albums", "/builder", "/trips",
+                        "/duplicates") or path.startswith("/albums/"):
                 return self._static("index.html")
             if path.startswith("/static/"):
                 return self._static(path[len("/static/"):])

@@ -68,25 +68,50 @@ function banner(message, ok = false) {
   if (message && ok) setTimeout(() => { box.hidden = true; }, 4000);
 }
 
-/* -- tabs --------------------------------------------------------------- */
+/* -- tabs & routing ------------------------------------------------------ */
+
+/* Each tab (and the album browser) gets its own bookmarkable URL path,
+ * driven by the History API -- no page reload, but back/forward and
+ * bookmarks work as expected. */
+
+const TABS = ["albums", "builder", "trips", "duplicates"];
+
+function activateTab(name) {
+  for (const el of document.querySelectorAll(".tab")) {
+    el.classList.toggle("active", el.dataset.tab === name);
+  }
+  for (const panel of document.querySelectorAll(".panel")) {
+    panel.classList.toggle("active", panel.id === name);
+  }
+  if (name === "albums") loadAlbums();
+  if (name === "trips") loadTrips(false);
+  if (name === "duplicates") loadDuplicates();
+}
+
+function route(path) {
+  const albumMatch = /^\/albums\/([^/]+)$/.exec(path);
+  if (albumMatch) return openAlbumView(decodeURIComponent(albumMatch[1]), { push: false });
+  activateTab(TABS.includes(path.slice(1)) ? path.slice(1) : "albums");
+}
+
+function navigate(path, { replace = false } = {}) {
+  if (location.pathname !== path) {
+    history[replace ? "replaceState" : "pushState"](null, "", path);
+  }
+  route(path);
+}
+
+function showTab(name) {
+  navigate(`/${name}`);
+}
 
 $("tabs").addEventListener("click", (event) => {
   const button = event.target.closest(".tab");
   if (!button) return;
-  for (const el of document.querySelectorAll(".tab")) {
-    el.classList.toggle("active", el === button);
-  }
-  for (const panel of document.querySelectorAll(".panel")) {
-    panel.classList.toggle("active", panel.id === button.dataset.tab);
-  }
-  if (button.dataset.tab === "albums") loadAlbums();
-  if (button.dataset.tab === "trips") loadTrips(false);
-  if (button.dataset.tab === "duplicates") loadDuplicates();
+  navigate(`/${button.dataset.tab}`);
 });
 
-function showTab(name) {
-  document.querySelector(`.tab[data-tab="${name}"]`).click();
-}
+window.addEventListener("popstate", () => route(location.pathname));
 
 /* -- albums tab --------------------------------------------------------- */
 
@@ -1128,8 +1153,12 @@ function foldGroups(open) {
 $("browse-collapse").onclick = () => foldGroups(false);
 $("browse-expand").onclick = () => foldGroups(true);
 
-async function openAlbumView(albumId) {
+async function openAlbumView(albumId, { push = true } = {}) {
   if (!albumId) return banner("This album has no picture yet.");
+  if (push) {
+    const path = `/albums/${encodeURIComponent(albumId)}`;
+    if (location.pathname !== path) history.pushState(null, "", path);
+  }
   for (const el of document.querySelectorAll(".tab")) el.classList.remove("active");
   for (const panel of document.querySelectorAll(".panel")) {
     panel.classList.toggle("active", panel.id === "browse-album");
@@ -1531,6 +1560,7 @@ async function start() {
   loadImmichAlbums();
   fillPlaces("country");
   fillForm();
+  navigate(location.pathname === "/" ? "/albums" : location.pathname, { replace: true });
 }
 
 start();
