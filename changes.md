@@ -1,5 +1,10 @@
 # Changes
 
+## 0.8.0 — 2026-10-08
+- Design UI: every page (Albums, Builder, Trips, Duplicates, an opened album)
+  now has its own URL path and can be bookmarked; back/forward works between
+  them.
+
 ## 0.7.0 — 2026-10-08
 - Design UI: Builder defaults changed — Include Videos now off, cover
   defaults to a favourited picture (else Immich's own pick). Starting a
