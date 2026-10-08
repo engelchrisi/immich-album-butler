@@ -1,5 +1,11 @@
 # Changes
 
+## 0.8.1 — 2026-10-08
+- Design UI: editing an album in the Builder now gets its own URL
+  (`/builder/<slug>`) too — it was missed in 0.8.0, which only gave the
+  Albums/Builder/Trips/Duplicates tabs and the opened-album viewer their own
+  URLs.
+
 ## 0.8.0 — 2026-10-08
 - Design UI: every page (Albums, Builder, Trips, Duplicates, an opened album)
   now has its own URL path and can be bookmarked; back/forward works between

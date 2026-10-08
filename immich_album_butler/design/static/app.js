@@ -91,7 +91,16 @@ function activateTab(name) {
 function route(path) {
   const albumMatch = /^\/albums\/([^/]+)$/.exec(path);
   if (albumMatch) return openAlbumView(decodeURIComponent(albumMatch[1]), { push: false });
+  const builderMatch = /^\/builder\/([^/]+)$/.exec(path);
+  if (builderMatch) return loadBuilderFor(decodeURIComponent(builderMatch[1]));
   activateTab(TABS.includes(path.slice(1)) ? path.slice(1) : "albums");
+}
+
+function loadBuilderFor(slug) {
+  const album = (state.saved || []).find((a) => a.slug === slug);
+  if (album) editAlbumDraft(album);
+  else banner(`No album "${slug}" found.`);
+  activateTab("builder");
 }
 
 function navigate(path, { replace = false } = {}) {
@@ -313,6 +322,11 @@ $("new-person-album").onclick = () => {
 };
 
 function editAlbum(album) {
+  editAlbumDraft(album);
+  navigate(`/builder/${encodeURIComponent(album.slug)}`);
+}
+
+function editAlbumDraft(album) {
   state.draft = {
     slug: album.slug, name: album.name, enabled: album.enabled,
     cover: album.cover || "auto",
@@ -326,7 +340,6 @@ function editAlbum(album) {
     match: { ...album.match },
   };
   fillForm();
-  showTab("builder");
 }
 
 /* -- builder: form <-> draft -------------------------------------------- */
@@ -903,6 +916,7 @@ $("save").onclick = async () => {
     state.draft.slug = result.saved;
     await loadAlbums();
     $("delete-config").hidden = false;
+    navigate(`/builder/${encodeURIComponent(state.draft.slug)}`, { replace: true });
     banner(`Saved ${result.path}`, true);
   } catch (error) { banner(error.message); }
 };
