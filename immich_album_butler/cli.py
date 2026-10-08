@@ -251,7 +251,9 @@ def _backup(args) -> int:
 
 
 def _backups(args) -> int:
-    found = list_backups(backups_dir(args.state_dir, args.dir))
+    directory = backups_dir(args.state_dir, args.dir)
+    found = list_backups(directory)
+    print(f"backups in {directory}:")
     if not found:
         print("no backups")
     for info in found:

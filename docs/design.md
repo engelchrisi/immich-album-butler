@@ -86,7 +86,7 @@ that every value in the registry is documented there.
 
 Login in front of everything. Read: `/api/whoami`, `/api/people`, `/api/places`, `/api/albums`,
 `/api/groups`, `/api/accounts`, `/api/immich-albums`, `/api/trips`, `/api/duplicates[/album]`,
-`/api/browse/album`, `/api/backups`, `/api/thumb/…`, `/api/asset/…`. Write: `/api/backups` (create), `/api/backups/restore` (`dry_run`, `config`, `album`), `/api/preview`, `/api/analyze`,
+`/api/browse/album`, `/api/backups`, `/api/thumb/…`, `/api/asset/…`. Write: `/api/backups` (create), `/api/backups/restore` (`dry_run`, `config`, `album`), `/api/backups/delete` (`names`, bare `backup-*.json` names only), `/api/preview`, `/api/analyze`,
 `/api/albums`, `/api/groups`, `/api/run`, `/api/add-assets`, `/api/duplicates/remove`,
 `/api/cover`.
 

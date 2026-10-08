@@ -411,3 +411,10 @@ div.dup-cover { background: var(--thumb-bg); }
 .fold { display: inline-flex; gap: 0.4rem; }
 
 #backup-result { white-space: pre-wrap; margin-top: 1rem; }
+.backup-step { margin-bottom: 1.5rem; }
+.backup-step h4 { margin: 1.2rem 0 .5rem; }
+.backup-step > .row, .backup-step > label.inline { margin-bottom: .5rem; }
+#backup-dir { word-break: break-all; }
+.backup-card { display: flex; gap: .6rem; align-items: flex-start; cursor: pointer; }
+.backup-card.selected { outline: 2px solid var(--accent); }
+.backup-step .hint { margin: .2rem 0 .5rem 1.6rem; }

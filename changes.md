@@ -1,5 +1,15 @@
 # Changes
 
+## 0.10.0 — 2026-10-08
+- Design UI: the Backup tab is split into three sections, read top to bottom:
+  *Back up* (shows the directory backups are written to), *Saved backups* and
+  *Restore* (1. choose a backup, 2. choose one album or all and whether to
+  restore the Butler settings, 3. preview, then restore). "Restore now" only
+  unlocks after a preview. The settings checkbox now says what it changes.
+- Saved backups are listed newest first and can be deleted several at once
+  (`POST /api/backups/delete`; only `backup-*.json` files, never Immich).
+- `backups` prints the backup directory.
+
 ## 0.9.1 — 2026-10-08
 - Design UI: fix a JavaScript syntax error in the Backup tab (unescaped line
   breaks in `app.js`) that stopped the whole page script from loading.

@@ -473,6 +473,12 @@ to one album. Needs `album.read`/`asset.read` for backup, and `album.create`,
 `albumAsset.create` (plus the optional `album.update`, `albumUser.create`,
 `user.read` for cover and sharing) for restore.
 
+The **Backup** tab reads top to bottom: *Back up* shows where the files go,
+*Saved backups* lists them newest first (tick several and **Delete selected**
+to remove the files), and *Restore* walks through choosing a backup, an album
+(or all) and whether to restore the Butler settings, then **Preview restore**
+and **Restore now**.
+
 ### Browsing an album
 
 **View** on an Albums card looks into any Immich album the key can see — the

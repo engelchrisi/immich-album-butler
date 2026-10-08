@@ -1024,33 +1024,120 @@ async function addNow(group) {
 
 /* -- backup tab ---------------------------------------------------------- */
 
-/* Backups are files on the server. Restore always shows a dry run first and
- * only goes ahead on confirmation; it adds, it never removes. */
+/* Backups are files on the server. The panel reads top to bottom: back up;
+ * the saved backups (newest first, tick to delete); then restore in three
+ * steps (choose a backup, choose what, preview and restore). "Restore now"
+ * only unlocks after a preview of the same choice. */
+
+let backupList = [];
+let chosenBackup = null;
 
 $("backup-create").onclick = async () => {
   try {
     const made = await post("/api/backups", {});
-    banner(`Saved ${made.name}`, true);
+    banner(`Saved ${made.path}`, true);
+    chosenBackup = made.name;
   } catch (error) { banner(error.message); }
   loadBackups();
 };
+
+function backupWhen(b) {
+  const when = new Date(b.created);
+  return isNaN(when) ? b.name : when.toLocaleString(undefined,
+    { dateStyle: "medium", timeStyle: "short" });
+}
+
+function backupSummary(b) {
+  return `${b.albums} albums · ${b.assets} assets · ` +
+    `${Math.max(1, Math.round(b.size / 1024))} KiB`;
+}
 
 async function loadBackups() {
   const list = $("backup-list");
   let data;
   try { data = await api("/api/backups"); }
   catch (error) { return banner(error.message); }
-  if (!data.backups.length) {
-    list.replaceChildren(el("div", { class: "muted" }, "No backups yet."));
-    return;
+  $("backup-dir").textContent = data.directory;
+  backupList = data.backups;      // newest first, from the server
+  if (!backupList.some((b) => b.name === chosenBackup)) {
+    chosenBackup = backupList.length ? backupList[0].name : null;
   }
-  list.replaceChildren(...data.backups.map((b) => el("div", { class: "card" },
-    el("b", {}, b.name),
-    el("div", { class: "muted" },
-      `${b.created.replace("T", " ").slice(0, 16)} · ${b.albums} albums · ` +
-      `${b.assets} assets · ${Math.max(1, Math.round(b.size / 1024))} KiB`),
-    button("Restore…", () => restoreBackup(b.name)))));
+  list.replaceChildren(...(backupList.length ? backupList.map(backupCard)
+    : [el("div", { class: "muted" }, "No backups yet. Use “Back up now” above.")]));
+  $("backup-select-all").checked = false;
+  $("backup-select-all").disabled = !backupList.length;
+  updateDeleteButton();
+
+  const choice = $("backup-choice");
+  choice.replaceChildren(...backupList.map((b) =>
+    el("option", { value: b.name }, `${backupWhen(b)} — ${backupSummary(b)}`)));
+  choice.disabled = !backupList.length;
+  choice.value = chosenBackup || "";
+  chooseBackup(chosenBackup);
 }
+
+function backupCard(b) {
+  const tick = el("input", { type: "checkbox", class: "backup-tick", value: b.name });
+  tick.onchange = updateDeleteButton;
+  return el("label", { class: "card backup-card" }, tick,
+    el("span", {},
+      el("b", {}, backupWhen(b)),
+      el("div", { class: "muted" }, `${backupSummary(b)} · ${b.name}`)));
+}
+
+function tickedBackups() {
+  return [...document.querySelectorAll(".backup-tick:checked")].map((t) => t.value);
+}
+
+function updateDeleteButton() {
+  const count = tickedBackups().length;
+  $("backup-delete").disabled = !count;
+  $("backup-delete").textContent = count ? `Delete selected (${count})` : "Delete selected";
+  for (const tick of document.querySelectorAll(".backup-tick")) {
+    tick.closest(".backup-card").classList.toggle("selected", tick.checked);
+  }
+}
+
+$("backup-select-all").onchange = () => {
+  for (const tick of document.querySelectorAll(".backup-tick")) {
+    tick.checked = $("backup-select-all").checked;
+  }
+  updateDeleteButton();
+};
+
+$("backup-delete").onclick = async () => {
+  const names = tickedBackups();
+  if (!names.length) return;
+  if (!confirm(`Delete ${names.length} backup file${names.length > 1 ? "s" : ""}?` +
+               "\n\nThis cannot be undone. Immich is not touched.")) return;
+  try {
+    const result = await post("/api/backups/delete", { names });
+    banner(`Deleted ${result.deleted.length} backup${result.deleted.length === 1 ? "" : "s"}`, true);
+  } catch (error) { banner(error.message); }
+  loadBackups();
+};
+
+$("backup-choice").onchange = () => chooseBackup($("backup-choice").value);
+
+function chooseBackup(name) {
+  chosenBackup = name;
+  const chosen = backupList.find((b) => b.name === name);
+  const select = $("backup-album");
+  select.replaceChildren(el("option", { value: "" }, "All albums in the backup"),
+    ...(chosen ? chosen.album_names : []).map((n) => el("option", { value: n }, n)));
+  select.disabled = $("backup-config").disabled = $("backup-preview").disabled = !chosen;
+  resetRestorePreview();
+}
+
+function resetRestorePreview() {
+  $("backup-restore").disabled = true;
+  $("backup-result").hidden = true;
+}
+
+$("backup-album").onchange = resetRestorePreview;
+$("backup-config").onchange = resetRestorePreview;
+$("backup-preview").onclick = previewRestore;
+$("backup-restore").onclick = runRestore;
 
 function describeRestore(result) {
   const lines = result.albums.map((a) => {
@@ -1067,18 +1154,27 @@ function describeRestore(result) {
   return lines.join("\n") || "nothing to restore";
 }
 
-async function restoreBackup(name) {
-  const body = { name, album: $("backup-album").value.trim(),
-                 config: $("backup-config").checked };
+function restoreRequest() {
+  return { name: chosenBackup, album: $("backup-album").value,
+           config: $("backup-config").checked };
+}
+
+async function previewRestore() {
   const out = $("backup-result");
   let preview;
-  try { preview = await post("/api/backups/restore", { ...body, dry_run: true }); }
+  try { preview = await post("/api/backups/restore", { ...restoreRequest(), dry_run: true }); }
   catch (error) { return banner(error.message); }
-  out.textContent = "Would do:\n" + describeRestore(preview);
+  out.textContent = "Restore would do:\n" + describeRestore(preview);
   out.hidden = false;
-  if (!confirm(`Restore from ${name}?\n\n${describeRestore(preview)}`)) return;
+  $("backup-restore").disabled = false;
+}
+
+async function runRestore() {
+  const out = $("backup-result");
+  if (!confirm(`Restore from ${chosenBackup}?\n\n${out.textContent}`)) return;
+  $("backup-restore").disabled = true;
   try {
-    const done = await post("/api/backups/restore", { ...body, dry_run: false });
+    const done = await post("/api/backups/restore", { ...restoreRequest(), dry_run: false });
     out.textContent = "Done:\n" + describeRestore(done);
     banner("Restore finished", true);
   } catch (error) { banner(error.message); }

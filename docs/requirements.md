@@ -26,7 +26,7 @@ Priority: P1 = needed, P2 = wanted.
 | N37 | **Backup.** `backup` (CLI) and the Backup tab save one JSON file per run, in `<state-dir>/backups/`: every album the account owns with its description, cover, sharing and, per asset, the id, checksum, original path and a few EXIF fields -- no image data -- plus `config.toml` verbatim and the slug-to-album-id map from `state.json`. The file holds the login hashes, so it is written 0600 and treated as a secret. | P1 |
 | N38 | **Restore only adds.** A missing album is created (description, cover and sharing included); an existing one only gains the assets it lacks. Restore never removes an asset from an album, never deletes an album or a library asset (N22). An asset whose id Immich no longer knows is found again by checksum; one found nowhere is reported, not fatal. `state.json` is pointed at recreated albums. `--dry-run` / the UI preview show the plan and write nothing. | P1 |
 | N39 | **Config restore is opt-in.** `restore --config` (UI: a checkbox) puts the backed-up `config.toml` back, only if it parses, after keeping the current one as `config.toml.bak`. | P1 |
-| N40 | **Backups are reachable at `/backup`** in design mode (own bookmarkable URL), list the files, and ask for confirmation after a dry-run preview before restoring. | P2 |
+| N40 | **Backups are reachable at `/backup`** in design mode (own bookmarkable URL). The tab reads top to bottom: *Back up* (shows the directory the files go to), *Saved backups* (newest first by creation time; tick several to delete them, after confirmation -- only `backup-*.json` files in the backup directory, never anything in Immich), *Restore* (choose a backup, choose one album or all and whether to restore the Butler settings, preview, then restore after confirmation; "Restore now" is only enabled after a preview of the same choice). | P2 |
 
 ### 1.2 Runtime mode
 | # | Requirement | Prio |
@@ -42,7 +42,7 @@ Priority: P1 = needed, P2 = wanted.
 |---|---|---|
 | N14 | A web UI to explore people, places and trips, build rules with a live preview, and save them to `config.toml` | P1 |
 | N15 | Preview builds the same plan as a real run and never writes | P1 |
-| N16 | Saving the config is the only write to disk besides backups (N37) and a requested config restore (N39); every write is atomic | P1 |
+| N16 | Saving the config is the only write to disk besides backups (N37), deleting backups on request (N40) and a requested config restore (N39); every write is atomic | P1 |
 | N17 | Trips are detected from geotagged photos far from home; unlocated photos join by date window | P2 |
 | N18 | Analyze suggests near-misses for a rule (adjust the rule or add assets) and never edits by itself | P2 |
 | N19 | A Duplicates tab; removal from an album only on explicit confirmation and never the last copy | P2 |

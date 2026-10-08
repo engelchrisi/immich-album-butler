@@ -525,15 +525,27 @@ class DesignApi:
 
     def backups(self) -> dict:
         directory = backup_module.backups_dir(self.state_dir)
-        return {"backups": [
+        return {"directory": str(directory), "backups": [
             {"name": b.name, "created": b.created, "albums": b.albums,
-             "assets": b.assets, "size": b.size}
+             "assets": b.assets, "size": b.size,
+             "album_names": list(b.album_names)}
             for b in backup_module.list_backups(directory)]}
 
     def create_backup(self) -> dict:
         path = backup_module.create_backup(self.client, self.config_dir,
                                            self.state_dir)
-        return {"name": path.name}
+        return {"name": path.name, "path": str(path)}
+
+    def delete_backups(self, body: dict) -> dict:
+        names = body.get("names")
+        if not isinstance(names, list) or not names:
+            raise ApiError("choose the backups to delete")
+        try:
+            deleted = backup_module.delete_backups(
+                backup_module.backups_dir(self.state_dir), [str(n) for n in names])
+        except backup_module.BackupError as exc:
+            raise ApiError(str(exc)) from None
+        return {"deleted": deleted}
 
     def restore_backup(self, body: dict) -> dict:
         name = str(body.get("name") or "")

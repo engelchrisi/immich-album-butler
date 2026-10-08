@@ -1,6 +1,7 @@
 """Album backup and restore, against the fake Immich."""
 
 import copy
+import datetime as dt
 import json
 import os
 import stat
@@ -96,6 +97,26 @@ class CreateTests(BackupCase):
         bad.write_text(json.dumps({"hello": 1}), encoding="utf-8")
         with self.assertRaises(backup.BackupError):
             backup.load_backup(bad)
+
+    def test_list_is_newest_first_with_album_names(self):
+        older = backup.create_backup(
+            self.stub.client, self.config_dir, self.state_dir,
+            now=dt.datetime(2019, 1, 1, tzinfo=dt.timezone.utc))
+        newer, _ = self.make()
+        listed = backup.list_backups(newer.parent)
+        self.assertEqual([b.name for b in listed], [newer.name, older.name])
+        self.assertEqual(listed[0].album_names, ("Italy 2019",))
+
+    def test_delete_removes_only_named_backups(self):
+        path, _ = self.make()
+        keep = path.parent / "notes.txt"
+        keep.write_text("x", encoding="utf-8")
+        self.assertEqual(backup.delete_backups(path.parent, [path.name]), [path.name])
+        self.assertFalse(path.exists())
+        self.assertTrue(keep.exists())
+        for bad in ("notes.txt", "../backup-x.json", "backup-x.txt"):
+            with self.assertRaises(backup.BackupError):
+                backup.delete_backups(path.parent, [bad])
 
     def test_latest_resolves_the_newest(self):
         path, _ = self.make()
@@ -211,6 +232,21 @@ class DesignApiTests(BackupCase):
         self.assertEqual(listed[0]["albums"], 1)
         result = self.api.restore_backup({"name": name, "dry_run": True})
         self.assertEqual(result["albums"][0]["action"], "skip")
+
+    def test_list_shows_directory_and_create_returns_path(self):
+        made = self.api.create_backup()
+        listed = self.api.backups()
+        self.assertTrue(listed["directory"])
+        self.assertEqual(Path(made["path"]).parent, Path(listed["directory"]))
+        self.assertEqual(listed["backups"][0]["album_names"], ["Italy 2019"])
+
+    def test_delete_backups(self):
+        name = self.api.create_backup()["name"]
+        self.assertEqual(self.api.delete_backups({"names": [name]})["deleted"], [name])
+        self.assertEqual(self.api.backups()["backups"], [])
+        for bad in ({}, {"names": []}, {"names": ["../config.toml"]}):
+            with self.assertRaises(ApiError):
+                self.api.delete_backups(bad)
 
     def test_restore_refuses_a_path(self):
         for bad in ("../x.json", "", "/etc/passwd"):

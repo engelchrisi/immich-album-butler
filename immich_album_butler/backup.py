@@ -145,6 +145,7 @@ class BackupInfo:
     albums: int
     assets: int
     size: int
+    album_names: tuple[str, ...] = ()
 
 
 def list_backups(directory: Path) -> list[BackupInfo]:
@@ -160,7 +161,10 @@ def list_backups(directory: Path) -> list[BackupInfo]:
         found.append(BackupInfo(
             name=path.name, created=str(data.get("created") or ""),
             albums=len(albums), assets=sum(len(a["assets"]) for a in albums),
-            size=path.stat().st_size))
+            size=path.stat().st_size,
+            album_names=tuple(sorted((a["name"] for a in albums), key=str.casefold))))
+    # Newest first by the time recorded inside, the file name breaking ties.
+    found.sort(key=lambda b: (b.created, b.name), reverse=True)
     return found
 
 
@@ -177,6 +181,29 @@ def resolve_backup(directory: Path, ref: str) -> Path:
         return candidate
     # A bare name must stay inside the backup directory.
     return directory / candidate.name
+
+
+def delete_backups(directory: Path, names: list[str]) -> list[str]:
+    """Delete backup files by bare name; returns the names deleted.
+
+    Only `backup-*.json` files directly inside `directory` are touched; any
+    other name is refused before anything is deleted.
+    """
+    directory = Path(directory)
+    for name in names:
+        if (Path(name).name != name or not name.startswith(PREFIX)
+                or not name.endswith(".json")):
+            raise BackupError(f"not a backup name: {name!r}")
+    deleted = []
+    for name in dict.fromkeys(names):
+        try:
+            (directory / name).unlink()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise BackupError(f"cannot delete {name}: {exc}") from None
+        deleted.append(name)
+    return deleted
 
 
 def load_backup(path: Path) -> dict:
