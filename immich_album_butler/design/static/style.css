@@ -414,6 +414,9 @@ div.dup-cover { background: var(--thumb-bg); }
 .backup-step { margin-bottom: 1.5rem; }
 .backup-step h4 { margin: 1.2rem 0 .5rem; }
 .backup-step > .row, .backup-step > label.inline { margin-bottom: .5rem; }
+.backup-step .row.actions { align-items: center; }
+.backup-step .row.actions > button { flex: 0 0 auto; }
+.backup-step .row.actions > label.inline { flex: 1 1 auto; margin: 0; }
 #backup-dir { word-break: break-all; }
 .backup-card { display: flex; gap: .6rem; align-items: flex-start; cursor: pointer; }
 .backup-card.selected { outline: 2px solid var(--accent); }
