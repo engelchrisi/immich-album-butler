@@ -367,6 +367,31 @@ class SaveTests(DesignTestCase):
         self.assertEqual(first["path"], second["path"])
         self.assertEqual(len(config_module.load(self.config_dir).albums), 1)
 
+    def test_save_as_adds_a_new_album_and_leaves_the_original(self):
+        self.api.save_album(ITALY)
+        result = self.api.save_album({**ITALY, "slug": "italy-2019",
+                                      "name": "Italy 2019 copy", "new": True,
+                                      "match": {**ITALY["match"], "to": "2019-08-31"}})
+        self.assertEqual(result["saved"], "italy-2019-copy")
+        config = config_module.load(self.config_dir)
+        self.assertEqual(sorted(a.slug for a in config.albums),
+                         ["italy-2019", "italy-2019-copy"])
+        original = config.album("italy-2019")
+        self.assertEqual(original.name, "Italy 2019")
+        self.assertEqual(original.match.countries, ("Italy",))
+        self.assertNotEqual(original.match.to_date,
+                            config.album("italy-2019-copy").match.to_date)
+
+    def test_save_as_refuses_a_name_already_taken(self):
+        self.api.save_album(ITALY)
+        before = (self.config_dir / "config.toml").read_text(encoding="utf-8")
+        for name in ("Italy 2019", "italy 2019", "Italy-2019"):
+            with self.subTest(name=name), self.assertRaises(ApiError) as caught:
+                self.api.save_album({**ITALY, "name": name, "new": True})
+            self.assertEqual(caught.exception.status, 409)
+        self.assertEqual((self.config_dir / "config.toml").read_text(encoding="utf-8"),
+                         before)
+
     def test_a_person_album_needs_only_people(self):
         self.api.save_album({"name": "Photos of Alex", "match": {"people": ["Alex"]}})
         config = config_module.load(self.config_dir)

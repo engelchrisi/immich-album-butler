@@ -1,5 +1,10 @@
 # Changes
 
+## 0.11.0 — 2026-10-09
+- Design UI: "Save as…" in the builder saves the current rule as a new album
+  under a new name; the album it was opened from stays as saved. A name
+  another rule already uses is refused (`POST /api/albums` with `new: true`).
+
 ## 0.10.0 — 2026-10-08
 - Design UI: the Backup tab is split into three sections, read top to bottom:
   *Back up* (shows the directory backups are written to), *Saved backups* and

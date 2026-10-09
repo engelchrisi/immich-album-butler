@@ -401,6 +401,8 @@ class DesignApi:
                              for user in users]}
 
     def save_album(self, payload: dict) -> dict:
+        if payload.get("new"):
+            return self._save_album_as(payload)
         album = self._album_from(payload)
         config = self.config()
         existing = config.album(album.slug)
@@ -413,6 +415,23 @@ class DesignApi:
         return {"saved": album.slug, "path": str(path),
                 "renamed_from": existing.name if existing and
                 existing.name != album.name else None}
+
+    def _save_album_as(self, payload: dict) -> dict:
+        """N41 "Save as…": the draft becomes a new album, the original stays.
+
+        The slug comes from the new name, never from the payload, so the copy
+        can't overwrite the rule it was made from. A name another rule already
+        uses is refused: a run re-finds its Immich album by name, so two rules
+        sharing one would write into the same album.
+        """
+        album = self._album_from({**payload, "slug": ""})
+        config = self.config()
+        if config.album(album.slug) is not None or any(
+                a.name.casefold() == album.name.casefold() for a in config.albums):
+            raise ApiError(f"an album named {album.name!r} already exists -- "
+                           "pick another name", status=409)
+        path = config_module.write_config(self.config_dir, config.with_album(album))
+        return {"saved": album.slug, "path": str(path), "renamed_from": None}
 
     def delete_album(self, slug: str, remove_immich: bool = False) -> dict:
         """Remove the rule. Optionally also delete the generated Immich album.

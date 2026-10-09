@@ -90,6 +90,11 @@ Login in front of everything. Read: `/api/whoami`, `/api/people`, `/api/places`,
 `/api/albums`, `/api/groups`, `/api/run`, `/api/add-assets`, `/api/duplicates/remove`,
 `/api/cover`.
 
+`POST /api/albums` saves a rule under its slug, replacing one of the same slug. With `new: true`
+("Save as…", N41) the slug comes from the new name only, and a name another rule already has
+(case-insensitive, or one slugging the same) is refused with 409, so the copy never overwrites
+the original. No state is copied: the copy's first run creates its own Immich album.
+
 `/api/albums` lists every Immich album this key can see, not only the ones with a rule: a row's
 `type` is `"manual"` or `"scheduled"` (the album's schedule kind, N33) or `"normal"` (no rule at
 all -- `slug` is `null`, most fields are `null`/empty). Each Albums card shows a status dot (OK /

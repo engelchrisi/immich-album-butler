@@ -369,7 +369,8 @@ function fillForm() {
     ? "none"
     : [...$("schedule").options].some(o => o.value === draft.schedule)
       ? draft.schedule : "inherit";
-  $("delete-config").hidden = !state.saved.some(a => a.slug === draft.slug);
+  $("delete-config").hidden = $("save-as").hidden =
+    !state.saved.some(a => a.slug === draft.slug);
   renderChosenPeople();
   renderChosenPlaces();
   refreshPreview();
@@ -910,17 +911,32 @@ function extendNotice(data) {
 
 /* -- builder: actions --------------------------------------------------- */
 
-$("save").onclick = async () => {
+$("save").onclick = () => {
   if (!state.draft.name.trim()) return banner("Give the album a name first.");
-  try {
-    const result = await post("/api/albums", state.draft);
-    state.draft.slug = result.saved;
-    await loadAlbums();
-    $("delete-config").hidden = false;
-    navigate(`/builder/${encodeURIComponent(state.draft.slug)}`, { replace: true });
-    banner(`Saved ${result.path}`, true);
-  } catch (error) { banner(error.message); }
+  saveDraft(state.draft, { replace: true }, (result) => `Saved ${result.path}`);
 };
+
+/* N41: the draft becomes a new album under a new name; the one it was
+ * opened from stays as it was saved. */
+$("save-as").onclick = () => {
+  const name = (prompt("Name of the new album:", `${state.draft.name} (copy)`) || "").trim();
+  if (!name) return;
+  saveDraft({ ...state.draft, slug: "", name, new: true }, { replace: false },
+            () => `Saved as a new album “${name}”.`);
+};
+
+async function saveDraft(payload, how, message) {
+  try {
+    const result = await post("/api/albums", payload);
+    state.draft.slug = result.saved;
+    state.draft.name = payload.name;
+    $("album-name").value = payload.name;
+    await loadAlbums();
+    $("delete-config").hidden = $("save-as").hidden = false;
+    navigate(`/builder/${encodeURIComponent(state.draft.slug)}`, how);
+    banner(message(result), true);
+  } catch (error) { banner(error.message); }
+}
 
 $("dry-run").onclick = () => requireSaved(() => runAlbum(state.draft.slug, true));
 $("run-now").onclick = () => requireSaved(async () => {
