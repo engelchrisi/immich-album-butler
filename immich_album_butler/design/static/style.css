@@ -69,13 +69,13 @@ nav { display: flex; gap: 0.25rem; }
 #builder .split { max-width: 1600px; margin: 0 auto; }
 
 .sticky-head { display: flex; flex-direction: column; gap: 0.9rem; }
+/* The whole right column sticks and scrolls as one unit, so Optional moves
+   with the preview instead of sliding under it. */
 @media (min-width: 761px) {
-  .sticky-head {
-    position: sticky; top: calc(var(--header-h) + 1.25rem); z-index: 4;
-    background: var(--bg); padding-bottom: 0.75rem;
+  .sticky-col {
+    position: sticky; top: calc(var(--header-h) + 1.25rem);
+    max-height: calc(100vh - var(--header-h) - 2.5rem); overflow-y: auto;
   }
-  .sticky-head .preview { max-height: calc(100vh - var(--header-h) - 12rem);
-                           overflow-y: auto; }
 }
 
 .bar { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;

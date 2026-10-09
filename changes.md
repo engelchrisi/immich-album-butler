@@ -1,5 +1,10 @@
 # Changes
 
+## 0.11.2 — 2026-10-09
+- Design UI: the builder's right column (preview, actions and Optional) now
+  sticks and scrolls as one unit on wide screens, so Optional no longer
+  slides under the preview.
+
 ## 0.11.1 — 2026-10-09
 - Design UI: opening the builder from the menu (`/builder`) shows an empty
   new-album form instead of the last edited album; only Edit on the Albums
