@@ -94,6 +94,8 @@ function route(path) {
   if (albumMatch) return openAlbumView(decodeURIComponent(albumMatch[1]), { push: false });
   const builderMatch = /^\/builder\/([^/]+)$/.exec(path);
   if (builderMatch) return loadBuilderFor(decodeURIComponent(builderMatch[1]));
+  // Plain /builder is a new album; only /builder/<slug> shows a saved one.
+  if (path === "/builder" && state.draft.slug) { state.draft = emptyDraft(); fillForm(); }
   activateTab(TABS.includes(path.slice(1)) ? path.slice(1) : "albums");
 }
 

@@ -1,5 +1,11 @@
 # Changes
 
+## 0.11.1 — 2026-10-09
+- Design UI: opening the builder from the menu (`/builder`) shows an empty
+  new-album form instead of the last edited album; only Edit on the Albums
+  page (`/builder/<slug>`) opens a saved album. The album name field no
+  longer shows a sample name as placeholder.
+
 ## 0.11.0 — 2026-10-09
 - Design UI: "Save as…" in the builder saves the current rule as a new album
   under a new name; the album it was opened from stays as saved. A name
