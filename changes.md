@@ -1,5 +1,18 @@
 # Changes
 
+## 0.14.0 — 2026-10-09
+- Design UI: the builder's album templates each get their own bookmarkable
+  URL (`/builder/new/<template>`), and four more are added — Trip (opens the
+  Trips tab), A place, Year in review, Anniversary — alongside the earlier
+  Birthday over the years, Christmas, New Year's Eve, Summer, Person album, A
+  person over the years and Two people together.
+- Design UI: the "inherit the global default" schedule option now shows just
+  the resolved value (e.g. "manual"), not the explanation of where it comes
+  from.
+- `examples/config.toml`: dropped the explicit `auto-update-schedule =
+  "manual"` line — the same value as the built-in default, so it was
+  redundant.
+
 ## 0.12.0 — 2026-10-09
 - Design UI: the builder is simplified. Who/When/Where, Options, Sharing and
   Player are now sub-tabs with their own bookmarkable URL

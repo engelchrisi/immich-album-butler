@@ -107,20 +107,25 @@ function route(path) {
   const albumMatch = /^\/albums\/([^/]+)$/.exec(path);
   if (albumMatch) return openAlbumView(decodeURIComponent(albumMatch[1]), { push: false });
 
-  const builderMatch = /^\/builder\/([^/]+)(?:\/(rule|options|sharing|player))?$/.exec(path);
+  const builderMatch = /^\/builder\/([^/]+)(?:\/([^/]+))?$/.exec(path);
   if (builderMatch) {
-    const [, rawSlug, subtab] = builderMatch;
+    const [, rawSlug, second] = builderMatch;
     const slug = decodeURIComponent(rawSlug);
     if (slug === "new") {
+      if (second === "trip") return navigate("/trips", { replace: true });
       state.draft = emptyDraft();
-      fillForm();
+      if (second && TEMPLATE_IDS.includes(second)) {
+        applyTemplate(second).then(fillForm);
+      } else {
+        fillForm();
+      }
     } else {
       const album = (state.saved || []).find((a) => a.slug === slug);
       if (album) editAlbumDraft(album);
       else { banner(`No album "${slug}" found.`); activateTab("builder"); return; }
     }
     activateTab("builder");
-    activateSubtab(subtab || "rule");
+    activateSubtab(SUBTABS.includes(second) ? second : "rule");
     return;
   }
   // Plain /builder is a new album; only /builder/<slug> shows a saved one.
@@ -169,7 +174,7 @@ async function loadAlbums() {
   $("albums-note").textContent =
     `default schedule: ${data.default_schedule}`;
   $("schedule").querySelector('option[value="inherit"]').textContent =
-    `inherit the global default: ${data.default_schedule}`;
+    data.default_schedule;
   renderAlbums();
 
   for (const problem of data.errors || []) banner(problem);
@@ -834,13 +839,23 @@ $("make-group").onclick = async () => {
  * Each one just sets fields on state.draft and re-renders the form -- the
  * result is an ordinary draft the usual controls can still tweak or correct. */
 
+const TEMPLATE_IDS = ["birthday", "christmas", "person-years", "person", "nye",
+  "summer", "place", "year-review", "together", "anniversary"];
+
 $("templates").addEventListener("click", (event) => {
   const button = event.target.closest("[data-template]");
-  if (button) applyTemplate(button.dataset.template);
+  if (!button) return;
+  // Trip already has its own tab and flow; the template just points there.
+  navigate(button.dataset.template === "trip" ? "/trips"
+    : `/builder/new/${button.dataset.template}`);
 });
 
+/* Called from route() once a /builder/new/<template> URL is reached (so the
+ * result is the same whichever way it was opened -- clicked or bookmarked).
+ * Each one just sets fields on state.draft; fillForm()/activateSubtab() are
+ * the caller's job, since route() needs those to run either way. */
 async function applyTemplate(id) {
-  const askPerson = (prompt_) => (prompt(prompt_) || "").trim();
+  const ask = (prompt_) => (prompt(prompt_) || "").trim();
   const draft = state.draft;
 
   if (id === "christmas") {
@@ -856,26 +871,26 @@ async function applyTemplate(id) {
     draft.match.on_from = "06-21"; draft.match.on_to = "09-22";
     draft.pick = "best"; draft.pics_per_year = 20;
   } else if (id === "person") {
-    const name = askPerson("Person's name, as named in Immich:");
+    const name = ask("Person's name, as named in Immich:");
     if (!name) return;
     draft.match.people = [name];
     draft.name = `Photos of ${name}`;
   } else if (id === "person-years") {
-    const name = askPerson("Person's name, as named in Immich:");
+    const name = ask("Person's name, as named in Immich:");
     if (!name) return;
     draft.match.people = [name];
     draft.name = `${name} over the years`;
     draft.pick = "best"; draft.pics_per_year = 5; draft.hint_order = "one-per-year";
   } else if (id === "together") {
-    const a = askPerson("First person's name, as named in Immich:");
+    const a = ask("First person's name, as named in Immich:");
     if (!a) return;
-    const b = askPerson("Second person's name, as named in Immich:");
+    const b = ask("Second person's name, as named in Immich:");
     if (!b) return;
     draft.match.people = [a, b];
     draft.match.people_mode = "all";
     draft.name = `${a} & ${b}`;
   } else if (id === "birthday") {
-    const name = askPerson("Person's name, as named in Immich:");
+    const name = ask("Person's name, as named in Immich:");
     if (!name) return;
     draft.match.people = [name];
     draft.name = `Birthday of ${name}`;
@@ -890,9 +905,28 @@ async function applyTemplate(id) {
         banner(`Immich has no birth date for ${name} — set the date on the Rule tab.`);
       }
     } catch (_) { /* best effort; the date can still be set by hand */ }
+  } else if (id === "place") {
+    draft.hint_kind = "place";
+    draft.pick = "best";
+    banner("Choose a country, state or city below.", true);
+  } else if (id === "year-review") {
+    const raw = ask("Which year?");
+    const year = parseInt(raw, 10);
+    if (!raw || Number.isNaN(year)) return;
+    draft.match.from = `${year}-01-01`;
+    draft.match.to = `${year}-12-31`;
+    draft.name = draft.name || `Year in review ${year}`;
+    draft.pick = "best"; draft.pics_per_year = 60;
+  } else if (id === "anniversary") {
+    const label = ask('What is this anniversary called? (e.g. "Wedding anniversary")');
+    if (!label) return;
+    const raw = ask("Date, as dd/mm:");
+    const m = raw.match(/^(\d{2})\/(\d{2})$/);
+    if (!m) return banner("Use dd/mm for the date.");
+    draft.match.on_from = draft.match.on_to = `${m[2]}-${m[1]}`;
+    draft.name = label;
+    draft.pick = "best"; draft.pics_per_year = 10;
   }
-  fillForm();
-  navigate(`/builder/${encodeURIComponent(draft.slug || "new")}/rule`);
 }
 
 /* -- builder: places ---------------------------------------------------- */

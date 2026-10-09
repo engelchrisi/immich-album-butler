@@ -1,16 +1,16 @@
 # Builder UI simplification
 
-**Done (0.12.0).** Shipped as planned except:
+**Done (0.12.0, templates extended afterwards).** Shipped as planned except:
 - No `⋯` overflow menu — Analyze/Delete config stayed as plain buttons in the action bar
   (dropped for risk/payoff, not worth the extra component for two buttons).
 - "Cover: a picture I name…" was **not** removed from the select (kept as-is): dropping it
   would have blocked choosing a named cover on a *new* rule, which looked like a net loss.
-- Album templates shipped as quick-fill buttons on a new, empty draft (client-side, no
-  separate `/builder/new/<template>` route or picker screen) rather than the bookmarkable
-  template-picker screen sketched below — lower risk, same payoff. Covers: Birthday over the
-  years (reads the person's birth date from Immich), Christmas, New Year's Eve, Summer, Person
-  album, A person over the years, Two people together. Trip/A place/Year in review/Anniversary
-  were left out.
+- Album templates are quick-fill buttons on a new, empty draft rather than a separate
+  full-screen picker, but each one now has its own bookmarkable URL
+  (`/builder/new/<template>`, applied by `route()`) as the plan asked. All 11 planned
+  templates are in: Trip (opens the Trips tab), Birthday over the years (reads the person's
+  birth date from Immich), Christmas, New Year's Eve, Summer, A place, Year in review,
+  Person album, A person over the years, Two people together, Anniversary.
 - The When help text stays always visible (shortened, mentions `yyyy`) rather than only
   showing when a recurring day is typed — simpler, same value.
 
