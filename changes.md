@@ -1,5 +1,10 @@
 # Changes
 
+## 0.14.2 — 2026-10-09
+- Design UI: the builder's action bar (Save, Save as…, New album, Dry run,
+  Run now, Analyze, Delete config) moved from the bottom of the sticky right
+  column to the top of the page, above the album name field.
+
 ## 0.14.1 — 2026-10-09
 - Design UI: the template picker in the builder is labelled "Template:" instead
   of "Start from:"; a new "New album" button in the builder's action bar

@@ -49,6 +49,17 @@
 
 <!-- ---------------------------------------------------------------- -->
 <section id="builder" class="panel">
+  <div class="bar">
+    <button id="save" class="primary">Save</button>
+    <button id="save-as" hidden>Save as…</button>
+    <button id="builder-new-album" title="Discard this draft and start a new, empty album">New album</button>
+    <button id="dry-run">Dry run</button>
+    <button id="run-now">Run now</button>
+    <button id="analyze">Analyze</button>
+    <button id="delete-config" class="danger" hidden>Delete config</button>
+  </div>
+  <div id="run-result" class="muted"></div>
+
   <div class="split">
 
     <div class="column">
@@ -255,17 +266,6 @@
         <div id="preview" class="preview">
           <div class="muted">Pick something on the left to see a preview.</div>
         </div>
-
-        <div class="bar">
-          <button id="save" class="primary">Save</button>
-          <button id="save-as" hidden>Save as…</button>
-          <button id="builder-new-album" title="Discard this draft and start a new, empty album">New album</button>
-          <button id="dry-run">Dry run</button>
-          <button id="run-now">Run now</button>
-          <button id="analyze">Analyze</button>
-          <button id="delete-config" class="danger" hidden>Delete config</button>
-        </div>
-        <div id="run-result" class="muted"></div>
       </div>
 
       <div id="analysis"></div>
