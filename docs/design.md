@@ -73,8 +73,11 @@ on a design-mode save (`design/api.py`'s `_load_hint`, the same function both ca
 and `hint_line()` itself asserts its own output against the same tables as a second line of
 defence. A description line is therefore never built from a free-form string; an unrecognised
 value is refused at the point it was written, naming the allowed list. The design UI's album
-builder exposes all seven as bounded `<select>`/number inputs (a "Description hint" fieldset),
-with a live preview of the resulting line from `/api/preview`'s `hint` field.
+builder, on its Player sub-tab, exposes `hint_kind`/`hint_order`/`dwell` as bounded
+`<select>`/number inputs, with a live preview of the resulting line from `/api/preview`'s
+`hint` field. `slot`/`active`/`caption`/`activity` have no control of their own — a value set
+by hand in config.toml round-trips through Save unchanged and is listed on the same tab
+("also set in config: …") rather than dropped.
 
 Example line: `[butler v1] kind=recurring-day order=one-per-year rotating=yes`.
 

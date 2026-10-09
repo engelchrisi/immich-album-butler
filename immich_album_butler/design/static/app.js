@@ -75,6 +75,7 @@ function banner(message, ok = false) {
  * bookmarks work as expected. */
 
 const TABS = ["albums", "builder", "trips", "duplicates", "backup"];
+const SUBTABS = ["rule", "options", "sharing", "player"];
 
 function activateTab(name) {
   for (const el of document.querySelectorAll(".tab")) {
@@ -89,22 +90,54 @@ function activateTab(name) {
   if (name === "backup") loadBackups();
 }
 
+/* The builder's own sub-tabs (Rule/Options/Sharing/Player) get a path segment
+ * of their own, so a particular tab can be bookmarked or linked to. */
+function activateSubtab(name) {
+  if (!SUBTABS.includes(name)) name = "rule";
+  state.subtab = name;
+  for (const el of document.querySelectorAll("#builder-subtabs .subtab")) {
+    el.classList.toggle("active", el.dataset.subtab === name);
+  }
+  for (const panel of document.querySelectorAll("#builder .subtab-panel")) {
+    panel.classList.toggle("active", panel.dataset.subtab === name);
+  }
+}
+
 function route(path) {
   const albumMatch = /^\/albums\/([^/]+)$/.exec(path);
   if (albumMatch) return openAlbumView(decodeURIComponent(albumMatch[1]), { push: false });
-  const builderMatch = /^\/builder\/([^/]+)$/.exec(path);
-  if (builderMatch) return loadBuilderFor(decodeURIComponent(builderMatch[1]));
+
+  const builderMatch = /^\/builder\/([^/]+)(?:\/(rule|options|sharing|player))?$/.exec(path);
+  if (builderMatch) {
+    const [, rawSlug, subtab] = builderMatch;
+    const slug = decodeURIComponent(rawSlug);
+    if (slug === "new") {
+      state.draft = emptyDraft();
+      fillForm();
+    } else {
+      const album = (state.saved || []).find((a) => a.slug === slug);
+      if (album) editAlbumDraft(album);
+      else { banner(`No album "${slug}" found.`); activateTab("builder"); return; }
+    }
+    activateTab("builder");
+    activateSubtab(subtab || "rule");
+    return;
+  }
   // Plain /builder is a new album; only /builder/<slug> shows a saved one.
-  if (path === "/builder" && state.draft.slug) { state.draft = emptyDraft(); fillForm(); }
+  if (path === "/builder") {
+    if (state.draft.slug) { state.draft = emptyDraft(); fillForm(); }
+    activateTab("builder");
+    activateSubtab("rule");
+    return;
+  }
   activateTab(TABS.includes(path.slice(1)) ? path.slice(1) : "albums");
 }
 
-function loadBuilderFor(slug) {
-  const album = (state.saved || []).find((a) => a.slug === slug);
-  if (album) editAlbumDraft(album);
-  else banner(`No album "${slug}" found.`);
-  activateTab("builder");
-}
+$("builder-subtabs").addEventListener("click", (event) => {
+  const button = event.target.closest(".subtab");
+  if (!button) return;
+  navigate(`/builder/${encodeURIComponent(state.draft.slug || "new")}/${button.dataset.subtab}`);
+});
 
 function navigate(path, { replace = false } = {}) {
   if (location.pathname !== path) {
@@ -311,14 +344,12 @@ $("album-type-filter").onchange = () => {
   try { localStorage.setItem(ALBUM_TYPE_FILTER, $("album-type-filter").value); } catch {}
   renderAlbums();
 };
-$("new-album").onclick = () => { state.draft = emptyDraft(); fillForm(); showTab("builder"); };
+$("new-album").onclick = () => navigate("/builder/new");
 $("run-all-albums").onclick = runAllAlbums;
 
 $("new-person-album").onclick = () => {
-  state.draft = emptyDraft();
+  navigate("/builder/new/rule");
   state.draft.match.include_unlocated = true;
-  fillForm();
-  showTab("builder");
   $("person-search").focus();
   banner("Pick one or more people. Leave the dates and places empty: that is " +
          "all a person album needs.", true);
@@ -326,7 +357,7 @@ $("new-person-album").onclick = () => {
 
 function editAlbum(album) {
   editAlbumDraft(album);
-  navigate(`/builder/${encodeURIComponent(album.slug)}`);
+  navigate(`/builder/${encodeURIComponent(album.slug)}/rule`);
 }
 
 function editAlbumDraft(album) {
@@ -359,11 +390,7 @@ function fillForm() {
   fillPicsPerYear();
   $("hint-kind").value = draft.hint_kind || "";
   $("hint-order").value = draft.hint_order || "";
-  $("hint-slot").value = draft.slot || "";
   $("hint-dwell").value = draft.dwell ?? "";
-  $("hint-active").value = draft.active || "";
-  $("hint-caption").value = draft.caption || "";
-  $("hint-activity").value = draft.activity || "";
   updateWhenExclusivity();
   fillCover(draft.cover || "auto");
   fillSharing();
@@ -373,9 +400,50 @@ function fillForm() {
       ? draft.schedule : "inherit";
   $("delete-config").hidden = $("save-as").hidden =
     !state.saved.some(a => a.slug === draft.slug);
+  $("templates").hidden = !!(draft.slug || draft.name || draft.match.people.length ||
+    draft.match.on_from || draft.match.from);
   renderChosenPeople();
   renderChosenPlaces();
+  refreshHintExtra();
+  refreshSubtabBadges();
   refreshPreview();
+}
+
+/* Slot/Active/Caption/Activity have no control of their own any more (the
+ * builder only exposes Kind/Order/Dwell) but a value loaded from config.toml
+ * must still round-trip on Save, so it is surfaced here rather than dropped. */
+function refreshHintExtra() {
+  const { draft } = state;
+  const extras = [];
+  if (draft.slot) extras.push(`slot=${draft.slot}`);
+  if (draft.active) extras.push(`active=${draft.active}`);
+  if (draft.caption) extras.push(`caption=${draft.caption}`);
+  if (draft.activity) extras.push(`activity=${draft.activity}`);
+  $("hint-extra").textContent = extras.length ? `also set in config: ${extras.join(" ")}` : "";
+}
+
+/* A folded-away sub-tab still needs to say whether it holds anything other
+ * than the defaults, so a dot marks it and a hover title summarises it. */
+function refreshSubtabBadges() {
+  const { draft } = state;
+  const optionsOn = draft.cover !== "favorite" || draft.schedule !== "inherit" ||
+    !draft.enabled || draft.pick !== "all" || draft.pics_per_year != null ||
+    draft.match.include_videos;
+  setSubtabBadge("options", optionsOn, optionsOn
+    ? `Cover: ${draft.cover} · Schedule: ${draft.enabled ? draft.schedule : "none"} · Pick: ${draft.pick}`
+    : "");
+  setSubtabBadge("sharing", draft.share_with.length > 0,
+    draft.share_with.length ? `Shared with ${draft.share_with.length} account(s)` : "");
+  const playerOn = !!(draft.hint_kind || draft.hint_order || draft.dwell != null ||
+    draft.slot || draft.active || draft.caption || draft.activity);
+  setSubtabBadge("player", playerOn, playerOn
+    ? `Kind: ${draft.hint_kind || "auto"} · Order: ${draft.hint_order || "auto"}` : "");
+}
+
+function setSubtabBadge(subtab, on, title) {
+  const button = document.querySelector(`#builder-subtabs .subtab[data-subtab="${subtab}"]`);
+  button.classList.toggle("has-badge", on);
+  button.title = title;
 }
 
 /* From and To hold a day, or the moment a picked first/last photo was taken
@@ -428,8 +496,10 @@ function setBound(key, taken) {
 }
 
 /* dd/mm/yyyy -> an exact date; dd/mm -> a recurring day; mm/yyyy -> a whole
- * month (both fields required for the last two -- see the plan's clarifying
- * answers). Bad or mismatched input is reported and nothing is applied. */
+ * month; yyyy alone (or yyyy in both fields) -> a whole year, or a span of
+ * whole years if From and To name different years (both fields required for
+ * month/year and year/year -- see the plan's clarifying answers). Bad or
+ * mismatched input is reported and nothing is applied. */
 function parseDateField(raw) {
   const text = (raw || "").trim();
   if (!text) return null;
@@ -437,6 +507,8 @@ function parseDateField(raw) {
   if (m) return { kind: "full", day: +m[1], month: +m[2], year: +m[3] };
   m = text.match(/^(\d{2})\/(\d{4})$/);
   if (m) return { kind: "month", month: +m[1], year: +m[2] };
+  m = text.match(/^(\d{4})$/);
+  if (m) return { kind: "year", year: +m[1] };
   m = text.match(/^(\d{2})\/(\d{2})$/);
   if (m) return { kind: "day", day: +m[1], month: +m[2] };
   return { kind: "invalid" };
@@ -451,12 +523,22 @@ function applyDateFields() {
   errorBox.textContent = "";
 
   if (from?.kind === "invalid" || to?.kind === "invalid") {
-    fail("Use dd/mm/yyyy, dd/mm, or mm/yyyy.");
+    fail("Use dd/mm/yyyy, dd/mm, mm/yyyy, or yyyy.");
     return;
   }
   const match = state.draft.match;
   if (!from && !to) {
     match.from = match.to = null;
+    match.on_from = match.on_to = "";
+  } else if (from?.kind === "year" || to?.kind === "year") {
+    if ((from && from.kind !== "year") || (to && to.kind !== "year")) {
+      fail("From and To must both be dates, both yyyy, both month/year, or both day/month.");
+      return;
+    }
+    const fromYear = from ? from.year : to.year;
+    const toYear = to ? to.year : fromYear;
+    match.from = `${fromYear}-01-01`;
+    match.to = `${toYear}-12-31`;
     match.on_from = match.on_to = "";
   } else if (from?.kind === "month" || to?.kind === "month") {
     if (!from || !to || from.kind !== "month" || to.kind !== "month") {
@@ -513,14 +595,18 @@ function bindDraft() {
   };
   $("hint-kind").onchange = (e) => { state.draft.hint_kind = e.target.value; refreshHintPreview(); };
   $("hint-order").onchange = (e) => { state.draft.hint_order = e.target.value; refreshHintPreview(); };
-  $("hint-slot").onchange = (e) => { state.draft.slot = e.target.value.trim(); refreshHintPreview(); };
   $("hint-dwell").onchange = (e) => {
     state.draft.dwell = e.target.value ? parseInt(e.target.value, 10) : null;
     refreshHintPreview();
   };
-  $("hint-active").onchange = (e) => { state.draft.active = e.target.value.trim(); refreshHintPreview(); };
-  $("hint-caption").onchange = (e) => { state.draft.caption = e.target.value; refreshHintPreview(); };
-  $("hint-activity").onchange = (e) => { state.draft.activity = e.target.value; refreshHintPreview(); };
+  $("date-clear").onclick = () => {
+    const { match } = state.draft;
+    match.from = match.to = null;
+    match.on_from = match.on_to = "";
+    fillDates();
+    updateWhenExclusivity();
+    refreshPreview();
+  };
   $("schedule").onchange = (e) => {
     const value = e.target.value;
     if (value === "none") {
@@ -541,7 +627,7 @@ function bindDraft() {
 function fillPicsPerYear() {
   const { draft } = state;
   const capped = draft.pick !== "all";
-  $("pics-per-year").disabled = !capped;
+  $("pics-per-year-row").hidden = !capped;
   $("pics-per-year").value = capped ? (draft.pics_per_year ?? "") : "";
 }
 
@@ -571,7 +657,6 @@ async function loadImmichAlbums() {
   catch (_) { /* the picker is a convenience; a plain name still works */ }
   $("immich-albums").replaceChildren(...albums.map(album =>
     el("option", { value: album.name, label: `${album.name} — ${album.asset_count} media` })));
-  $("album-name-hint").hidden = !albums.length;
 }
 
 function fillSharing() {
@@ -647,7 +732,6 @@ function set(key, value) {
 function updateWhenExclusivity() {
   const hasRecur = !!state.draft.match.on_from;
   $("since-year-row").hidden = !hasRecur;
-  document.querySelectorAll("[data-preset]").forEach((b) => { b.disabled = hasRecur; });
 }
 
 /* -- builder: people ---------------------------------------------------- */
@@ -743,35 +827,72 @@ $("make-group").onclick = async () => {
   } catch (error) { banner(error.message); }
 };
 
-/* -- builder: dates ----------------------------------------------------- */
+/* -- builder: templates --------------------------------------------------
+ *
+ * A handful of common album shapes, offered as quick-fill buttons on a new,
+ * still-empty draft (fillForm hides the row once the draft holds anything).
+ * Each one just sets fields on state.draft and re-renders the form -- the
+ * result is an ordinary draft the usual controls can still tweak or correct. */
 
-document.querySelectorAll("[data-preset]").forEach((button) => {
-  button.onclick = () => {
-    const { match } = state.draft;
-    const anchor = match.from || match.to || new Date().toISOString().slice(0, 10);
-    const [year, month] = anchor.split("-");
-    if (button.dataset.preset === "clear") { match.from = match.to = null; }
-    if (button.dataset.preset === "year") {
-      match.from = `${year}-01-01`; match.to = `${year}-12-31`;
-    }
-    if (button.dataset.preset === "month") {
-      match.from = `${year}-${month}-01`;
-      match.to = new Date(Number(year), Number(month), 0).toISOString().slice(0, 10);
-    }
-    if (button.dataset.preset === "pad") {
-      // Whole days again: widening drops a picked first or last photo.
-      if (match.from) match.from = shiftDays(match.from.slice(0, 10), -1);
-      if (match.to) match.to = shiftDays(match.to.slice(0, 10), +1);
-    }
-    fillDates();
-    refreshPreview();
-  };
+$("templates").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-template]");
+  if (button) applyTemplate(button.dataset.template);
 });
 
-function shiftDays(iso, days) {
-  const date = new Date(`${iso}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
+async function applyTemplate(id) {
+  const askPerson = (prompt_) => (prompt(prompt_) || "").trim();
+  const draft = state.draft;
+
+  if (id === "christmas") {
+    draft.name = draft.name || "Christmas";
+    draft.match.on_from = "12-24"; draft.match.on_to = "12-26";
+    draft.pick = "best"; draft.pics_per_year = 15; draft.active = "12-01..12-31";
+  } else if (id === "nye") {
+    draft.name = draft.name || "New Year's Eve";
+    draft.match.on_from = "12-31"; draft.match.on_to = "01-01";
+    draft.pick = "best"; draft.pics_per_year = 10;
+  } else if (id === "summer") {
+    draft.name = draft.name || "Summer";
+    draft.match.on_from = "06-21"; draft.match.on_to = "09-22";
+    draft.pick = "best"; draft.pics_per_year = 20;
+  } else if (id === "person") {
+    const name = askPerson("Person's name, as named in Immich:");
+    if (!name) return;
+    draft.match.people = [name];
+    draft.name = `Photos of ${name}`;
+  } else if (id === "person-years") {
+    const name = askPerson("Person's name, as named in Immich:");
+    if (!name) return;
+    draft.match.people = [name];
+    draft.name = `${name} over the years`;
+    draft.pick = "best"; draft.pics_per_year = 5; draft.hint_order = "one-per-year";
+  } else if (id === "together") {
+    const a = askPerson("First person's name, as named in Immich:");
+    if (!a) return;
+    const b = askPerson("Second person's name, as named in Immich:");
+    if (!b) return;
+    draft.match.people = [a, b];
+    draft.match.people_mode = "all";
+    draft.name = `${a} & ${b}`;
+  } else if (id === "birthday") {
+    const name = askPerson("Person's name, as named in Immich:");
+    if (!name) return;
+    draft.match.people = [name];
+    draft.name = `Birthday of ${name}`;
+    draft.pick = "best"; draft.pics_per_year = 10; draft.hint_order = "one-per-year";
+    try {
+      const data = await api(`/api/people?q=${encodeURIComponent(name)}`);
+      const hit = (data.people || []).find((p) => p.name === name) || data.people[0];
+      if (hit && hit.birth_date) {
+        const [, month, day] = hit.birth_date.split("-");
+        draft.match.on_from = draft.match.on_to = `${month}-${day}`;
+      } else {
+        banner(`Immich has no birth date for ${name} — set the date on the Rule tab.`);
+      }
+    } catch (_) { /* best effort; the date can still be set by hand */ }
+  }
+  fillForm();
+  navigate(`/builder/${encodeURIComponent(draft.slug || "new")}/rule`);
 }
 
 /* -- builder: places ---------------------------------------------------- */
@@ -821,6 +942,7 @@ const refreshPreview = debounce(async () => {
   const box = $("preview");
   const { match } = state.draft;
   state.immichName = null;
+  refreshSubtabBadges();
   const empty = !match.from && !match.to && !match.people.length &&
     !match.countries.length && !match.states.length && !match.cities.length &&
     !match.on_from;
@@ -881,6 +1003,7 @@ const refreshPreview = debounce(async () => {
    which media match -- so this skips the expensive full /api/preview (which
    re-queries Immich) and hits the cheap, local-only /api/hint-preview instead. */
 const refreshHintPreview = debounce(async () => {
+  refreshSubtabBadges();
   const token = ++state.hintPreviewToken;
   let data;
   try { data = await post("/api/hint-preview", state.draft); }
@@ -935,7 +1058,7 @@ async function saveDraft(payload, how, message) {
     $("album-name").value = payload.name;
     await loadAlbums();
     $("delete-config").hidden = $("save-as").hidden = false;
-    navigate(`/builder/${encodeURIComponent(state.draft.slug)}`, how);
+    navigate(`/builder/${encodeURIComponent(state.draft.slug)}/${state.subtab || "rule"}`, how);
     banner(message(result), true);
   } catch (error) { banner(error.message); }
 }

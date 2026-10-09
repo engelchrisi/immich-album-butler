@@ -99,11 +99,14 @@ class Person:
     id: str
     name: str
     hidden: bool = False
+    # "yyyy-mm-dd", or None if this person has no birth date set in Immich.
+    birth_date: str | None = None
 
     @classmethod
     def from_api(cls, data: dict) -> "Person":
         return cls(id=data["id"], name=data.get("name") or "",
-                   hidden=bool(data.get("isHidden")))
+                   hidden=bool(data.get("isHidden")),
+                   birth_date=data.get("birthDate") or None)
 
 
 @dataclass(frozen=True)

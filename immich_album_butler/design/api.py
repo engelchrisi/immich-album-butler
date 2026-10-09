@@ -239,7 +239,8 @@ class DesignApi:
             folded = query.strip().casefold()
             found = [p for p in self.client.people()
                      if p.name.casefold().startswith(folded)]
-        return {"people": [{"id": p.id, "name": p.name} for p in found]}
+        return {"people": [{"id": p.id, "name": p.name, "birth_date": p.birth_date}
+                           for p in found]}
 
     def places(self, kind: str, country: str = "", state: str = "") -> dict:
         if kind not in ("country", "state", "city"):

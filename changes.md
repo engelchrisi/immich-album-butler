@@ -1,5 +1,26 @@
 # Changes
 
+## 0.12.0 — 2026-10-09
+- Design UI: the builder is simplified. Who/When/Where, Options, Sharing and
+  Player are now sub-tabs with their own bookmarkable URL
+  (`/builder/<album>/<rule|options|sharing|player>`) instead of one long
+  stacked form; a folded-away tab shows a dot and a hover summary when it
+  holds anything other than the defaults.
+- Design UI: the date fields accept a bare `yyyy` for a whole year (or two
+  different years for a span of years), replacing the "whole year"/"whole
+  month"/"± 1 day" preset buttons with one "clear".
+- Design UI: the Player tab keeps Kind, Order and Dwell as controls;
+  `slot`/`active`/`caption`/`activity`, if set by hand in config.toml, still
+  round-trip through Save and are listed as "also set in config: …".
+- Design UI: Include videos moved from Where (it is not a place filter) to
+  Options; Keep per year is now hidden, not just disabled, when Pick is
+  "all"; the Sharing tab's explanation is one line with a "why?" detail.
+- Design UI: a new, empty album offers quick-fill templates (Birthday over
+  the years, Christmas, New Year's Eve, Summer, Person album, A person over
+  the years, Two people together). Birthday reads the person's birth date
+  from Immich (`Person.birth_date`, `/api/people`'s new `birth_date` field)
+  when Immich has one set.
+
 ## 0.11.2 — 2026-10-09
 - Design UI: the builder's right column (preview, actions and Optional) now
   sticks and scrolls as one unit on wide screens, so Optional no longer

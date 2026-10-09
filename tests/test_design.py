@@ -32,7 +32,8 @@ UUID_LIKE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
                        r"[0-9a-f]{4}-[0-9a-f]{8,12}", re.I)
 
 ALEX, SAM = "person-alex", "person-sam"
-PEOPLE = [{"id": ALEX, "name": "Alex"}, {"id": SAM, "name": "Sam"}]
+PEOPLE = [{"id": ALEX, "name": "Alex", "birthDate": "1990-05-17"},
+          {"id": SAM, "name": "Sam"}]
 
 LIBRARY = [
     make_asset(1, when=day(2019, 7, 1), lat=41.9, lon=12.5,
@@ -82,6 +83,12 @@ class PickerTests(DesignTestCase):
     def test_people_are_listed_when_nothing_is_typed(self):
         names = [p["name"] for p in self.api.people()["people"]]
         self.assertEqual(names, ["Alex", "Sam"])
+
+    def test_a_birth_date_comes_through_for_the_birthday_template(self):
+        """The builder's Birthday template reads this to fill in the date."""
+        people = {p["name"]: p["birth_date"] for p in self.api.people()["people"]}
+        self.assertEqual(people["Alex"], "1990-05-17")
+        self.assertIsNone(people["Sam"])
 
     def test_a_partial_name_still_offers_the_person(self):
         """The picker must help while a name is half-typed."""

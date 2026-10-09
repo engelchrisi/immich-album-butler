@@ -55,79 +55,85 @@
       <label class="field">
         <span>Album name</span>
         <input id="album-name" type="text" autocomplete="off"
-               list="immich-albums">
+               list="immich-albums"
+               placeholder="pick an existing Immich album to extend it, or type a new name">
         <datalist id="immich-albums"></datalist>
-        <span class="muted" id="album-name-hint" hidden>
-          pick one of your existing Immich albums to extend it, or type a new name
-        </span>
       </label>
 
-      <fieldset>
-        <legend>Who</legend>
-        <div class="row">
-          <input id="person-search" type="search" placeholder="Search people and groups…"
-                 autocomplete="off">
-          <select id="people-mode">
-            <option value="any">any of them</option>
-            <option value="all">all together</option>
-          </select>
-        </div>
-        <div id="person-results" class="chips muted-empty"
-             data-empty="Type a name, or leave this empty for an album that is not about people."></div>
-        <div id="person-chosen" class="chips chosen"></div>
-        <button id="make-group" class="link" hidden>Save these as a group…</button>
-      </fieldset>
+      <div id="templates" class="templates" hidden>
+        <span class="muted">Start from:</span>
+        <button class="link" data-template="birthday">Birthday over the years</button>
+        <button class="link" data-template="christmas">Christmas</button>
+        <button class="link" data-template="person-years">A person over the years</button>
+        <button class="link" data-template="person">Person album</button>
+        <button class="link" data-template="nye">New Year's Eve</button>
+        <button class="link" data-template="summer">Summer</button>
+        <button class="link" data-template="together">Two people together</button>
+      </div>
 
-      <fieldset>
-        <legend>When</legend>
-        <div class="row">
-          <label class="field"><span>From</span>
-            <input id="date-from" type="text" maxlength="10"
-                   placeholder="dd/mm/yyyy, dd/mm, or mm/yyyy"></label>
-          <label class="field"><span>To</span>
-            <input id="date-to" type="text" maxlength="10"
-                   placeholder="dd/mm/yyyy, dd/mm, or mm/yyyy"></label>
-        </div>
-        <div class="chips" id="exact-bounds"></div>
-        <div class="row presets">
-          <button data-preset="clear" class="link">clear</button>
-          <button data-preset="year" class="link">whole year</button>
-          <button data-preset="month" class="link">whole month</button>
-          <button data-preset="pad" class="link">± 1 day</button>
-        </div>
-        <div class="row">
-          <label class="field" id="since-year-row" hidden><span>Since year</span>
-            <input id="recur-since" type="number" step="1" placeholder="2005"></label>
-        </div>
-        <span id="date-error" class="bad" hidden></span>
-        <span class="muted">A day/month without a year (e.g. 17/05) matches
-          that date in every year; From and To together set a recurring
-          window instead of a single day.</span>
-      </fieldset>
+      <nav id="builder-subtabs" class="subtabs">
+        <button class="subtab active" data-subtab="rule">Rule</button>
+        <button class="subtab" data-subtab="options">Options</button>
+        <button class="subtab" data-subtab="sharing">Sharing</button>
+        <button class="subtab" data-subtab="player">Player</button>
+      </nav>
 
-      <fieldset>
-        <legend>Where</legend>
-        <div class="row">
-          <select id="pick-country"><option value="">country…</option></select>
-          <select id="pick-state"><option value="">state…</option></select>
-          <select id="pick-city"><option value="">city…</option></select>
-        </div>
-        <div id="place-chosen" class="chips chosen muted-empty"
-             data-empty="No place filter: the date range alone decides."></div>
-        <label class="check">
-          <input id="include-unlocated" type="checkbox" checked>
-          Include photos in the date range that carry no GPS
-        </label>
-        <label class="check">
-          <input id="include-videos" type="checkbox" checked>
-          Include videos (uncheck to keep images only)
-        </label>
-      </fieldset>
+      <div class="subtab-panel active" data-subtab="rule">
+        <fieldset>
+          <legend>Who</legend>
+          <div class="row">
+            <input id="person-search" type="search" placeholder="Search people and groups…"
+                   autocomplete="off">
+            <select id="people-mode">
+              <option value="any">any of them</option>
+              <option value="all">all together</option>
+            </select>
+          </div>
+          <div id="person-results" class="chips muted-empty"
+               data-empty="Type a name, or leave this empty for an album that is not about people."></div>
+          <div id="person-chosen" class="chips chosen"></div>
+          <button id="make-group" class="link" hidden>Save these as a group…</button>
+        </fieldset>
 
-      <fieldset>
-        <legend>Options</legend>
+        <fieldset>
+          <legend>When</legend>
+          <div class="row">
+            <label class="field"><span>From</span>
+              <input id="date-from" type="text" maxlength="10"
+                     placeholder="dd/mm/yyyy, dd/mm, mm/yyyy, or yyyy"></label>
+            <label class="field"><span>To</span>
+              <input id="date-to" type="text" maxlength="10"
+                     placeholder="dd/mm/yyyy, dd/mm, mm/yyyy, or yyyy"></label>
+            <button id="date-clear" class="link">clear</button>
+          </div>
+          <div class="chips" id="exact-bounds"></div>
+          <div class="row">
+            <label class="field" id="since-year-row" hidden><span>Since year</span>
+              <input id="recur-since" type="number" step="1" placeholder="2005"></label>
+          </div>
+          <span id="date-error" class="bad" hidden></span>
+          <span class="muted">dd/mm repeats every year; dd/mm/yyyy or yyyy is a single
+            span; mm/yyyy is a whole month; From and To together make a recurring window.</span>
+        </fieldset>
 
-        <fieldset class="subgroup">
+        <fieldset>
+          <legend>Where</legend>
+          <div class="row">
+            <select id="pick-country"><option value="">country…</option></select>
+            <select id="pick-state"><option value="">state…</option></select>
+            <select id="pick-city"><option value="">city…</option></select>
+          </div>
+          <div id="place-chosen" class="chips chosen muted-empty"
+               data-empty="No place filter: the date range alone decides."></div>
+          <label class="check">
+            <input id="include-unlocated" type="checkbox" checked>
+            Include photos in the date range that carry no GPS
+          </label>
+        </fieldset>
+      </div>
+
+      <div class="subtab-panel" data-subtab="options">
+        <fieldset>
           <legend>Album</legend>
           <label class="field"><span>Cover picture</span>
             <select id="cover">
@@ -142,9 +148,13 @@
           <label id="cover-name-row" class="field" hidden><span>Cover file name</span>
             <input id="cover-name" type="text" placeholder="IMG_0042.jpg">
           </label>
+          <label class="check">
+            <input id="include-videos" type="checkbox" checked>
+            Include videos (uncheck to keep images only)
+          </label>
         </fieldset>
 
-        <fieldset class="subgroup">
+        <fieldset>
           <legend>Schedule</legend>
           <label class="field"><span>Update schedule</span>
             <select id="schedule">
@@ -167,13 +177,15 @@
                 <option value="rotate">rotate (a new set each run)</option>
               </select>
             </label>
-            <label class="field"><span>Keep per year</span>
+            <label class="field" id="pics-per-year-row" hidden><span>Keep per year</span>
               <input id="pics-per-year" type="number" min="1" step="1"
                      placeholder="all"></label>
           </div>
         </fieldset>
+      </div>
 
-        <fieldset class="subgroup">
+      <div class="subtab-panel" data-subtab="sharing">
+        <fieldset>
           <legend>Sharing</legend>
           <div class="row">
             <input id="share-search" type="search" placeholder="Add an account…"
@@ -183,41 +195,22 @@
           <span class="muted" id="share-note"></span>
           <div id="share-list" class="share-list muted-empty"
                data-empty="Not shared with anyone."></div>
-          <p class="muted">
-            Access is only ever granted here, never taken away: dropping an
-            account stops it being shared again on the next run, it does not
-            revoke access already given -- unshare in Immich first, then drop
-            it here. The role picked here is only what a <em>new</em> share
-            starts at: once an account has access, later runs never change
-            its role again, even if it is changed here -- change it in
-            Immich instead.
+          <p class="muted">Only ever grants access, never revokes or changes it —
+            do that in Immich instead.
+            <details class="why"><summary>why?</summary>
+              Dropping an account here stops it being shared again on the next
+              run; it does not revoke access already given. The role picked
+              here is only what a <em>new</em> share starts at — once an
+              account has access, later runs never change its role again,
+              even if it's changed here.
+            </details>
           </p>
         </fieldset>
-      </fieldset>
-    </div>
-
-    <div class="column sticky-col">
-      <div class="sticky-head">
-        <div id="preview" class="preview">
-          <div class="muted">Pick something on the left to see a preview.</div>
-        </div>
-
-        <div class="bar">
-          <button id="save" class="primary">Save</button>
-          <button id="save-as" hidden>Save as…</button>
-          <button id="dry-run">Dry run</button>
-          <button id="run-now">Run now</button>
-          <button id="analyze">Analyze</button>
-          <button id="delete-config" class="danger" hidden>Delete config</button>
-        </div>
-        <div id="run-result" class="muted"></div>
       </div>
 
-      <fieldset>
-        <legend>Optional</legend>
-
-        <fieldset class="subgroup">
-          <legend>Description hint</legend>
+      <div class="subtab-panel" data-subtab="player">
+        <fieldset>
+          <legend>Player hints</legend>
           <p class="muted">A player such as PyImmichFrame reads these from the album's Immich
             description to decide how to play it — see <code>docs/hints.md</code>. Leave a field
             on "auto" to let it follow the rule.</p>
@@ -244,36 +237,31 @@
                 <option value="slots">slots (neighbours per jump)</option>
               </select>
             </label>
-          </div>
-          <div class="row">
-            <label class="field"><span>Slot size</span>
-              <input id="hint-slot" type="text" placeholder="e.g. 3 or 2-3"></label>
             <label class="field"><span>Dwell (seconds)</span>
               <input id="hint-dwell" type="number" min="1" step="1" placeholder="player default"></label>
           </div>
-          <div class="row">
-            <label class="field"><span>Active window</span>
-              <input id="hint-active" type="text" placeholder="e.g. 12-01..12-31"></label>
-            <label class="field"><span>Caption</span>
-              <select id="hint-caption">
-                <option value="">none</option>
-                <option value="year">year</option>
-                <option value="place">place</option>
-                <option value="title">title</option>
-              </select>
-            </label>
-            <label class="field"><span>Activity</span>
-              <select id="hint-activity">
-                <option value="">none</option>
-                <option value="kenburns">kenburns</option>
-                <option value="face-zoom">face-zoom</option>
-                <option value="map-fly">map-fly</option>
-              </select>
-            </label>
-          </div>
           <div class="muted" id="hint-preview"></div>
+          <div class="muted" id="hint-extra"></div>
         </fieldset>
-      </fieldset>
+      </div>
+    </div>
+
+    <div class="column sticky-col">
+      <div class="sticky-head">
+        <div id="preview" class="preview">
+          <div class="muted">Pick something on the left to see a preview.</div>
+        </div>
+
+        <div class="bar">
+          <button id="save" class="primary">Save</button>
+          <button id="save-as" hidden>Save as…</button>
+          <button id="dry-run">Dry run</button>
+          <button id="run-now">Run now</button>
+          <button id="analyze">Analyze</button>
+          <button id="delete-config" class="danger" hidden>Delete config</button>
+        </div>
+        <div id="run-result" class="muted"></div>
+      </div>
 
       <div id="analysis"></div>
     </div>

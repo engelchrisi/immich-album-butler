@@ -140,6 +140,28 @@ button.link { background: none; border: none; color: var(--accent); padding: 0.2
 
 .presets { margin-top: 0.5rem; }
 
+/* -- builder sub-tabs ---------------------------------------------------- */
+
+.templates { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.6rem;
+             margin-top: 0.6rem; }
+
+.subtabs { display: flex; gap: 0.2rem; margin-top: 1rem; border-bottom: 1px solid var(--line);
+           overflow-x: auto; }
+.subtab { background: none; border: 1px solid transparent; border-bottom: none;
+          border-radius: 6px 6px 0 0; color: var(--muted); padding: 0.4rem 0.9rem;
+          cursor: pointer; font-size: 0.92rem; white-space: nowrap; }
+.subtab:hover { color: var(--ink); }
+.subtab.active { color: var(--ink); background: var(--panel); border-color: var(--line); }
+.subtab.has-badge::after { content: " \2022"; color: var(--accent); }
+
+.subtab-panel { display: none; flex-direction: column; gap: 0.9rem; padding-top: 0.9rem; }
+.subtab-panel.active { display: flex; }
+
+.why { display: inline; }
+.why summary { display: inline; cursor: pointer; color: var(--accent); }
+.why summary::marker, .why summary::-webkit-details-marker { content: ""; }
+.why[open] summary { display: block; }
+
 /* -- chips ------------------------------------------------------------- */
 
 .chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.6rem;
