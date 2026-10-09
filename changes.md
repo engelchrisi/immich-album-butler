@@ -1,5 +1,11 @@
 # Changes
 
+## 0.14.1 — 2026-10-09
+- Design UI: the template picker in the builder is labelled "Template:" instead
+  of "Start from:"; a new "New album" button in the builder's action bar
+  discards the current draft and starts a blank one without leaving the
+  builder.
+
 ## 0.14.0 — 2026-10-09
 - Design UI: the builder's album templates each get their own bookmarkable
   URL (`/builder/new/<template>`), and four more are added — Trip (opens the

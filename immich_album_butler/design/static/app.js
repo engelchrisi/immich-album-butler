@@ -352,6 +352,8 @@ $("album-type-filter").onchange = () => {
 $("new-album").onclick = () => navigate("/builder/new");
 $("run-all-albums").onclick = runAllAlbums;
 
+$("builder-new-album").onclick = () => navigate("/builder/new");
+
 $("new-person-album").onclick = () => {
   navigate("/builder/new/rule");
   state.draft.match.include_unlocated = true;
