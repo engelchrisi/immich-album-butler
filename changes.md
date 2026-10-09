@@ -1,5 +1,11 @@
 # Changes
 
+## 0.14.4 — 2026-10-09
+- Design UI: the album, duplicates and trips filter fields, and the trips
+  "only without an album" checkbox, no longer persist to localStorage — they
+  reset to empty/default on every page load instead of restoring the last
+  value.
+
 ## 0.14.3 — 2026-10-09
 - Design UI: fix a bug where switching the builder's Rule/Options/Sharing/Player
   sub-tabs on an unsaved album silently discarded everything entered so far —
