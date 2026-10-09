@@ -1,5 +1,11 @@
 # Changes
 
+## 0.14.3 — 2026-10-09
+- Design UI: fix a bug where switching the builder's Rule/Options/Sharing/Player
+  sub-tabs on an unsaved album silently discarded everything entered so far —
+  the sub-tab click went through the router's "new album" branch, which always
+  reset the draft since an unsaved album has no slug yet.
+
 ## 0.14.2 — 2026-10-09
 - Design UI: the builder's action bar (Save, Save as…, New album, Dry run,
   Run now, Analyze, Delete config) moved from the bottom of the sticky right

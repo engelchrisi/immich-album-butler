@@ -141,7 +141,12 @@ function route(path) {
 $("builder-subtabs").addEventListener("click", (event) => {
   const button = event.target.closest(".subtab");
   if (!button) return;
-  navigate(`/builder/${encodeURIComponent(state.draft.slug || "new")}/${button.dataset.subtab}`);
+  // Switching sub-tabs must never touch state.draft -- going through navigate()/route()
+  // would re-run the "new album" branch and wipe an unsaved draft (slug is always "new"
+  // until Save). Update the URL and the visible panel directly instead.
+  const path = `/builder/${encodeURIComponent(state.draft.slug || "new")}/${button.dataset.subtab}`;
+  if (location.pathname !== path) history.pushState(null, "", path);
+  activateSubtab(button.dataset.subtab);
 });
 
 function navigate(path, { replace = false } = {}) {
