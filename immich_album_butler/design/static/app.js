@@ -336,21 +336,12 @@ async function runAllAlbums() {
   loadAlbums();
 }
 
-const ALBUM_FILTER = "album-filter";
-try { $("album-filter").value = localStorage.getItem(ALBUM_FILTER) || ""; } catch {}
-$("album-filter").oninput = () => {
-  try { localStorage.setItem(ALBUM_FILTER, $("album-filter").value); } catch {}
-  renderAlbums();
-};
-
-const ALBUM_TYPE_FILTER = "album-type-filter";
-try { $("album-type-filter").value = localStorage.getItem(ALBUM_TYPE_FILTER) || ""; } catch {}
-$("album-type-filter").onchange = () => {
-  try { localStorage.setItem(ALBUM_TYPE_FILTER, $("album-type-filter").value); } catch {}
-  renderAlbums();
-};
+$("album-filter").oninput = renderAlbums;
+$("album-type-filter").onchange = renderAlbums;
 $("new-album").onclick = () => navigate("/builder/new");
 $("run-all-albums").onclick = runAllAlbums;
+
+$("builder-new-album").onclick = () => navigate("/builder/new");
 
 $("new-person-album").onclick = () => {
   navigate("/builder/new/rule");
@@ -1363,12 +1354,7 @@ async function runRestore() {
 
 $("dup-rescan").onclick = () => loadDuplicates(true);
 
-const DUP_FILTER = "dup-filter";
-try { $("dup-filter").value = localStorage.getItem(DUP_FILTER) || ""; } catch {}
-$("dup-filter").oninput = () => {
-  try { localStorage.setItem(DUP_FILTER, $("dup-filter").value); } catch {}
-  renderDupList();
-};
+$("dup-filter").oninput = renderDupList;
 
 const RULE_MANAGED = "rule-managed: removed copies return on the next run";
 
@@ -1661,23 +1647,12 @@ document.addEventListener("keydown", (event) => {
 
 $("rescan").onclick = () => loadTrips(true);
 
-const TRIP_FILTER = "trip-filter";
-try { $("trip-filter").value = localStorage.getItem(TRIP_FILTER) || ""; } catch {}
-$("trip-filter").oninput = () => {
-  try { localStorage.setItem(TRIP_FILTER, $("trip-filter").value); } catch {}
-  renderTripList();
-};
+$("trip-filter").oninput = renderTripList;
 
-/* Hiding trips that already have an album is a per-viewer preference. */
-const ONLY_NEW = "butler.trips.onlyNew";
-try { $("only-new").checked = localStorage.getItem(ONLY_NEW) !== "0"; } catch {}
 function applyOnlyNew() {
   $("trip-list").classList.toggle("only-new", $("only-new").checked);
 }
-$("only-new").onchange = () => {
-  try { localStorage.setItem(ONLY_NEW, $("only-new").checked ? "1" : "0"); } catch {}
-  applyOnlyNew();
-};
+$("only-new").onchange = applyOnlyNew;
 applyOnlyNew();
 
 async function loadTrips(rescan) {
