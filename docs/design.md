@@ -22,7 +22,7 @@ mode's preview, so the preview cannot drift from what a run does.
 | `immich.py` | Narrow Immich API client: read assets/people/albums, create albums, add assets |
 | `matcher.py` | Album rule → asset set; places OR'd client-side, `people_mode` independent of server semantics; a recurring day (N28) is one windowed query per year |
 | `picker.py` | Pure, HTTP-free: caps a matched set to `pics_per_year` per calendar year and picks which — `all`/`best`/`random`/`rotate` (N29) |
-| `describe.py` | The `[butler vN]` hint line kept in an album's Immich description (N31) |
+| `describe.py` | The `[butler vN]` play-hint line kept in an album's Immich description (N31) |
 | `runtime.py` | `plan()` (read-only) and `apply()` (the only writer); per-album failure isolation |
 | `schedule.py` | The `auto-update-schedule` grammar |
 | `state.py` | Album ids and last run per album; atomic rewrite |
@@ -47,43 +47,38 @@ and `pick` (N29); the top level gains `describe` (N31). State gains `pick_bag`, 
 keyed by calendar year) and `pick_cycle`, all additive so `state.json` stays `version: 1` and an
 older file loads unchanged. Asset UUIDs stay in `state.json`, never in `config.toml`.
 
-## 4. Album description hints (N31/N35/N36)
+## 4. Album description hints (N31)
 
-`describe.py` derives the hint line from an album's rule shape; the line is always kept in every
-butler-managed album's Immich description, no setting required. The rule is checked in this
-order — the first match wins:
+`describe.py` builds the hint line from two album keys, `chunk` and `chunk_order`; nothing is
+derived from the rule shape any more. An album with a `chunk` gets one line in its Immich
+description, no setting required; an album without one gets none, and a line the butler wrote
+earlier is taken out (`apply_hint(description, "")`):
 
-| Rule shape | `kind` | `order` |
-|---|---|---|
-| has a date window (`from`/`to`) | `trip` | `trip` |
-| recurring calendar window (`on_from`/`on_to`, N28) | `recurring-day` | `one-per-year` |
-| has `people` | `person` | `person` |
-| places only (`countries`/`states`/`cities`) | `place` | — |
-| none of the above | `album` | — |
+```
+[butler v1] chunk=3/year chunk_order=chronological
+```
 
-Independently of the row matched above, `rotating=yes` is appended whenever `album.rotating` is
-true (`pick = "rotate"` or `"random"`, N29) — it's an extra flag, not a different kind/order.
+`chunk` is `<n>/<span>` (n from 1 to 50, span `year`, `month` or `day`); `chunk_order` is
+`chronological` or `random` and defaults to `chronological` when only `chunk` is set. Both are a
+**closed vocabulary**: checked against the tables in `describe.py` (`CHUNK_SPANS`,
+`CHUNK_ORDER_VALUES`, `MIN_CHUNK`/`MAX_CHUNK`, `parse_chunk()`) at three points: `config.py` on
+load and on a design-mode save (`_load_chunk`, the same function both call), and `hint_line()`
+itself, which asserts its output against the same tables as a second line of defence. A
+description line is therefore never built from a free-form string; an unrecognised value is
+refused at the point it was written, naming what is allowed. `chunk_order` without `chunk` is
+refused, and so are the keys the line used to carry (`hint_kind`, `hint_order`, `slot`, `dwell`,
+`active`, `caption`, `activity`: `REMOVED_HINT_KEYS`) -- an unmigrated config fails loudly
+instead of silently losing its hints.
 
-`hint_kind` / `hint_order` (N35) override either value per album, and `slot`, `dwell`, `active`,
-`caption`, `activity` (N36) add optional playback-only fields to the line. All seven are a
-**closed vocabulary**: every enum is checked against a table in `describe.py`
-(`KIND_VALUES`/`ORDER_VALUES`/`CAPTION_VALUES`/`ACTIVITY_VALUES`) and every number against a
-range (`MIN_DWELL`/`MAX_DWELL`, `MIN_SLOT`/`MAX_SLOT`) at three points: `config.py` on load and
-on a design-mode save (`design/api.py`'s `_load_hint`, the same function both call),
-and `hint_line()` itself asserts its own output against the same tables as a second line of
-defence. A description line is therefore never built from a free-form string; an unrecognised
-value is refused at the point it was written, naming the allowed list. The design UI's album
-builder, on its Player sub-tab, exposes `hint_kind`/`hint_order`/`dwell` as bounded
-`<select>`/number inputs, with a live preview of the resulting line from `/api/preview`'s
-`hint` field. `slot`/`active`/`caption`/`activity` have no control of their own — a value set
-by hand in config.toml round-trips through Save unchanged and is listed on the same tab
-("also set in config: …") rather than dropped.
+The design UI's album builder, on its Player sub-tab, has a count, a span and an order, with a
+live preview of the resulting line from the `hint` field of `/api/preview` and
+`/api/hint-preview`. The album templates fill them (trip 3/day random, birthday 3/year
+chronological, everything else 5/year random).
 
-Example line: `[butler v1] kind=recurring-day order=one-per-year rotating=yes`.
-
-The full field reference — every value, its meaning, and what a player such as PyImmichFrame
-must do with an unknown or absent field — is `docs/hints.md`; `tests/test_describe.py` checks
-that every value in the registry is documented there.
+The full field reference -- every value, its meaning, and what a player such as PyImmichFrame
+must do with an unknown or absent field -- is `docs/hints.md`; `tests/test_describe.py` checks
+that every value in the registry is documented there. The one concept for both repos is
+`PyImmichFrame/docs/TODOs/playback-order.md`.
 
 ## 5. Design-mode HTTP
 

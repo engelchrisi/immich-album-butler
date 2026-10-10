@@ -225,38 +225,29 @@
 
       <div class="subtab-panel" data-subtab="player">
         <fieldset>
-          <legend>Player hints</legend>
+          <legend>Play hints</legend>
           <p class="muted">A player such as PyImmichFrame reads these from the album's Immich
-            description to decide how to play it — see <code>docs/hints.md</code>. Leave a field
-            on "auto" to let it follow the rule.</p>
+            description to decide how to play it — see <code>docs/hints.md</code>. Leave the
+            count empty and the player shuffles the album.</p>
           <div class="row">
-            <label class="field"><span>Kind</span>
-              <select id="hint-kind">
-                <option value="">auto</option>
-                <option value="trip">trip</option>
-                <option value="recurring-day">recurring-day</option>
-                <option value="person">person</option>
-                <option value="place">place</option>
-                <option value="album">album</option>
+            <label class="field"><span>Photos per chunk</span>
+              <input id="chunk-count" type="number" min="1" max="50" step="1"
+                     placeholder="shuffled"></label>
+            <label class="field"><span>taken from one</span>
+              <select id="chunk-span">
+                <option value="year">year</option>
+                <option value="month">month</option>
+                <option value="day">day</option>
               </select>
             </label>
-            <label class="field"><span>Order</span>
-              <select id="hint-order">
-                <option value="">auto</option>
-                <option value="trip">trip</option>
-                <option value="one-per-year">one-per-year</option>
-                <option value="person">person</option>
-                <option value="time-asc">time, oldest first</option>
-                <option value="time-desc">time, newest first</option>
+            <label class="field"><span>Chunk order</span>
+              <select id="chunk-order">
+                <option value="chronological">chronological</option>
                 <option value="random">random</option>
-                <option value="slots">slots (neighbours per jump)</option>
               </select>
             </label>
-            <label class="field"><span>Dwell (seconds)</span>
-              <input id="hint-dwell" type="number" min="1" step="1" placeholder="player default"></label>
           </div>
           <div class="muted" id="hint-preview"></div>
-          <div class="muted" id="hint-extra"></div>
         </fieldset>
       </div>
     </div>

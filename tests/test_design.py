@@ -198,6 +198,19 @@ class PreviewTests(DesignTestCase):
         self.assertEqual(self.api.hint_preview(ITALY)["hint"],
                          self.api.preview(ITALY)["hint"])
 
+    def test_hint_preview_shows_the_chunk_line_or_nothing(self):
+        self.assertIsNone(self.api.hint_preview(ITALY)["hint"])
+        chunked = {**ITALY, "chunk": "3/day", "chunk_order": "random"}
+        self.assertEqual(self.api.hint_preview(chunked)["hint"],
+                         "[butler v1] chunk=3/day chunk_order=random")
+        # The builder posts "" for a chunk it does not have.
+        empty = {**ITALY, "chunk": "", "chunk_order": ""}
+        self.assertIsNone(self.api.hint_preview(empty)["hint"])
+
+    def test_a_bad_chunk_is_refused_by_the_preview(self):
+        with self.assertRaises(ApiError):
+            self.api.hint_preview({**ITALY, "chunk": "3/week"})
+
     def test_hint_preview_does_not_touch_immich(self):
         """The Optional group's fields don't affect matching, so this must
         not query Immich at all -- unlike preview(), which always does."""

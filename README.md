@@ -219,27 +219,32 @@ advanced only by a real run — a `--dry-run` shows exactly what the run would p
 and writes nothing. Each run re-adds album members, so keep the cadence to a day
 or more.
 
-### Publishing the album kind
+### Telling a player how to play the album
 
-A player like PyImmichFrame can order an album if it knows what kind it is. The
-butler always keeps one line in each album's Immich description:
+A player like PyImmichFrame can play an album in a sensible order if it is told how. Give an album
+a `chunk` -- how many photos to show from one year, month or day before moving on -- and,
+optionally, whether those years, months or days follow each other in time order:
+
+```toml
+[albums.italy-2019]
+name = "Italy 2019"
+chunk = "3/day"            # three photos of one day, then three of another
+chunk_order = "random"     # chronological (the default) or random
+```
+
+The butler then keeps one line in the album's Immich description:
 
 ```
-[butler v1] kind=recurring-day order=one-per-year rotating=yes
+[butler v1] chunk=3/day chunk_order=random
 ```
 
-`kind` is `trip` (a dated window), `person`, `recurring-day`, or `place`;
-`rotating=yes` is set whenever the contents change each run. The butler owns
-**only** that line — the last one matching `[butler v…]` — and leaves any
-hand-written text around it verbatim. It is written only when it would change, so an
-ordinary run touches nothing, and it needs `album.update` on the key (a 403 is a
-warning, never a failed run).
-
-An album can also override `kind`/`order` (`hint_kind`, `hint_order`) and add extra
-playback fields — `slot`, `dwell`, `active`, `caption`, `activity` — all validated
-against a closed set of values, never free text, and all editable from the design
-UI's album builder. See **[docs/hints.md](docs/hints.md)** for what every field and
-value means and what a player should do with one it does not recognise.
+It owns **only** that line -- the last one matching `[butler v…]` -- and leaves any hand-written
+text around it verbatim. It is written only when it would change, so an ordinary run touches
+nothing, and it needs `album.update` on the key (a 403 is a warning, never a failed run). An
+album without a `chunk` has no line, and one written earlier is removed. The design UI's album
+builder sets both on its Player tab, and its templates fill in sensible defaults. See
+**[docs/hints.md](docs/hints.md)** for what each value means and what a player should do with
+one it does not recognise.
 
 ### Sharing an album with another account
 

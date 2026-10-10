@@ -482,110 +482,81 @@ class RecurringAndRotateTests(unittest.TestCase):
 HINTED = """
 name = "Geburtstag"
 auto-update-schedule = "weekly sun 04:00"
-hint_order = "slots"
-slot = "2-3"
-dwell = 12
-active = "12-01..12-31"
-caption = "year"
-activity = "kenburns"
+chunk = "3/Year"
+chunk_order = "random"
 
 [match]
 on_from = "05-16"
 """
 
 
-class HintOverrideTests(unittest.TestCase):
+class ChunkTests(unittest.TestCase):
     def _err(self, album):
         with ConfigDir(albums={"x": album}) as d:
             errors = cfg.load(d.path).errors
         return errors[0] if errors else ""
 
-    def test_overrides_load(self):
+    def test_chunk_and_order_load_normalised(self):
         with ConfigDir(albums={"x": HINTED}) as d:
             album = cfg.load(d.path).albums[0]
-        self.assertEqual(album.hint_kind, "")
-        self.assertEqual(album.hint_order, "slots")
-        self.assertEqual(album.slot, "2-3")
-        self.assertEqual(album.dwell, 12)
-        self.assertEqual(album.active, "12-01..12-31")
-        self.assertEqual(album.caption, "year")
-        self.assertEqual(album.activity, "kenburns")
+        self.assertEqual(album.chunk, "3/year")
+        self.assertEqual(album.chunk_order, "random")
 
-    def test_overrides_round_trip_through_toml(self):
+    def test_an_album_without_them_has_neither(self):
+        with ConfigDir(albums={"x": 'name = "X"\n[match]\npeople = ["Alex"]\n'}) as d:
+            album = cfg.load(d.path).albums[0]
+        self.assertEqual((album.chunk, album.chunk_order), ("", ""))
+
+    def test_a_chunk_needs_no_order(self):
+        with ConfigDir(albums={"x":
+                'name = "X"\nchunk = "5/month"\n[match]\npeople = ["Alex"]\n'}) as d:
+            album = cfg.load(d.path).albums[0]
+        self.assertEqual((album.chunk, album.chunk_order), ("5/month", ""))
+
+    def test_they_round_trip_through_toml(self):
         with ConfigDir(albums={"x": HINTED}) as d:
             config = cfg.load(d.path)
             original = config.albums[0]
             cfg.write_config(d.path, config)
             reloaded = cfg.load(d.path).albums[0]
-        self.assertEqual(original.hint_order, reloaded.hint_order)
-        self.assertEqual(original.slot, reloaded.slot)
-        self.assertEqual(original.dwell, reloaded.dwell)
-        self.assertEqual(original.active, reloaded.active)
-        self.assertEqual(original.caption, reloaded.caption)
-        self.assertEqual(original.activity, reloaded.activity)
+        self.assertEqual(original.chunk, reloaded.chunk)
+        self.assertEqual(original.chunk_order, reloaded.chunk_order)
 
     def test_empty_strings_mean_unset_like_the_design_ui_sends(self):
-        # The album builder's "auto" option posts "" rather than omitting the
-        # key, and an unset number input posts null for dwell. None of that
-        # should be treated as an invalid value.
-        payload = {"hint_kind": "", "hint_order": "", "slot": "",
-                   "dwell": None, "active": "", "caption": "", "activity": ""}
-        hint = cfg._load_hint(payload)
-        self.assertEqual(hint, dict(hint_kind="", hint_order="", slot="",
-                                     dwell=None, active="", caption="",
-                                     activity=""))
+        # The album builder posts "" for a chunk it does not have.
+        self.assertEqual(cfg._load_chunk({"chunk": "", "chunk_order": ""}),
+                         dict(chunk="", chunk_order=""))
+        self.assertEqual(cfg._load_chunk({}), dict(chunk="", chunk_order=""))
 
-    def test_none_is_normalised_away_for_caption_and_activity(self):
-        with ConfigDir(albums={"x":
-                'name = "X"\ncaption = "none"\nactivity = "none"\n'
-                '[match]\npeople = ["Alex"]\n'}) as d:
-            album = cfg.load(d.path).albums[0]
-        self.assertEqual(album.caption, "")
-        self.assertEqual(album.activity, "")
+    def test_a_bad_chunk_shape_is_refused(self):
+        for bad in ("three", "3", "3/", "/year", "3/week", "0/year", "51/day"):
+            self.assertIn("chunk", self._err(
+                f'name = "X"\nchunk = "{bad}"\n[match]\npeople = ["Alex"]\n'),
+                bad)
 
-    def test_an_unknown_hint_kind_is_refused(self):
-        self.assertIn("hint_kind", self._err(
-            'name = "X"\nhint_kind = "vacation"\n[match]\npeople = ["Alex"]\n'))
+    def test_a_chunk_must_be_a_string(self):
+        self.assertIn("chunk", self._err(
+            'name = "X"\nchunk = 3\n[match]\npeople = ["Alex"]\n'))
 
-    def test_an_unknown_hint_order_is_refused(self):
-        self.assertIn("hint_order", self._err(
-            'name = "X"\nhint_order = "backwards"\n[match]\npeople = ["Alex"]\n'))
+    def test_an_unknown_chunk_order_is_refused(self):
+        self.assertIn("chunk_order", self._err(
+            'name = "X"\nchunk = "3/year"\nchunk_order = "backwards"\n'
+            '[match]\npeople = ["Alex"]\n'))
 
-    def test_an_unknown_caption_is_refused(self):
-        self.assertIn("caption", self._err(
-            'name = "X"\ncaption = "subtitle"\n[match]\npeople = ["Alex"]\n'))
+    def test_a_chunk_order_without_a_chunk_is_refused(self):
+        self.assertIn("chunk", self._err(
+            'name = "X"\nchunk_order = "random"\n[match]\npeople = ["Alex"]\n'))
 
-    def test_an_unknown_activity_is_refused(self):
-        self.assertIn("activity", self._err(
-            'name = "X"\nactivity = "spin"\n[match]\npeople = ["Alex"]\n'))
-
-    def test_a_bad_slot_shape_is_refused(self):
-        self.assertIn("slot", self._err(
-            'name = "X"\nslot = "two"\n[match]\npeople = ["Alex"]\n'))
-
-    def test_a_slot_range_out_of_order_is_refused(self):
-        self.assertIn("slot", self._err(
-            'name = "X"\nslot = "5-2"\n[match]\npeople = ["Alex"]\n'))
-
-    def test_a_slot_above_the_max_is_refused(self):
-        self.assertIn("slot", self._err(
-            'name = "X"\nslot = "20"\n[match]\npeople = ["Alex"]\n'))
-
-    def test_dwell_must_be_an_integer(self):
-        self.assertIn("dwell", self._err(
-            'name = "X"\ndwell = "soon"\n[match]\npeople = ["Alex"]\n'))
-
-    def test_dwell_out_of_range_is_refused(self):
-        self.assertIn("dwell", self._err(
-            'name = "X"\ndwell = 99999\n[match]\npeople = ["Alex"]\n'))
-
-    def test_active_must_be_two_mmdd_values(self):
-        self.assertIn("active", self._err(
-            'name = "X"\nactive = "december"\n[match]\npeople = ["Alex"]\n'))
-
-    def test_active_halves_must_each_be_valid_mmdd(self):
-        self.assertIn("active", self._err(
-            'name = "X"\nactive = "13-01..12-31"\n[match]\npeople = ["Alex"]\n'))
+    def test_each_removed_key_is_refused_by_name(self):
+        for key, value in (("hint_kind", '"trip"'), ("hint_order", '"trip"'),
+                           ("slot", '"2-3"'), ("dwell", "8"),
+                           ("active", '"12-01..12-31"'), ("caption", '"year"'),
+                           ("activity", '"kenburns"')):
+            error = self._err(
+                f'name = "X"\n{key} = {value}\n[match]\npeople = ["Alex"]\n')
+            self.assertIn(key, error)
+            self.assertIn("removed", error)
+            self.assertIn("chunk", error)
 
 
 if __name__ == "__main__":

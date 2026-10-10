@@ -26,10 +26,9 @@ function emptyDraft() {
     slug: "", name: "", enabled: true, schedule: "inherit",
     cover: "favorite", share_with: [],   // [{ account, role }]
     pics_per_year: null, pick: "all",
-    // N35/N36: description-hint overrides. "" (not null) is "not set" here,
-    // so a bare select/text input maps to it directly -- see docs/hints.md.
-    hint_kind: "", hint_order: "", slot: "", dwell: null,
-    active: "", caption: "", activity: "",
+    // N31: how a player plays the album ("3/year"). "" (not null) is "not
+    // set" here, so a bare input maps to it directly -- see docs/hints.md.
+    chunk: "", chunk_order: "",
     match: {
       from: null, to: null, countries: [], states: [], cities: [],
       people: [], people_mode: "any", include_unlocated: true,
@@ -367,10 +366,7 @@ function editAlbumDraft(album) {
     cover: album.cover || "auto",
     share_with: (album.shares || []).map(s => ({ ...s })),
     pics_per_year: album.pics_per_year ?? null, pick: album.pick || "all",
-    hint_kind: album.hint_kind || "", hint_order: album.hint_order || "",
-    slot: album.slot || "", dwell: album.dwell ?? null,
-    active: album.active || "", caption: album.caption || "",
-    activity: album.activity || "",
+    chunk: album.chunk || "", chunk_order: album.chunk_order || "",
     schedule: album.schedule_inherited ? "inherit" : album.schedule,
     match: { ...album.match },
   };
@@ -389,9 +385,7 @@ function fillForm() {
   $("recur-since").value = draft.match.since_year ?? "";
   $("pick").value = draft.pick || "all";
   fillPicsPerYear();
-  $("hint-kind").value = draft.hint_kind || "";
-  $("hint-order").value = draft.hint_order || "";
-  $("hint-dwell").value = draft.dwell ?? "";
+  fillChunk();
   updateWhenExclusivity();
   fillCover(draft.cover || "auto");
   fillSharing();
@@ -405,22 +399,32 @@ function fillForm() {
     draft.match.on_from || draft.match.from);
   renderChosenPeople();
   renderChosenPlaces();
-  refreshHintExtra();
   refreshSubtabBadges();
   refreshPreview();
 }
 
-/* Slot/Active/Caption/Activity have no control of their own any more (the
- * builder only exposes Kind/Order/Dwell) but a value loaded from config.toml
- * must still round-trip on Save, so it is surfaced here rather than dropped. */
-function refreshHintExtra() {
-  const { draft } = state;
-  const extras = [];
-  if (draft.slot) extras.push(`slot=${draft.slot}`);
-  if (draft.active) extras.push(`active=${draft.active}`);
-  if (draft.caption) extras.push(`caption=${draft.caption}`);
-  if (draft.activity) extras.push(`activity=${draft.activity}`);
-  $("hint-extra").textContent = extras.length ? `also set in config: ${extras.join(" ")}` : "";
+/* The chunk controls <-> draft.chunk ("3/year") and draft.chunk_order. With
+ * no count there is no chunk, and then no chunk order either. */
+function fillChunk() {
+  const [count, span] = (state.draft.chunk || "").split("/");
+  $("chunk-count").value = count || "";
+  $("chunk-span").value = span || "year";
+  $("chunk-order").value = state.draft.chunk_order || "chronological";
+  $("chunk-span").disabled = $("chunk-order").disabled = !count;
+}
+
+function readChunk() {
+  const count = parseInt($("chunk-count").value, 10);
+  const has = Number.isInteger(count) && count > 0;
+  state.draft.chunk = has ? `${count}/${$("chunk-span").value}` : "";
+  state.draft.chunk_order = has ? $("chunk-order").value : "";
+  $("chunk-span").disabled = $("chunk-order").disabled = !has;
+  refreshHintPreview();
+}
+
+function setChunk(draft, chunk, order) {
+  draft.chunk = chunk;
+  draft.chunk_order = order;
 }
 
 /* A folded-away sub-tab still needs to say whether it holds anything other
@@ -435,10 +439,9 @@ function refreshSubtabBadges() {
     : "");
   setSubtabBadge("sharing", draft.share_with.length > 0,
     draft.share_with.length ? `Shared with ${draft.share_with.length} account(s)` : "");
-  const playerOn = !!(draft.hint_kind || draft.hint_order || draft.dwell != null ||
-    draft.slot || draft.active || draft.caption || draft.activity);
+  const playerOn = !!draft.chunk;
   setSubtabBadge("player", playerOn, playerOn
-    ? `Kind: ${draft.hint_kind || "auto"} · Order: ${draft.hint_order || "auto"}` : "");
+    ? `Chunk: ${draft.chunk} · ${draft.chunk_order || "chronological"}` : "");
 }
 
 function setSubtabBadge(subtab, on, title) {
@@ -594,12 +597,7 @@ function bindDraft() {
     fillPicsPerYear();
     refreshPreview();
   };
-  $("hint-kind").onchange = (e) => { state.draft.hint_kind = e.target.value; refreshHintPreview(); };
-  $("hint-order").onchange = (e) => { state.draft.hint_order = e.target.value; refreshHintPreview(); };
-  $("hint-dwell").onchange = (e) => {
-    state.draft.dwell = e.target.value ? parseInt(e.target.value, 10) : null;
-    refreshHintPreview();
-  };
+  for (const id of ["chunk-count", "chunk-span", "chunk-order"]) $(id).onchange = readChunk;
   $("date-clear").onclick = () => {
     const { match } = state.draft;
     match.from = match.to = null;
@@ -857,26 +855,31 @@ async function applyTemplate(id) {
   if (id === "christmas") {
     draft.name = draft.name || "Christmas";
     draft.match.on_from = "12-24"; draft.match.on_to = "12-26";
-    draft.pick = "best"; draft.pics_per_year = 15; draft.active = "12-01..12-31";
+    draft.pick = "best"; draft.pics_per_year = 15;
+    setChunk(draft, "5/year", "random");
   } else if (id === "nye") {
     draft.name = draft.name || "New Year's Eve";
     draft.match.on_from = "12-31"; draft.match.on_to = "01-01";
     draft.pick = "best"; draft.pics_per_year = 10;
+    setChunk(draft, "5/year", "random");
   } else if (id === "summer") {
     draft.name = draft.name || "Summer";
     draft.match.on_from = "06-21"; draft.match.on_to = "09-22";
     draft.pick = "best"; draft.pics_per_year = 20;
+    setChunk(draft, "5/year", "random");
   } else if (id === "person") {
     const name = ask("Person's name, as named in Immich:");
     if (!name) return;
     draft.match.people = [name];
     draft.name = `Photos of ${name}`;
+    setChunk(draft, "5/year", "random");
   } else if (id === "person-years") {
     const name = ask("Person's name, as named in Immich:");
     if (!name) return;
     draft.match.people = [name];
     draft.name = `${name} over the years`;
-    draft.pick = "best"; draft.pics_per_year = 5; draft.hint_order = "one-per-year";
+    draft.pick = "best"; draft.pics_per_year = 5;
+    setChunk(draft, "5/year", "random");
   } else if (id === "together") {
     const a = ask("First person's name, as named in Immich:");
     if (!a) return;
@@ -885,12 +888,14 @@ async function applyTemplate(id) {
     draft.match.people = [a, b];
     draft.match.people_mode = "all";
     draft.name = `${a} & ${b}`;
+    setChunk(draft, "5/year", "random");
   } else if (id === "birthday") {
     const name = ask("Person's name, as named in Immich:");
     if (!name) return;
     draft.match.people = [name];
     draft.name = `Birthday of ${name}`;
-    draft.pick = "best"; draft.pics_per_year = 10; draft.hint_order = "one-per-year";
+    draft.pick = "best"; draft.pics_per_year = 10;
+    setChunk(draft, "3/year", "chronological");
     try {
       const data = await api(`/api/people?q=${encodeURIComponent(name)}`);
       const hit = (data.people || []).find((p) => p.name === name) || data.people[0];
@@ -902,8 +907,8 @@ async function applyTemplate(id) {
       }
     } catch (_) { /* best effort; the date can still be set by hand */ }
   } else if (id === "place") {
-    draft.hint_kind = "place";
     draft.pick = "best";
+    setChunk(draft, "5/year", "random");
     banner("Choose a country, state or city below.", true);
   } else if (id === "year-review") {
     const raw = ask("Which year?");
@@ -913,6 +918,7 @@ async function applyTemplate(id) {
     draft.match.to = `${year}-12-31`;
     draft.name = draft.name || `Year in review ${year}`;
     draft.pick = "best"; draft.pics_per_year = 60;
+    setChunk(draft, "5/year", "random");
   } else if (id === "anniversary") {
     const label = ask('What is this anniversary called? (e.g. "Wedding anniversary")');
     if (!label) return;
@@ -922,6 +928,7 @@ async function applyTemplate(id) {
     draft.match.on_from = draft.match.on_to = `${m[2]}-${m[1]}`;
     draft.name = label;
     draft.pick = "best"; draft.pics_per_year = 10;
+    setChunk(draft, "5/year", "random");
   }
 }
 
@@ -1748,8 +1755,7 @@ function fromTrip(trip) {
   state.draft.match.to = trip.end;
   state.draft.match.countries = trip.countries.slice(0, 3);
   state.draft.match.include_unlocated = true;
-  state.draft.hint_kind = "trip";
-  state.draft.hint_order = "trip";
+  setChunk(state.draft, "3/day", "random");
   fillForm();
   showTab("builder");
 }

@@ -1,24 +1,30 @@
-"""The hint line the butler keeps in an album's Immich description (N31).
+"""The play-hint line the butler keeps in an album's Immich description (N31).
 
-The playback side needs to know what kind of album this is and how to play
-it, and the butler is the only thing that knows. It publishes that as one
-line in the album's Immich description -- any client can read it, it needs
-no shared filesystem, and it works if the frame runs on another host.
+A player needs to know how to play an album, and the butler is the only thing
+that knows. It publishes that as one line in the album's Immich description --
+any client can read it, it needs no shared filesystem, and it works if the
+player runs on another host.
+
+The line says two things and nothing else:
+
+    [butler v1] chunk=3/year chunk_order=chronological
+
+`chunk=<n>/<span>` -- n photos from one year, month or day, then on to the next;
+`chunk_order=` -- whether the years/months/days follow each other in time order
+or at random. An album without a `chunk` has no line at all and is shuffled.
 
 The butler owns exactly one line: the last one matching `[butler vN]`. Every
 other line of a hand-written description is kept verbatim.
 
 Every value the line can carry is a **closed vocabulary**: the tables below
-(`KIND_VALUES`, `ORDER_VALUES`, `CAPTION_VALUES`, `ACTIVITY_VALUES`) and the
-numeric ranges (`MIN_DWELL`..`MAX_DWELL`, `MIN_SLOT`..`MAX_SLOT`) are the one
-place that decides what may ever be written. `config.py` validates every
-album against these same tables before it is ever turned into a line, and
-`hint_line()` asserts its own output against them again as a second line of
-defence -- this module never echoes a raw string into a description. The
-full meaning of every field is documented in `docs/hints.md`, the contract
-a player such as PyImmichFrame implements against; that file is checked
-against this registry by `tests/test_describe.py` so a value cannot be added
-here without being documented there.
+and the range `MIN_CHUNK`..`MAX_CHUNK` are the one place that decides what may
+ever be written. `config.py` validates every album against them before it is
+turned into a line, and `hint_line()` asserts its own output against them
+again as a second line of defence -- this module never echoes a raw string
+into a description. The full meaning is in `docs/hints.md`, the contract a
+player such as PyImmichFrame implements against; that file is checked against
+this registry by `tests/test_describe.py` so a value cannot be added here
+without being documented there.
 """
 
 from __future__ import annotations
@@ -36,83 +42,46 @@ VERSION = 1
 
 _MARKER = re.compile(r"^\[butler v\d+\]")
 
-# kind=... -- either derived from the rule shape or set by `hint_kind`.
-KIND_VALUES = ("trip", "recurring-day", "person", "place", "album")
+# chunk=<n>/<span> -- the time span a chunk is taken from.
+CHUNK_SPANS = ("year", "month", "day")
 
-# order=... -- either derived alongside `kind`, or set by `hint_order`.
-ORDER_VALUES = ("trip", "one-per-year", "person",
-                "time-asc", "time-desc", "random", "slots")
+# chunk_order=... -- how the chunks follow each other. "chronological" is the
+# default: a chunk without a `chunk_order` means that.
+CHUNK_ORDER_VALUES = ("chronological", "random")
+DEFAULT_CHUNK_ORDER = "chronological"
 
-# caption=... -- what the frame should overlay. "none" is the default and is
-# never written (its absence means the same thing).
-CAPTION_VALUES = ("none", "year", "place", "title")
+# n photos per chunk. The range exists to catch typos, not to limit taste.
+MIN_CHUNK, MAX_CHUNK = 1, 50
 
-# activity=... -- a moving-photo effect. "none" is the default and is never
-# written.
-ACTIVITY_VALUES = ("none", "kenburns", "face-zoom", "map-fly")
+_CHUNK = re.compile(r"^(\d+)/([a-z]+)$")
 
-# dwell=... -- whole seconds per photo. The range exists only to catch typos
-# (a value of 36000 is surely a mistake, not an intentional ten-hour dwell).
-MIN_DWELL, MAX_DWELL = 1, 3600
 
-# slot=N or slot=N-M -- how many time-neighbours an order="slots" jump shows.
-MIN_SLOT, MAX_SLOT = 1, 10
+def parse_chunk(value: str) -> tuple[int, str] | None:
+    """`"3/year"` -> `(3, "year")`; anything outside the vocabulary -> None."""
+    match = _CHUNK.match(value)
+    if not match:
+        return None
+    count, span = int(match.group(1)), match.group(2)
+    if span not in CHUNK_SPANS or not MIN_CHUNK <= count <= MAX_CHUNK:
+        return None
+    return count, span
 
 
 def hint_line(album: Album) -> str:
-    """The `[butler vN] kind=… order=… …` line for this album.
+    """The `[butler vN] chunk=… chunk_order=…` line for this album, or ""
+    when the album has no `chunk` and so no line.
 
-    `kind`/`order` are derived from the rule shape, then `album.hint_kind` /
-    `album.hint_order` override them if set -- config.py has already checked
-    both against `KIND_VALUES`/`ORDER_VALUES`, so this function only asserts
-    it, as a second line of defence against a value slipping in some other
-    way (e.g. a future caller that builds an Album by hand).
+    config.py has already checked both values against this module's
+    vocabulary; this function asserts it again, as a second line of defence
+    against a value slipping in some other way (e.g. a future caller that
+    builds an Album by hand).
     """
-    rule = album.match
-    order: str | None = None
-    if rule.has_dates:
-        kind, order = "trip", "trip"
-    elif rule.has_recurring:
-        kind, order = "recurring-day", "one-per-year"
-    elif rule.people:
-        kind, order = "person", "person"
-    elif rule.has_places:
-        kind = "place"
-    else:
-        kind = "album"
-
-    if album.hint_kind:
-        kind = album.hint_kind
-    if album.hint_order:
-        order = album.hint_order
-
-    assert kind in KIND_VALUES, f"unknown kind {kind!r}"
-    assert order is None or order in ORDER_VALUES, f"unknown order {order!r}"
-
-    parts = [f"[butler v{VERSION}]", f"kind={kind}"]
-    if order:
-        parts.append(f"order={order}")
-    if album.rotating:
-        # Set whatever else the rule says: the contents change every run, so a
-        # player walking them in order walks a different album each week.
-        parts.append("rotating=yes")
-    if album.slot:
-        assert re.match(r"^\d+(-\d+)?$", album.slot), f"unknown slot {album.slot!r}"
-        parts.append(f"slot={album.slot}")
-    if album.dwell is not None:
-        assert MIN_DWELL <= album.dwell <= MAX_DWELL, f"dwell out of range {album.dwell!r}"
-        parts.append(f"dwell={album.dwell}")
-    if album.active:
-        assert re.match(r"^\d{2}-\d{2}\.\.\d{2}-\d{2}$", album.active), \
-            f"unknown active {album.active!r}"
-        parts.append(f"active={album.active}")
-    if album.caption:
-        assert album.caption in CAPTION_VALUES, f"unknown caption {album.caption!r}"
-        parts.append(f"caption={album.caption}")
-    if album.activity:
-        assert album.activity in ACTIVITY_VALUES, f"unknown activity {album.activity!r}"
-        parts.append(f"activity={album.activity}")
-    return " ".join(parts)
+    if not album.chunk:
+        return ""
+    order = album.chunk_order or DEFAULT_CHUNK_ORDER
+    assert parse_chunk(album.chunk) is not None, f"unknown chunk {album.chunk!r}"
+    assert order in CHUNK_ORDER_VALUES, f"unknown chunk_order {order!r}"
+    return f"[butler v{VERSION}] chunk={album.chunk} chunk_order={order}"
 
 
 def apply_hint(description: str, line: str) -> str:
@@ -124,9 +93,23 @@ def apply_hint(description: str, line: str) -> str:
     writes -- an old field, or one from a future version this build does not
     know -- never survives a rewrite; only a hand-written description around
     the marker line is kept.
+
+    An empty `line` means the album has no hint: the marker line, if there is
+    one, is taken out, together with the blank line that separated it from
+    the hand-written text around it.
     """
     lines = description.split("\n")
     marker_at = _last_marker(lines)
+
+    if not line:
+        if marker_at is None:
+            return description
+        del lines[marker_at]
+        if (0 < marker_at < len(lines) and not lines[marker_at].strip()
+                and not lines[marker_at - 1].strip()):
+            del lines[marker_at]
+        text = "\n".join(lines)
+        return text.rstrip("\n") if marker_at >= len(lines) else text
 
     if marker_at is not None:
         lines[marker_at] = line

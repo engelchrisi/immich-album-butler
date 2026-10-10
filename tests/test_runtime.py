@@ -253,18 +253,42 @@ class RotationTests(unittest.TestCase):
         self.assertFalse(exists)
 
 
+CHUNKED = ITALY.replace('name = "Italy 2019"\n',
+                        'name = "Italy 2019"\nchunk = "3/day"\nchunk_order = "random"\n')
+
+
 class DescribeTests(unittest.TestCase):
     def test_the_hint_is_written_and_not_rewritten_when_unchanged(self):
         with StubImmich(assets(), people=PEOPLE, page_size=2) as stub:
-            with Fixture({"italy-2019": ITALY}, stub) as fx:
+            with Fixture({"italy-2019": CHUNKED}, stub) as fx:
                 config, state = fx.load()
                 run_once(fx.client, config, state)
                 description = stub.album_named("Italy 2019")["description"]
                 config, state = fx.load()
                 run_once(fx.client, config, state)
                 patches = sum(1 for m, p in stub.requests if m == "PATCH")
-        self.assertIn("[butler v1] kind=trip order=trip", description)
+        self.assertIn("[butler v1] chunk=3/day chunk_order=random", description)
         self.assertEqual(patches, 0)     # set at creation, never rewritten
+
+    def test_an_album_without_a_chunk_gets_no_line(self):
+        with StubImmich(assets(), people=PEOPLE, page_size=2) as stub:
+            with Fixture({"italy-2019": ITALY}, stub) as fx:
+                config, state = fx.load()
+                run_once(fx.client, config, state)
+                description = stub.album_named("Italy 2019")["description"]
+        self.assertEqual(description, "")
+
+    def test_a_line_from_an_earlier_version_is_taken_out(self):
+        old = "Our trip.\n\n[butler v1] kind=trip order=trip"
+        with StubImmich(assets(), people=PEOPLE, page_size=2) as stub:
+            with Fixture({"italy-2019": ITALY}, stub) as fx:
+                config, state = fx.load()
+                run_once(fx.client, config, state)
+                stub.album_named("Italy 2019")["description"] = old
+                config, state = fx.load()
+                run_once(fx.client, config, state)
+                description = stub.album_named("Italy 2019")["description"]
+        self.assertEqual(description, "Our trip.")
 
 
 class FailureTests(unittest.TestCase):

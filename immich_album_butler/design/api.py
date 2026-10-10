@@ -321,17 +321,12 @@ class DesignApi:
                 "enabled": album.enabled,
                 "cover": album.cover,
                 "pics_per_year": album.pics_per_year, "pick": album.pick,
-                # N35/N36: the description-hint overrides, so the builder can
-                # show and edit them; empty/None means "not set" (derived, or
-                # omitted from the line) -- see docs/hints.md.
-                "hint_kind": album.hint_kind or None,
-                "hint_order": album.hint_order or None,
-                "slot": album.slot or None,
-                "dwell": album.dwell,
-                "active": album.active or None,
-                "caption": album.caption or None,
-                "activity": album.activity or None,
-                "hint": describe_module.hint_line(album),
+                # N31: how a player plays the album, so the builder can show
+                # and edit it; None means "not set" -- no hint line at all
+                # (see docs/hints.md).
+                "chunk": album.chunk or None,
+                "chunk_order": album.chunk_order or None,
+                "hint": describe_module.hint_line(album) or None,
                 "shares": [{"account": s.account, "role": s.role}
                           for s in album.share_with],
                 "schedule": str(album.schedule),
@@ -358,8 +353,7 @@ class DesignApi:
                 "cover_asset": info.cover_asset_id, "asset_count": info.asset_count,
                 "shared": shared(info),
                 "enabled": True, "cover": None, "pics_per_year": None, "pick": None,
-                "hint_kind": None, "hint_order": None, "slot": None, "dwell": None,
-                "active": None, "caption": None, "activity": None, "hint": None,
+                "chunk": None, "chunk_order": None, "hint": None,
                 "shares": [], "schedule": "", "schedule_inherited": False,
                 "match": None, "last_run": None, "last_result": None, "last_error": None,
             })
@@ -503,9 +497,9 @@ class DesignApi:
             # would end up on the front before anything is saved.
             "cover": album.cover,
             "cover_asset": plan.cover_asset_id,
-            # The description hint a run would write, live -- N31/N35/N36 --
-            # so the builder can preview it before saving.
-            "hint": describe_module.hint_line(album),
+            # The description hint a run would write, live -- N31 -- so the
+            # builder can preview it before saving.
+            "hint": describe_module.hint_line(album) or None,
             # How many accounts would gain access, so the builder can say so
             # before anything is saved.
             "to_share": len(plan.to_share),
@@ -520,7 +514,7 @@ class DesignApi:
         alone does not need `preview()`'s full (and slow) Immich query.
         """
         album = self._album_from(payload, require_name=False)
-        return {"hint": describe_module.hint_line(album)}
+        return {"hint": describe_module.hint_line(album) or None}
 
     @staticmethod
     def _extends(butler: Butler, plan) -> dict | None:
@@ -979,7 +973,7 @@ class DesignApi:
         share_with = self._sharing_from(payload)
         try:
             pics_per_year, pick = config_module._load_pick(payload, schedule)
-            hint = config_module._load_hint(payload)
+            hint = config_module._load_chunk(payload)
         except config_module.ConfigError as exc:
             raise ApiError(str(exc)) from None
 

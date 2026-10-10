@@ -161,18 +161,14 @@ class Album:
     # and how to choose which -- see PICK_MODES and picker.py.
     pics_per_year: int | None = None
     pick: str = "all"
-    # N35/N36: overrides of the hint line's otherwise-derived kind/order, plus
-    # the playback-only fields. Empty/None means "not set": derived (kind,
-    # order) or omitted from the line (slot, dwell, active, caption, activity).
-    # Every value here has already been checked against describe.py's closed
-    # vocabulary by _load_hint() -- see docs/hints.md for what each one means.
-    hint_kind: str = ""
-    hint_order: str = ""
-    slot: str = ""
-    dwell: int | None = None
-    active: str = ""
-    caption: str = ""
-    activity: str = ""
+    # N31: how a player should play the album -- "3/year" (n photos per year,
+    # month or day) and whether those chunks follow each other in time order or
+    # at random. "" means "not set": no chunk writes no hint line at all, and
+    # an unset chunk_order means "chronological". Both have already been
+    # checked against describe.py's closed vocabulary by _load_chunk() -- see
+    # docs/hints.md for what they mean.
+    chunk: str = ""
+    chunk_order: str = ""
 
     @property
     def rotating(self) -> bool:
@@ -512,7 +508,8 @@ def _load_album(slug: str, data: object, settings: Settings,
     cover = _load_cover(data.get("cover"), match)
     share_with = _load_album_shares(data.get("share"))
     pics_per_year, pick = _load_pick(data, schedule)
-    hint = _load_hint(data)
+    _refuse_removed_hint_keys(data)
+    hint = _load_chunk(data)
 
     return Album(slug=slug, name=name, match=match, schedule=schedule,
                  schedule_inherited=inherited, enabled=enabled,
@@ -549,64 +546,48 @@ def _load_pick(data: dict, schedule: Schedule) -> tuple[int | None, str]:
     return pics, pick
 
 
-def _load_hint(data: dict) -> dict:
-    """Read the N31 hint overrides (N35/N36), each checked against
-    describe.py's closed vocabulary -- the one place that decides what may
-    ever be written into a description. Nothing here is free text: an
-    unrecognised value is refused at load, naming the allowed list, exactly
-    like `pick` above.
+# Hint keys an album could carry before `chunk` / `chunk_order` replaced them
+# all. They are refused rather than ignored: an unmigrated config would
+# otherwise lose its hints without a word.
+REMOVED_HINT_KEYS = ("hint_kind", "hint_order", "slot", "dwell", "active",
+                     "caption", "activity")
+
+
+def _refuse_removed_hint_keys(data: dict) -> None:
+    for key in REMOVED_HINT_KEYS:
+        if key in data:
+            raise ConfigError(
+                f"{key} was removed: how an album is played is now set with "
+                f"chunk and chunk_order only -- see docs/hints.md")
+
+
+def _load_chunk(data: dict) -> dict:
+    """Read `chunk` / `chunk_order` (N31), each checked against describe.py's
+    closed vocabulary -- the one place that decides what may ever be written
+    into a description. Nothing here is free text: an unrecognised value is
+    refused at load, naming what is allowed, exactly like `pick` above.
     """
     # Imported lazily: describe.py imports Album from this module, so a
     # module-level import here would be circular.
     from . import describe as describe_module
 
-    kind = _load_enum(data, "hint_kind", describe_module.KIND_VALUES)
-    order = _load_enum(data, "hint_order", describe_module.ORDER_VALUES)
-    # "none" is the default for these two and is never written to the line --
-    # its absence means the same thing -- so it is normalised away here.
-    caption = _load_enum(data, "caption", describe_module.CAPTION_VALUES)
-    caption = "" if caption == "none" else caption
-    activity = _load_enum(data, "activity", describe_module.ACTIVITY_VALUES)
-    activity = "" if activity == "none" else activity
-
-    slot = data.get("slot")
-    if not slot:
-        slot = ""
+    chunk = data.get("chunk")
+    if chunk is None or chunk == "":
+        chunk = ""
     else:
-        slot = str(slot).strip()
-        match = re.match(r"^(\d+)(?:-(\d+))?$", slot)
-        if not match:
-            raise ConfigError(f'slot must be a number or a range such as "2-3", '
-                              f"got {slot!r}")
-        low = int(match.group(1))
-        high = int(match.group(2)) if match.group(2) else low
-        if not (describe_module.MIN_SLOT <= low <= high <= describe_module.MAX_SLOT):
+        chunk = str(chunk).strip().lower()
+        parsed = describe_module.parse_chunk(chunk)
+        if parsed is None:
             raise ConfigError(
-                f"slot must be between {describe_module.MIN_SLOT} and "
-                f"{describe_module.MAX_SLOT}, low to high, got {slot!r}")
-        slot = str(low) if low == high else f"{low}-{high}"
+                f'chunk must be "<n>/<span>" -- n from {describe_module.MIN_CHUNK} '
+                f"to {describe_module.MAX_CHUNK}, span one of "
+                f"{', '.join(describe_module.CHUNK_SPANS)} -- got {chunk!r}")
+        chunk = f"{parsed[0]}/{parsed[1]}"
 
-    dwell = data.get("dwell")
-    if dwell is not None:
-        if not isinstance(dwell, int) or isinstance(dwell, bool):
-            raise ConfigError("dwell must be a whole number of seconds")
-        if not describe_module.MIN_DWELL <= dwell <= describe_module.MAX_DWELL:
-            raise ConfigError(
-                f"dwell must be between {describe_module.MIN_DWELL} and "
-                f"{describe_module.MAX_DWELL} seconds, got {dwell!r}")
-
-    active = data.get("active")
-    if not active:
-        active = ""
-    else:
-        active = str(active).strip()
-        halves = active.split("..")
-        if len(halves) != 2:
-            raise ConfigError(f'active must be "MM-DD..MM-DD", got {active!r}')
-        active = f"{_parse_mmdd(halves[0], 'active')}..{_parse_mmdd(halves[1], 'active')}"
-
-    return dict(hint_kind=kind, hint_order=order, slot=slot, dwell=dwell,
-                active=active, caption=caption, activity=activity)
+    order = _load_enum(data, "chunk_order", describe_module.CHUNK_ORDER_VALUES)
+    if order and not chunk:
+        raise ConfigError("chunk_order needs chunk")
+    return dict(chunk=chunk, chunk_order=order)
 
 
 def _load_enum(data: dict, key: str, allowed: tuple[str, ...]) -> str:
@@ -947,27 +928,12 @@ def dump_album(album: Album) -> str:
     if album.pick != "all":
         lines.append(f'pick    = "{album.pick}"'
                      f"   # which of each year's matches to keep\n")
-    if album.hint_kind:
-        lines.append(f"hint_kind = {_toml_str(album.hint_kind)}"
-                     f"   # override the description hint's auto-derived kind\n")
-    if album.hint_order:
-        lines.append(f"hint_order = {_toml_str(album.hint_order)}"
-                     f"   # override the description hint's auto-derived order\n")
-    if album.slot:
-        lines.append(f"slot    = {_toml_str(album.slot)}"
-                     f'   # neighbours per jump, for order = "slots"\n')
-    if album.dwell is not None:
-        lines.append(f"dwell   = {album.dwell}"
-                     f"   # seconds per photo, for a player that reads it\n")
-    if album.active:
-        lines.append(f"active  = {_toml_str(album.active)}"
-                     f"   # only play in this calendar window\n")
-    if album.caption:
-        lines.append(f"caption = {_toml_str(album.caption)}"
-                     f"   # what a player should overlay\n")
-    if album.activity:
-        lines.append(f"activity = {_toml_str(album.activity)}"
-                     f"   # a moving-photo effect, for a player that supports one\n")
+    if album.chunk:
+        lines.append(f"chunk   = {_toml_str(album.chunk)}"
+                     f"   # how a player plays it: n photos per year, month or day\n")
+    if album.chunk_order:
+        lines.append(f"chunk_order = {_toml_str(album.chunk_order)}"
+                     f"   # chronological or random: the order the chunks follow each other\n")
     if album.schedule_inherited:
         lines.append(f"# auto-update-schedule = \"{album.schedule}\"   "
                      f"# inherited from the global default\n")

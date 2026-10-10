@@ -1,22 +1,26 @@
-# Description hints (N31/N35/N36)
+# Description hints (N31)
 
 The contract a playback client -- PyImmichFrame or anything else -- implements against when
-reading an album the butler manages. The butler is the only thing that knows what kind of album
-it built and how it was meant to be played; it publishes that as one line in the album's Immich
-`description`, so any client can read it without a shared filesystem or a second connection to
-the butler. This file is the full reference for that line: every field, every value it may hold,
-what each one means, and what a player should do when a field or the whole line is missing.
+reading an album the butler manages. The butler is the only thing that knows how an album was
+meant to be played; it publishes that as one line in the album's Immich `description`, so any
+client can read it without a shared filesystem or a second connection to the butler. This file
+is the full reference for that line: both fields, every value they may hold, what each one
+means, and what a player should do when a field or the whole line is missing.
 
 This is documentation for a *reader*; see `describe.py` for the butler's own code, and
 `docs/design.md` §4 for where it fits among the other modules. The source of truth for which
-values are legal is the registry at the top of `describe.py` (`KIND_VALUES`, `ORDER_VALUES`,
-`CAPTION_VALUES`, `ACTIVITY_VALUES`, and the numeric ranges) -- a test compares this file against
-that registry, so nothing here can drift from what the butler actually writes.
+values are legal is the registry at the top of `describe.py` (`CHUNK_SPANS`,
+`CHUNK_ORDER_VALUES`, `MIN_CHUNK`..`MAX_CHUNK`) -- a test compares this file against that
+registry, so nothing here can drift from what the butler actually writes.
+
+The line says **how to play an album, and nothing else.** It does not say what kind of album it
+is, and it does not say *when* to show it: which days of the year an album covers belongs to
+the album's definition in the butler, not to the hint.
 
 ## 1. Line grammar
 
 ```
-[butler v1] kind=trip order=trip slot=2-3 dwell=8 active=12-01..12-31 caption=year activity=kenburns
+[butler v1] chunk=3/year chunk_order=chronological
 ```
 
 - One line, anywhere in the description. If the description has other lines (a hand-written
@@ -30,140 +34,91 @@ that registry, so nothing here can drift from what the butler actually writes.
   fail or discard the rest of the line.
 - **Unknown versions must be ignored.** `[butler v2]`, `v3`, etc. may one day change what a key
   means. A reader that only understands v1 must not try to interpret a line whose version it does
-  not know -- treat the album as if it had no hint at all (§6).
+  not know -- treat the album as if it had no hint at all (§4).
 - Only `describe.py` ever writes this line. A user can still hand-edit an album's description
   around it; the butler preserves everything else in the description verbatim and only ever
   replaces or removes its own single line (see `apply_hint` in `describe.py`).
 
 ## 2. Field reference
 
-| Key | Always present? | Values | Set by |
+| Key | Present? | Values | Set by |
 |---|---|---|---|
-| `kind` | always | see §3 | derived from the rule, or `hint_kind` |
-| `order` | usually (every `kind` except `place`/`album` unless overridden) | see §3/§4 | derived from the rule, or `hint_order` |
-| `rotating` | only when `yes` | `yes` | `pick = "rotate"` or `"random"` (N29) |
-| `slot` | only when set | `N` or `N-M`, `1`-`10` | the `slot` album key |
-| `dwell` | only when set | whole seconds, `1`-`3600` | the `dwell` album key |
-| `active` | only when set | `MM-DD..MM-DD` | the `active` album key |
-| `caption` | only when set (and not `none`) | see §5 | the `caption` album key |
-| `activity` | only when set (and not `none`) | see §5 | the `activity` album key |
+| `chunk` | whenever the line is | `<n>/<span>`: `n` a whole number `1`-`50`, `span` one of `year`, `month`, `day` | the `chunk` album key |
+| `chunk_order` | whenever the line is | `chronological` or `random` | the `chunk_order` album key (default `chronological`) |
 
-A field that is "only when set" is simply absent from the line otherwise -- its absence means
-the player's own default applies, not that the album has no opinion.
+An album without a `chunk` has **no line at all**: the butler writes none, and takes out one it
+wrote earlier. A line always carries both keys, so a reader never has to guess the default.
 
-## 3. `kind` and `order`: derived from the rule, or overridden
+### `chunk=<n>/<span>`
 
-`describe.hint_line()` looks at the album's rule shape and picks a `kind` and `order` from it.
-The rule is checked in this order -- the first match wins:
+The album is played in *chunks*: `n` photos taken from one `year`, `month` or `day`, then on to
+the next one. `chunk=3/year` is three photos of one year, then three of another; `chunk=5/day`
+is five photos of one day. Photos of a chunk are shown in time order, oldest first, so a chunk
+reads as one moment. When a year, month or day has fewer than `n` photos left, it gives what it
+has. The player keeps cycling through the spans -- taking the next `n` of each -- until every
+photo of the album has been shown once; that is one pass.
 
-| Rule shape | `kind` | `order` |
-|---|---|---|
-| has a date window (`from`/`to`) | `trip` | `trip` |
-| recurring calendar window (`on_from`/`on_to`, N28) | `recurring-day` | `one-per-year` |
-| has `people` | `person` | `person` |
-| places only (`countries`/`states`/`cities`) | `place` | *(none)* |
-| none of the above | `album` | *(none)* |
+Which `n` photos of a span come out is the player's choice (a random `n`, a different `n` on
+each cycle, is the suggestion).
 
-**An album's own config can override either one independently**, with `hint_kind` and
-`hint_order`. There is no config to invent a new value -- both are still checked against the
-same closed lists as the derived ones (§4), so a typo is refused at load, naming the allowed
-list, the same way a bad `pick` value already is.
+### `chunk_order`
 
-Every value in the `kind` column above (`trip`, `recurring-day`, `person`, `place`, `album`) is
-legal in `hint_kind` too; a `kind` never appears in a line that isn't one of those five.
+How the years, months or days follow each other.
 
-## 4. `order` values and what a player should do
-
-| `order` | Meaning | Suggested playback |
-|---|---|---|
-| `trip` | one continuous story across a date window | chronological, start to end |
-| `one-per-year` | a recurring day, one photo kept per year | walk by year, oldest to newest (or newest first, at the player's choice); a nice touch is boosting the current year's entry on that actual calendar date |
-| `person` | built around one or more people, no inherent order | shuffle |
-| `time-asc` | play by capture time, oldest first | chronological |
-| `time-desc` | play by capture time, newest first | reverse chronological |
-| `random` | no inherent order | fully shuffled, independent of neighbours |
-| `slots` | grouped neighbours | see below |
-
-`trip`, `one-per-year` and `person` are also the values `hint_line()` derives automatically;
-`time-asc`, `time-desc`, `random` and `slots` only ever appear through `hint_order` override,
-since the butler never derives them on its own.
-
-### `slots`
-
-Pick a random photo from the album, then show it together with its next `N` neighbours **in the
-album's own time order** (not necessarily consecutive calendar days -- just the next matching
-photos), then jump to a new random start and repeat. It groups a moment (a birthday's few shots,
-a handful of frames from one visit) instead of showing one photo at a time from a shuffle.
-
-- `N` comes from the album's `slot` key: a single number (`slot = 3`) or a range
-  (`slot = "2-3"`, a different count each jump, picked at random within the range). Default
-  when `order = "slots"` is set but `slot` is not: the player's own default (not specified here).
-- This is a **pure next-N walk**: there is no gap limit built into the hint. If an album is
-  sparse (few photos spread across years), a "slot" can span a large real-world time gap between
-  its members. This is most useful on an uncapped `person` or `place` album, or a `trip`; it
-  fights against a `pics_per_year` cap, since a cap leaves fewer neighbours to group.
-
-## 5. `caption` and `activity`
-
-Both are hints about presentation, not requirements -- a player that does not support a value
-should fall back to its own default rather than failing.
-
-| `caption` | Meaning |
+| `chunk_order` | Meaning |
 |---|---|
-| `none` | *(never written -- its absence means the same thing)* |
-| `year` | overlay the year the photo was taken |
-| `place` | overlay the place name |
-| `title` | overlay the album's name |
+| `chronological` | oldest span first, then the next, and so on |
+| `random` | the spans in a shuffled order, none repeated until all have had a turn |
 
-| `activity` | Meaning |
+## 3. What the butler writes
+
+The defaults of the design UI's templates -- every one of them can be changed on the album's
+Player sub-tab or in `config.toml`:
+
+| Template | Line |
 |---|---|
-| `none` | *(never written -- its absence means the same thing)* |
-| `kenburns` | a slow pan/zoom across the still photo |
-| `face-zoom` | pan/zoom that favours a detected face |
-| `map-fly` | a moving fly-through on a map, for a geotagged photo |
+| Trip | `[butler v1] chunk=3/day chunk_order=random` |
+| Birthday over the years | `[butler v1] chunk=3/year chunk_order=chronological` |
+| Christmas, New Year's Eve, Summer, Anniversary, Year in review | `[butler v1] chunk=5/year chunk_order=random` |
+| Person album, A person over the years, Two people together | `[butler v1] chunk=5/year chunk_order=random` |
+| A place | `[butler v1] chunk=5/year chunk_order=random` |
+| no template, no `chunk` | no line |
 
-## 6. What a player must do with no hint, or one it cannot use
+## 4. What a player must do with no hint, or one it cannot use
 
-- **No `[butler vN]` line at all** (the album was not built by immich-album-butler, or predates
-  this feature and has not been re-run since): treat the album with whatever default behaviour
-  the player already has for an unlabelled album.
+- **No `[butler vN]` line at all** (the album has no `chunk`, was not built by
+  immich-album-butler, or predates this format and has not been re-run since): treat the album
+  with whatever default behaviour the player already has for an unlabelled album.
 - **A line with an unknown version**: treat it exactly like "no hint line" (previous bullet).
   Never guess at a future version's field meanings.
 - **A recognised version, with an unrecognised key or value on some field**: ignore that one
   field (fall back to the player's own default for it) and use every field that *is*
   recognised. A single unknown field must not invalidate the whole line.
-- **`kind` present but `order` absent** (places and plain albums, unless overridden): the album
-  still has a kind worth knowing -- for grouping, iconography, etc. -- it simply expresses no
-  preference about play order.
+- **`chunk_order` without a usable `chunk`**: nothing to order -- play the album as unlabelled.
 
-## 7. Worked examples
+## 5. Worked examples
 
 ```
-[butler v1] kind=trip order=trip
+[butler v1] chunk=3/day chunk_order=random
 ```
-A plain dated trip, no overrides: play chronologically.
+A trip: three photos of one day, then three of another day, the days in no particular order.
 
 ```
-[butler v1] kind=recurring-day order=one-per-year rotating=yes
+[butler v1] chunk=3/year chunk_order=chronological
 ```
-A rotating recurring-day album (e.g. a yearly birthday window with `pick = "rotate"`): the
-member set changes on a schedule, so the player's cache should refresh more eagerly than for a
-fixed album (see N30 in `docs/requirements.md`).
+A birthday album: three photos of the oldest year, three of the next, up to the newest -- and
+round again for the photos not yet shown.
 
 ```
-[butler v1] kind=person order=slots slot=3 caption=year activity=kenburns
+[butler v1] chunk=5/year chunk_order=random
 ```
-A person album, overridden to play in grouped threes, captioned with the year, with a
-slow pan/zoom on each photo.
+A person album: five photos of one year, then five of another.
 
-```
-[butler v1] kind=recurring-day order=one-per-year active=12-01..12-31
-```
-A Christmas recurring-day album that only wants to be surfaced by the player during December.
+## 6. History
 
-## 8. Not yet decided
-
-How a player should *weight* one album against others when several are eligible at once, and
-how strictly `active` should be enforced (hidden entirely outside the window, vs. simply
-deprioritised) are choices for the player, not something the butler prescribes here. This section
-will be filled in once PyImmichFrame's side of this is designed.
+Until 1.0.0 the line also carried `kind`, `order`, `rotating`, `slot`, `dwell`, `active`,
+`caption` and `activity`. All of them are gone: no player read them, and a hint should say how
+to play, not describe the album. A description still holding such a line is rewritten on the
+album's next run; an album without a `chunk` loses the line. The matching album keys
+(`hint_kind`, `hint_order`, `slot`, `dwell`, `active`, `caption`, `activity`) are refused at
+load, naming the key.

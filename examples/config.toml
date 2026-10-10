@@ -217,12 +217,14 @@ auto-update-schedule = "weekly sun 04:00"
 pics_per_year = 5
 pick    = "rotate"
 
-# The hint line (N31) this album gets is derived automatically --
-# "kind=recurring-day order=one-per-year rotating=yes" -- and needs no
-# config. These two just add optional extras to that line for a player that
-# reads them (docs/hints.md has the full list and what each one means):
-# dwell = 8                  # seconds per photo, for a player that honours it
-# caption = "year"           # overlay the year each photo was taken
+# How a player such as PyImmichFrame should play the album (N31): three photos
+# of one year, then three of another, the years in time order. The butler
+# publishes it as "[butler v1] chunk=3/year chunk_order=chronological" in the
+# album's Immich description (docs/hints.md). "chunk" is <n>/<span> with span
+# year, month or day; "chunk_order" is chronological (the default) or random.
+# An album without a chunk has no hint line, and the player shuffles it.
+chunk   = "3/year"
+chunk_order = "chronological"
 
   [albums.alex-birthday.match]
   people     = ["Alex"]    # narrow every yearly window to this person

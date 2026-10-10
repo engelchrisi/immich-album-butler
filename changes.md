@@ -1,5 +1,24 @@
 # Changes
 
+## 1.0.0 — 2026-10-10
+**Breaking.** The description hint is reduced to how an album is played: two keys, `chunk` and
+`chunk_order`, from the one concept in `PyImmichFrame/docs/TODOs/playback-order.md`. The old major
+stays on the `release/0` branch.
+- The line is now `[butler v1] chunk=<n>/<span> chunk_order=chronological|random`: `n` photos of one
+  year, month or day, then the next, the spans in time order or at random. `chunk_order` defaults
+  to `chronological`.
+- An album without a `chunk` has no hint line, and a line written earlier (including every old
+  `kind=… order=…` line) is removed on its next run; hand-written text around it is kept.
+- Album keys `chunk` and `chunk_order` are new. `hint_kind`, `hint_order`, `slot`, `dwell`,
+  `active`, `caption` and `activity` are gone and **refused at load**, naming the key, so an old
+  config fails loudly instead of losing its hints. `rotating=yes` is gone from the line too
+  (`pick = "rotate"` itself is unchanged).
+- Design UI: the Player tab holds a count, a span and a chunk order, with a live preview of the
+  line; the album templates fill them (trip 3/day random, birthday 3/year chronological, all others
+  5/year random).
+- `docs/hints.md`, requirements N31 (rewritten) and N35/N36 (removed), design §4 and the README
+  follow.
+
 ## 0.14.4 — 2026-10-09
 - Design UI: the album, duplicates and trips filter fields, and the trips
   "only without an album" checkbox, no longer persist to localStorage — they
