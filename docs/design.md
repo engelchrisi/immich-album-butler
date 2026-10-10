@@ -77,8 +77,8 @@ chronological, everything else 5/year random).
 
 The full field reference -- every value, its meaning, and what a player such as PyImmichFrame
 must do with an unknown or absent field -- is `docs/hints.md`; `tests/test_describe.py` checks
-that every value in the registry is documented there. The one concept for both repos is
-`PyImmichFrame/docs/TODOs/playback-order.md`.
+that every value in the registry is documented there. The player side is PyImmichFrame's
+`docs/design.md` ("Play hints") and requirements N39-N40.
 
 ## 5. Design-mode HTTP
 

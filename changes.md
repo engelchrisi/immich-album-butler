@@ -7,7 +7,7 @@
 
 ## 1.0.0 — 2026-10-10
 **Breaking.** The description hint is reduced to how an album is played: two keys, `chunk` and
-`chunk_order`, from the one concept in `PyImmichFrame/docs/TODOs/playback-order.md`. The old major
+`chunk_order`, read by PyImmichFrame 0.10 (N39-N40). The old major
 stays on the `release/0` branch.
 - The line is now `[butler v1] chunk=<n>/<span> chunk_order=chronological|random`: `n` photos of one
   year, month or day, then the next, the spans in time order or at random. `chunk_order` defaults
