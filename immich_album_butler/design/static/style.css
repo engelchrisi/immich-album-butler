@@ -442,4 +442,8 @@ div.dup-cover { background: var(--thumb-bg); }
 #backup-dir { word-break: break-all; }
 .backup-card { display: flex; gap: .6rem; align-items: flex-start; cursor: pointer; }
 .backup-card.selected { outline: 2px solid var(--accent); }
+.backup-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .25rem; }
+.backup-text input, .backup-text textarea { width: 100%; box-sizing: border-box; }
+.backup-desc { white-space: pre-wrap; }
+.backup-edit { margin-left: auto; flex: none; }
 .backup-step .hint { margin: .2rem 0 .5rem 1.6rem; }

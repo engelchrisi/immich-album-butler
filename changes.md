@@ -1,5 +1,10 @@
 # Changes
 
+## 1.2.0 — 2026-10-10
+- Design UI, Backup tab: a backup can get a title and a description ("Rename / describe" on its
+  card). They are stored inside the backup file (`title`, `description`; the file name stays, so
+  nothing that refers to it breaks) and show in the list and the restore picker. `POST /api/backups/describe`.
+
 ## 1.1.0 — 2026-10-10
 - Design UI, Backup tab: "Back up now" shows progress (album being read, n/total) while the backup
   runs, and stays disabled until it finishes. The server refuses a second concurrent backup with

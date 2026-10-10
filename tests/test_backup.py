@@ -247,6 +247,23 @@ class DesignApiTests(BackupCase):
         self.assertIn(("Reading album “Italy 2019”", 0, 1), seen)
         self.assertEqual(self.api.backup_progress()["running"], False)
 
+    def test_describe_sets_and_clears_title_and_description(self):
+        name = self.api.create_backup()["name"]
+        self.api.describe_backup({"name": name, "title": " Before the move ",
+                                  "description": "Taken before the NAS upgrade"})
+        listed, = self.api.backups()["backups"]
+        self.assertEqual((listed["title"], listed["description"]),
+                         ("Before the move", "Taken before the NAS upgrade"))
+        self.assertEqual(listed["albums"], 1)           # content untouched
+        self.api.describe_backup({"name": name, "title": "", "description": ""})
+        listed, = self.api.backups()["backups"]
+        self.assertEqual((listed["title"], listed["description"]), ("", ""))
+
+    def test_describe_refuses_names_outside_the_backup_directory(self):
+        for bad in ("../backup-x.json", "config.toml", "", 5):
+            with self.assertRaises(ApiError):
+                self.api.describe_backup({"name": bad, "title": "x"})
+
     def test_second_backup_refused_while_running(self):
         self.api._backup_lock.acquire()
         self.addCleanup(self.api._backup_lock.release)

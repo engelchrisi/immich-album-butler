@@ -158,6 +158,8 @@ class BackupInfo:
     assets: int
     size: int
     album_names: tuple[str, ...] = ()
+    title: str = ""
+    description: str = ""
 
 
 def list_backups(directory: Path) -> list[BackupInfo]:
@@ -174,7 +176,9 @@ def list_backups(directory: Path) -> list[BackupInfo]:
             name=path.name, created=str(data.get("created") or ""),
             albums=len(albums), assets=sum(len(a["assets"]) for a in albums),
             size=path.stat().st_size,
-            album_names=tuple(sorted((a["name"] for a in albums), key=str.casefold))))
+            album_names=tuple(sorted((a["name"] for a in albums), key=str.casefold)),
+            title=str(data.get("title") or ""),
+            description=str(data.get("description") or "")))
     # Newest first by the time recorded inside, the file name breaking ties.
     found.sort(key=lambda b: (b.created, b.name), reverse=True)
     return found
@@ -216,6 +220,30 @@ def delete_backups(directory: Path, names: list[str]) -> list[str]:
             raise BackupError(f"cannot delete {name}: {exc}") from None
         deleted.append(name)
     return deleted
+
+
+def describe_backup(directory: Path, name: str, title: str,
+                    description: str) -> None:
+    """Set the optional title and description stored inside a backup file.
+
+    The file keeps its name (that is its identity); only the two fields change.
+    Empty text removes the field.
+    """
+    directory = Path(directory)
+    if (Path(name).name != name or not name.startswith(PREFIX)
+            or not name.endswith(".json")):
+        raise BackupError(f"not a backup name: {name!r}")
+    path = directory / name
+    data = load_backup(path)
+    for key, value in (("title", title.strip()), ("description", description.strip())):
+        if value:
+            data[key] = value
+        else:
+            data.pop(key, None)
+    try:
+        _write_private(path, json.dumps(data, indent=1, ensure_ascii=False) + "\n")
+    except OSError as exc:
+        raise BackupError(f"cannot write {name}: {exc.strerror or exc}") from None
 
 
 def load_backup(path: Path) -> dict:

@@ -422,6 +422,8 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
                 return api.create_backup()
             if path == "/api/backups/restore":
                 return api.restore_backup(body)
+            if path == "/api/backups/describe":
+                return api.describe_backup(body)
             if path == "/api/backups/delete":
                 return api.delete_backups(body)
             if path == "/api/cover":

@@ -546,7 +546,8 @@ class DesignApi:
         return {"directory": str(directory), "backups": [
             {"name": b.name, "created": b.created, "albums": b.albums,
              "assets": b.assets, "size": b.size,
-             "album_names": list(b.album_names)}
+             "album_names": list(b.album_names),
+             "title": b.title, "description": b.description}
             for b in backup_module.list_backups(directory)]}
 
     def create_backup(self) -> dict:
@@ -571,6 +572,20 @@ class DesignApi:
 
     def backup_progress(self) -> dict:
         return self._backup_progress
+
+    def describe_backup(self, body: dict) -> dict:
+        name, title, text = (body.get("name"), body.get("title", ""),
+                             body.get("description", ""))
+        if not isinstance(name, str) or not isinstance(title, str)                 or not isinstance(text, str):
+            raise ApiError("choose a backup and give text")
+        if len(title) > 120 or len(text) > 2000:
+            raise ApiError("title or description is too long")
+        try:
+            backup_module.describe_backup(
+                backup_module.backups_dir(self.state_dir), name, title, text)
+        except backup_module.BackupError as exc:
+            raise ApiError(str(exc)) from None
+        return {"name": name, "title": title.strip(), "description": text.strip()}
 
     def delete_backups(self, body: dict) -> dict:
         names = body.get("names")

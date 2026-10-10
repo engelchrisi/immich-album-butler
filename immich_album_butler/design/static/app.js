@@ -1241,6 +1241,8 @@ $("backup-create").onclick = async () => {
   loadBackups();
 };
 
+function backupTitle(b) { return b.title || backupWhen(b); }
+
 function backupWhen(b) {
   const when = new Date(b.created);
   return isNaN(when) ? b.name : when.toLocaleString(undefined,
@@ -1270,7 +1272,7 @@ async function loadBackups() {
 
   const choice = $("backup-choice");
   choice.replaceChildren(...backupList.map((b) =>
-    el("option", { value: b.name }, `${backupWhen(b)} — ${backupSummary(b)}`)));
+    el("option", { value: b.name }, `${backupTitle(b)}${b.title ? " (" + backupWhen(b) + ")" : ""} — ${backupSummary(b)}`)));
   choice.disabled = !backupList.length;
   choice.value = chosenBackup || "";
   chooseBackup(chosenBackup);
@@ -1279,10 +1281,39 @@ async function loadBackups() {
 function backupCard(b) {
   const tick = el("input", { type: "checkbox", class: "backup-tick", value: b.name });
   tick.onchange = updateDeleteButton;
-  return el("label", { class: "card backup-card" }, tick,
-    el("span", {},
-      el("b", {}, backupWhen(b)),
-      el("div", { class: "muted" }, `${backupSummary(b)} · ${b.name}`)));
+  const edit = el("button", { type: "button", class: "backup-edit" }, "Rename / describe");
+  const text = el("span", { class: "backup-text" });
+  const card = el("label", { class: "card backup-card" }, tick, text, edit);
+  const show = () => text.replaceChildren(
+    el("b", {}, backupTitle(b)),
+    ...(b.title ? [el("div", { class: "muted" }, backupWhen(b))] : []),
+    ...(b.description ? [el("div", { class: "backup-desc" }, b.description)] : []),
+    el("div", { class: "muted" }, `${backupSummary(b)} · ${b.name}`));
+  edit.onclick = (event) => {
+    event.preventDefault();                   // the card is a label: don't tick it
+    const title = el("input", { type: "text", maxlength: "120", value: b.title,
+                                placeholder: "Title (optional)" });
+    const desc = el("textarea", { rows: "2", maxlength: "2000",
+                                  placeholder: "Description (optional)" }, b.description);
+    const save = el("button", { type: "button", class: "primary" }, "Save");
+    const cancel = el("button", { type: "button" }, "Cancel");
+    cancel.onclick = (e) => { e.preventDefault(); edit.hidden = false; show(); };
+    save.onclick = async (e) => {
+      e.preventDefault();
+      save.disabled = true;
+      try {
+        const done = await post("/api/backups/describe",
+          { name: b.name, title: title.value, description: desc.value });
+        b.title = done.title; b.description = done.description;
+        loadBackups();                        // refreshes the restore list too
+      } catch (error) { banner(error.message); save.disabled = false; }
+    };
+    edit.hidden = true;
+    text.replaceChildren(title, desc, el("div", {}, save, " ", cancel));
+    title.focus();
+  };
+  show();
+  return card;
 }
 
 function tickedBackups() {
