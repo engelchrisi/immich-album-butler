@@ -122,6 +122,21 @@ class AllowsTests(unittest.TestCase):
         with Tree({"a.py": "def resolve_people_for_this_album_rule(): pass\n"}) as tree:
             self.assertEqual(tree.check(), [])
 
+    def test_npm_lockfile_integrity_hashes_are_not_keys(self):
+        digest = "sha512-" + "Zm9vYmFy" * 14 + "=="
+        lock = '{\n  "packages": {\n    "x": {\n      "integrity": "' + digest + '"\n    }\n  }\n}\n'
+        with Tree({"package-lock.json": lock}) as tree:
+            self.assertEqual(tree.check(), [])
+        with Tree({"notes.json": lock}) as tree:    # only the lockfile names are exempt
+            self.assertTrue(tree.check())
+
+    def test_npm_lockfile_deprecation_notes_may_name_a_maintainer(self):
+        note = '      "deprecated": "Please update. Contact ' + "i" + '@izs.me",\n'
+        with Tree({"package-lock.json": note}) as tree:
+            self.assertEqual(tree.check(), [])
+        with Tree({"notes.json": note}) as tree:    # only the lockfile names are exempt
+            self.assertTrue(tree.check())
+
     def test_binary_and_image_files_are_skipped(self):
         with Tree({"logo.png": "192.168.1.1"}) as tree:  # private-data-check: allow
             self.assertEqual(tree.check(), [])

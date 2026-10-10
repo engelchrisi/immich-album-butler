@@ -31,6 +31,13 @@ SKIP_DIRS = {".git", "__pycache__", ".venv", "venv", "node_modules", ".mypy_cach
 SKIP_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf", ".zip",
                  ".gz", ".xz", ".zst", ".woff", ".woff2", ".ttf", ".mo", ".db"}
 
+# npm lockfiles carry a public checksum on every package, and a package's `"deprecated"` note may
+# name its maintainer's address. Only `"integrity": "sha..."` lines skip the key-like check and
+# only `"deprecated": "..."` lines skip the email check; every other check still reads them.
+LOCKFILES = {"package-lock.json", "npm-shrinkwrap.json"}
+INTEGRITY_LINE = re.compile(r'^\s*"integrity":\s*"sha(?:1|256|384|512)-[A-Za-z0-9+/=]+"\s*,?\s*$')
+DEPRECATED_LINE = re.compile(r'^\s*"deprecated":\s*".*"\s*,?\s*$')
+
 # Placeholders that are safe by construction and must not be flagged.
 ALLOWED_UUIDS = re.compile(r"^0{8}-0{4}-0{4}-0{4}-0{11}[0-9a-f]$", re.I)
 ALLOWED_EMAIL_DOMAINS = ("example.com", "example.org", "example.net", "example.lan")
@@ -148,7 +155,8 @@ def scan_text(path: str, text: str, terms_re: re.Pattern[str] | None) -> list[Fi
             if not ALLOWED_UUIDS.match(match.group(0)):
                 findings.append(Finding(path, line_no, "UUID", match.group(0)))
 
-        for match in EMAIL.finditer(line):
+        lock_note = Path(path).name in LOCKFILES and DEPRECATED_LINE.match(line)
+        for match in () if lock_note else EMAIL.finditer(line):
             if not _allowed_email(match.group(0)):
                 findings.append(Finding(path, line_no, "email address", match.group(0)))
 
@@ -168,7 +176,8 @@ def scan_text(path: str, text: str, terms_re: re.Pattern[str] | None) -> list[Fi
                 findings.append(Finding(path, line_no, "secret assignment",
                                         f"{match.group(0)[:40]}..."))
 
-        for match in KEYLIKE.finditer(line):
+        lock_checksum = Path(path).name in LOCKFILES and INTEGRITY_LINE.match(line)
+        for match in () if lock_checksum else KEYLIKE.finditer(line):
             findings.append(Finding(path, line_no, "key-like string",
                                     match.group(0)[:12] + "..."))
 
