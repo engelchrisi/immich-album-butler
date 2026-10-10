@@ -35,12 +35,14 @@ album_suffix = "[AB]"
 # album_suffix_fixed    = "◆"
 # album_suffix_updating = "↻"
 
-# Every album's Immich description always carries a one-line hint saying what
-# kind of album it is (trip, person, recurring-day) and whether it rotates, so
-# a player like PyImmichFrame can order it without being told. The butler owns
-# only that one "[butler v1] …" line and leaves the rest of a hand-written
-# description alone. It needs "album.update" on the key; without it the run
-# warns and fills the album anyway.
+# An album with a "chunk" (see alex-birthday below) gets a one-line hint in its
+# Immich description telling a player like PyImmichFrame how to play it. The
+# butler owns only that one "[butler v1] …" line and leaves the rest of a
+# hand-written description alone. It needs "album.update" on the key; without
+# it the run warns and fills the album anyway.
+#
+# Upgrading from 0.x? Run `python scripts/migrate-hints.py config.toml` (dry
+# run; add --write to apply): the old hint keys are refused at load.
 
 log_level = "info"
 

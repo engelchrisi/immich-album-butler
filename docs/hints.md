@@ -121,4 +121,7 @@ Until 1.0.0 the line also carried `kind`, `order`, `rotating`, `slot`, `dwell`, 
 to play, not describe the album. A description still holding such a line is rewritten on the
 album's next run; an album without a `chunk` loses the line. The matching album keys
 (`hint_kind`, `hint_order`, `slot`, `dwell`, `active`, `caption`, `activity`) are refused at
-load, naming the key.
+load, naming the key. `scripts/migrate-hints.py <config.toml>` shows what an old config needs
+(dry run); with `--write` it applies it and keeps `config.toml.bak`. It guesses `chunk` from the
+rule shape and lists the albums it cannot tell apart (a birthday from Christmas, a trip from a
+year in review) for a hand edit.
