@@ -52,6 +52,7 @@ Priority: P1 = needed, P2 = wanted.
 | N34 | A cover picture can be set by hand, from the album viewer, for any album this key can see — butler-managed or not; it needs `album.update` like every other cover write and sticks until a rule next overrides it | P2 |
 | N41 | **Save as.** The builder can save a saved album's rule under a new name as a new album; the original rule and its Immich album are untouched. A name another rule already uses is refused | P2 |
 | N42 | **Builder URLs.** `/builder` (e.g. from the menu) opens an empty new-album form, or the unsaved draft started from *New album* or a trip; only `/builder/<slug>` (Edit on the Albums page) shows a saved album | P2 |
+| N43 | **Sorting.** The Albums page sorts by name (A–Z, Z–A) or by last run (newest or oldest first; albums that never ran, including normal Immich albums, always last); the Trips page by date (newest or oldest first), name, most media or longest. Client-side only; the choice is remembered per browser | P2 |
 
 ## 2. Safety
 | # | Requirement | Prio |

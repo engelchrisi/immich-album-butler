@@ -24,7 +24,7 @@ const state = {
 function emptyDraft() {
   return {
     slug: "", name: "", enabled: true, schedule: "inherit",
-    cover: "favorite", share_with: [],   // [{ account, role }]
+    cover: "favorite", shares: [],   // [{ account, role }]
     pics_per_year: null, pick: "all",
     // N31: how a player plays the album ("3/year"). "" (not null) is "not
     // set" here, so a bare input maps to it directly -- see docs/hints.md.
@@ -83,6 +83,7 @@ function activateTab(name) {
   for (const panel of document.querySelectorAll(".panel")) {
     panel.classList.toggle("active", panel.id === name);
   }
+  $("builder-back").hidden = !(name === "builder" && state.fromAlbums);
   if (name === "albums") loadAlbums();
   if (name === "trips") loadTrips(false);
   if (name === "duplicates") loadDuplicates();
@@ -162,6 +163,7 @@ function showTab(name) {
 $("tabs").addEventListener("click", (event) => {
   const button = event.target.closest(".tab");
   if (!button) return;
+  state.fromAlbums = false;
   navigate(`/${button.dataset.tab}`);
 });
 
@@ -189,9 +191,43 @@ function filteredAlbums() {
   const type = $("album-type-filter").value;
   if (type) albums = albums.filter(a => a.type === type);
   const needle = ($("album-filter").value || "").trim().toLowerCase();
-  return needle
-    ? albums.filter(a => (a.immich_name || a.name).toLowerCase().includes(needle))
-    : albums;
+  if (needle) {
+    albums = albums.filter(a => (a.immich_name || a.name).toLowerCase().includes(needle));
+  }
+  return sortAlbums(albums);
+}
+
+const ALBUM_SORT = "butler.albums.sort";
+const TRIP_SORT = "butler.trips.sort";
+
+// Restore a saved <select> choice, ignoring values the list no longer offers.
+function restoreSort(select, key) {
+  try {
+    const saved = localStorage.getItem(key);
+    if (saved && [...select.options].some(o => o.value === saved)) select.value = saved;
+  } catch {}
+}
+function rememberSort(select, key) {
+  try { localStorage.setItem(key, select.value); } catch {}
+}
+
+// Albums that never ran (and normal Immich albums) go last in both run orders.
+function sortAlbums(albums) {
+  const mode = $("album-sort").value;
+  const label = (a) => a.immich_name || a.name;
+  const byName = (a, b) => label(a).localeCompare(label(b), undefined, { sensitivity: "base" });
+  const out = [...albums];
+  if (mode === "name-desc") return out.sort((a, b) => byName(b, a));
+  if (mode === "run-desc" || mode === "run-asc") {
+    const dir = mode === "run-desc" ? -1 : 1;
+    const when = (a) => (a.last_run ? Date.parse(a.last_run) : NaN);
+    return out.sort((a, b) => {
+      const x = when(a), y = when(b);
+      if (isNaN(x) || isNaN(y)) return isNaN(x) - isNaN(y) || byName(a, b);
+      return (x - y) * dir || byName(a, b);
+    });
+  }
+  return out.sort(byName);
 }
 
 function formatLastRun(iso) {
@@ -341,13 +377,17 @@ async function runAllAlbums() {
 }
 
 $("album-filter").oninput = renderAlbums;
+restoreSort($("album-sort"), ALBUM_SORT);
+$("album-sort").onchange = () => { rememberSort($("album-sort"), ALBUM_SORT); renderAlbums(); };
 $("album-type-filter").onchange = renderAlbums;
-$("new-album").onclick = () => navigate("/builder/new");
+$("new-album").onclick = () => { state.fromAlbums = true; navigate("/builder/new"); };
+$("builder-back").onclick = () => { state.fromAlbums = false; navigate("/albums"); };
 $("run-all-albums").onclick = runAllAlbums;
 
 $("builder-new-album").onclick = () => navigate("/builder/new");
 
 $("new-person-album").onclick = () => {
+  state.fromAlbums = true;
   navigate("/builder/new/rule");
   state.draft.match.include_unlocated = true;
   $("person-search").focus();
@@ -356,6 +396,7 @@ $("new-person-album").onclick = () => {
 };
 
 function editAlbum(album) {
+  state.fromAlbums = true;
   editAlbumDraft(album);
   navigate(`/builder/${encodeURIComponent(album.slug)}/rule`);
 }
@@ -364,7 +405,7 @@ function editAlbumDraft(album) {
   state.draft = {
     slug: album.slug, name: album.name, enabled: album.enabled,
     cover: album.cover || "auto",
-    share_with: (album.shares || []).map(s => ({ ...s })),
+    shares: (album.shares || []).map(s => ({ ...s })),
     pics_per_year: album.pics_per_year ?? null, pick: album.pick || "all",
     chunk: album.chunk || "", chunk_order: album.chunk_order || "",
     schedule: album.schedule_inherited ? "inherit" : album.schedule,
@@ -437,8 +478,8 @@ function refreshSubtabBadges() {
   setSubtabBadge("options", optionsOn, optionsOn
     ? `Cover: ${draft.cover} · Schedule: ${draft.enabled ? draft.schedule : "none"} · Pick: ${draft.pick}`
     : "");
-  setSubtabBadge("sharing", draft.share_with.length > 0,
-    draft.share_with.length ? `Shared with ${draft.share_with.length} account(s)` : "");
+  setSubtabBadge("sharing", draft.shares.length > 0,
+    draft.shares.length ? `Shared with ${draft.shares.length} account(s)` : "");
   const playerOn = !!draft.chunk;
   setSubtabBadge("player", playerOn, playerOn
     ? `Chunk: ${draft.chunk} · ${draft.chunk_order || "chronological"}` : "");
@@ -659,7 +700,7 @@ async function loadImmichAlbums() {
 }
 
 function fillSharing() {
-  const shared = new Set(state.draft.share_with.map(s => s.account.toLowerCase()));
+  const shared = new Set(state.draft.shares.map(s => s.account.toLowerCase()));
   $("share-accounts").replaceChildren(
     ...(state.accounts || [])
       .filter(a => !shared.has((a.name || a.email || "").toLowerCase()))
@@ -668,18 +709,18 @@ function fillSharing() {
 
   const box = $("share-list");
   box.replaceChildren();
-  state.draft.share_with.forEach((share, index) => {
+  state.draft.shares.forEach((share, index) => {
     const role = el("select", {},
       el("option", { value: "viewer" }, "Viewer — can view all assets"),
       el("option", { value: "editor" }, "Editor — can view, upload and delete assets"));
     role.value = share.role;
     role.onchange = (e) => {
-      state.draft.share_with[index].role = e.target.value;
+      state.draft.shares[index].role = e.target.value;
       refreshPreview();
     };
     const remove = el("span", { class: "x", title: "remove" }, "×");
     remove.onclick = () => {
-      state.draft.share_with.splice(index, 1);
+      state.draft.shares.splice(index, 1);
       fillSharing();
       refreshPreview();
     };
@@ -693,8 +734,8 @@ function fillSharing() {
 function addShare(name) {
   name = name.trim();
   if (!name) return;
-  if (state.draft.share_with.some(s => s.account.toLowerCase() === name.toLowerCase())) return;
-  state.draft.share_with.push({ account: name, role: "viewer" });
+  if (state.draft.shares.some(s => s.account.toLowerCase() === name.toLowerCase())) return;
+  state.draft.shares.push({ account: name, role: "viewer" });
   fillSharing();
   refreshPreview();
 }
@@ -1713,6 +1754,22 @@ document.addEventListener("keydown", (event) => {
 $("rescan").onclick = () => loadTrips(true);
 
 $("trip-filter").oninput = renderTripList;
+restoreSort($("trip-sort"), TRIP_SORT);
+$("trip-sort").onchange = () => { rememberSort($("trip-sort"), TRIP_SORT); renderTripList(); };
+
+function sortTrips(trips) {
+  const mode = $("trip-sort").value;
+  const byDate = (a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0);
+  const out = [...trips];
+  switch (mode) {
+    case "date-asc": return out.sort(byDate);
+    case "name": return out.sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+    case "media-desc": return out.sort((a, b) => b.total - a.total || byDate(b, a));
+    case "days-desc": return out.sort((a, b) => b.days - a.days || byDate(b, a));
+    default: return out.sort((a, b) => byDate(b, a));
+  }
+}
 
 function applyOnlyNew() {
   $("trip-list").classList.toggle("only-new", $("only-new").checked);
@@ -1764,9 +1821,9 @@ function renderTripList() {
   }
 
   const needle = $("trip-filter").value.trim().toLocaleLowerCase();
-  const shown = needle
+  const shown = sortTrips(needle
     ? data.trips.filter(t => t.name.toLocaleLowerCase().includes(needle))
-    : data.trips;
+    : data.trips);
   if (!shown.length) {
     list.append(el("div", { class: "muted" },
       `No trips match “${$("trip-filter").value.trim()}”.`));

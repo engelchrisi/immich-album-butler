@@ -1,5 +1,14 @@
 # Changes
 
+## 1.2.1 — 2026-10-10
+- Design UI, Builder: removed the second, duplicate row of Save / Dry run / Run now / Analyze
+  buttons under the preview (it shared ids with the top row and did nothing).
+
+## 1.3.0 — 2026-10-10
+- Design UI: sort selector on the Albums tab (name A–Z / Z–A, last run newest / oldest first; albums
+  that never ran go last) and on the Trips tab (newest, oldest, name, most media, longest). The
+  choice is remembered in the browser.
+
 ## 1.2.0 — 2026-10-10
 - Design UI, Backup tab: a backup can get a title and a description ("Rename / describe" on its
   card). They are stored inside the backup file (`title`, `description`; the file name stays, so

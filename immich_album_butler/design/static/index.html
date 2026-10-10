@@ -43,6 +43,13 @@
         <option value="scheduled">scheduled</option>
         <option value="normal">normal Immich album</option>
       </select></label>
+    <label class="field inline"><span>Sort</span>
+      <select id="album-sort">
+        <option value="name">Name A–Z</option>
+        <option value="name-desc">Name Z–A</option>
+        <option value="run-desc">Last run, newest first</option>
+        <option value="run-asc">Last run, oldest first</option>
+      </select></label>
   </div>
   <div id="album-list" class="cards"></div>
 </section>
@@ -50,6 +57,7 @@
 <!-- ---------------------------------------------------------------- -->
 <section id="builder" class="panel">
   <div class="bar">
+    <button id="builder-back" hidden title="Back to the Albums page">← Albums</button>
     <button id="save" class="primary">Save</button>
     <button id="save-as" hidden>Save as…</button>
     <button id="builder-new-album" title="Discard this draft and start a new, empty album">New album</button>
@@ -258,15 +266,6 @@
           <div class="muted">Pick something on the left to see a preview.</div>
         </div>
 
-        <div class="bar">
-          <button id="save" class="primary">Save</button>
-          <button id="save-as" hidden>Save as…</button>
-          <button id="builder-new-album" title="Discard this draft and start a new, empty album">New album</button>
-          <button id="dry-run">Dry run</button>
-          <button id="run-now">Run now</button>
-          <button id="analyze">Analyze</button>
-          <button id="delete-config" class="danger" hidden>Delete config</button>
-        </div>
         <div id="run-result" class="muted"></div>
       </div>
 
@@ -290,6 +289,14 @@
       <input id="only-new" type="checkbox" checked> Only trips without an album</label>
     <input id="trip-filter" type="search" placeholder="Filter trips by name…"
            autocomplete="off">
+    <label class="field inline"><span>Sort</span>
+      <select id="trip-sort">
+        <option value="date-desc">Newest first</option>
+        <option value="date-asc">Oldest first</option>
+        <option value="name">Name A–Z</option>
+        <option value="media-desc">Most media</option>
+        <option value="days-desc">Longest</option>
+      </select></label>
   </div>
   <div class="muted scan-note" id="scan-note"></div>
   <div id="trip-list" class="cards"></div>
