@@ -240,6 +240,20 @@ class DesignApiTests(BackupCase):
         self.assertEqual(Path(made["path"]).parent, Path(listed["directory"]))
         self.assertEqual(listed["backups"][0]["album_names"], ["Italy 2019"])
 
+    def test_progress_reports_albums_and_resets(self):
+        seen = []
+        backup.create_backup(self.stub.client, self.config_dir, self.state_dir,
+                             progress=lambda *step: seen.append(step))
+        self.assertIn(("Reading album “Italy 2019”", 0, 1), seen)
+        self.assertEqual(self.api.backup_progress()["running"], False)
+
+    def test_second_backup_refused_while_running(self):
+        self.api._backup_lock.acquire()
+        self.addCleanup(self.api._backup_lock.release)
+        with self.assertRaises(ApiError) as caught:
+            self.api.create_backup()
+        self.assertEqual(caught.exception.status, 409)
+
     def test_delete_backups(self):
         name = self.api.create_backup()["name"]
         self.assertEqual(self.api.delete_backups({"names": [name]})["deleted"], [name])

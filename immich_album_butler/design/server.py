@@ -385,6 +385,8 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
                 return api.groups()
             if path == "/api/backups":
                 return api.backups()
+            if path == "/api/backups/progress":
+                return api.backup_progress()
             if path == "/api/duplicates":
                 return api.duplicates(rescan=query.get("rescan") == "1")
             if path == "/api/duplicates/album":

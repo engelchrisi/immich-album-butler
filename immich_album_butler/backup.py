@@ -22,6 +22,7 @@ import logging
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 from . import config as config_module
 from .config import CONFIG_NAME, ConfigError, _write_atomic
@@ -52,24 +53,33 @@ def backups_dir(state_dir: Path, override: Path | None = None) -> Path:
 
 def create_backup(client: ImmichClient, config_dir: Path, state_dir: Path,
                   directory: Path | None = None,
-                  now: dt.datetime | None = None) -> Path:
-    """Write a new backup file and return its path."""
+                  now: dt.datetime | None = None,
+                  progress: Callable[[str, int, int], None] | None = None) -> Path:
+    """Write a new backup file and return its path.
+
+    `progress(message, done, total)` is called as albums are read; total is 0
+    while it is still unknown.
+    """
     now = now or dt.datetime.now(dt.timezone.utc)
     data = {
         "version": BACKUP_VERSION,
         "created": now.isoformat(timespec="seconds"),
         "server": client.base_url,
-        "immich_albums": _snapshot_albums(client),
+        "immich_albums": _snapshot_albums(client, progress),
         "butler": _snapshot_butler(config_dir, state_dir),
     }
     target = backups_dir(state_dir, directory)
     target.mkdir(parents=True, exist_ok=True)
     path = target / f"{PREFIX}{now.strftime('%Y%m%d-%H%M%S')}.json"
+    if progress:
+        progress("Writing the backup file", 0, 0)
     _write_private(path, json.dumps(data, indent=1, ensure_ascii=False) + "\n")
     return path
 
 
-def _snapshot_albums(client: ImmichClient) -> list[dict]:
+def _snapshot_albums(client: ImmichClient, progress=None) -> list[dict]:
+    if progress:
+        progress("Listing albums", 0, 0)
     try:
         me = client.me().id
     except ImmichError:
@@ -80,9 +90,11 @@ def _snapshot_albums(client: ImmichClient) -> list[dict]:
         users = {}
 
     found = []
-    for album in sorted(client.albums(), key=lambda a: a.name):
-        if me and album.owner_id and album.owner_id != me:
-            continue                    # shared *with* us: not ours to rebuild
+    albums = [a for a in sorted(client.albums(), key=lambda a: a.name)
+              if not (me and a.owner_id and a.owner_id != me)]  # shared *with* us: not ours to rebuild
+    for done, album in enumerate(albums):
+        if progress:
+            progress(f"Reading album “{album.name}”", done, len(albums))
         assets = [_snapshot_asset(item) for item in client.search_metadata_raw(
             album_ids=[album.id], with_exif=True)]
         found.append({

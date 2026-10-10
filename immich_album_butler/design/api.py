@@ -23,6 +23,7 @@ import json
 import logging
 import random
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Callable
@@ -150,6 +151,9 @@ class DesignApi:
         self._albums_read: float = 0.0
         self._dups: list[dict] | None = None
         self._dups_at: dt.datetime | None = None
+        self._backup_lock = threading.Lock()
+        self._backup_progress: dict = {"running": False, "message": "",
+                                       "done": 0, "total": 0}
         # Set by design/server.py once the bind-watcher exists, so the UI's
         # "Reload config" button has something to trigger.
         self.reload_trigger: Callable[[], None] | None = None
@@ -546,9 +550,27 @@ class DesignApi:
             for b in backup_module.list_backups(directory)]}
 
     def create_backup(self) -> dict:
-        path = backup_module.create_backup(self.client, self.config_dir,
-                                           self.state_dir)
+        # One at a time: a second click (or tab) is refused while one runs.
+        if not self._backup_lock.acquire(blocking=False):
+            raise ApiError("a backup is already running", status=409)
+        try:
+            self._backup_progress = {"running": True, "message": "Starting",
+                                     "done": 0, "total": 0}
+            path = backup_module.create_backup(
+                self.client, self.config_dir, self.state_dir,
+                progress=self._set_backup_progress)
+        finally:
+            self._backup_progress = {"running": False, "message": "",
+                                     "done": 0, "total": 0}
+            self._backup_lock.release()
         return {"name": path.name, "path": str(path)}
+
+    def _set_backup_progress(self, message: str, done: int, total: int) -> None:
+        self._backup_progress = {"running": True, "message": message,
+                                 "done": done, "total": total}
+
+    def backup_progress(self) -> dict:
+        return self._backup_progress
 
     def delete_backups(self, body: dict) -> dict:
         names = body.get("names")

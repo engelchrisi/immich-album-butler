@@ -1210,12 +1210,34 @@ async function addNow(group) {
 let backupList = [];
 let chosenBackup = null;
 
+/* The POST blocks until the file is written; a poll of the progress endpoint
+ * runs meanwhile. The button stays disabled throughout (the server refuses a
+ * second backup with 409 anyway). */
+function showBackupProgress(p) {
+  const bar = $("backup-bar");
+  bar.hidden = !p.running;
+  if (p.total) { bar.max = p.total; bar.value = p.done; }
+  else bar.removeAttribute("value");          // indeterminate
+  $("backup-status").textContent = !p.running ? ""
+    : p.total ? `${p.message} (${p.done + 1}/${p.total})` : `${p.message}…`;
+}
+
 $("backup-create").onclick = async () => {
+  const button = $("backup-create");
+  if (button.disabled) return;
+  button.disabled = true;
+  showBackupProgress({ running: true, message: "Starting", done: 0, total: 0 });
+  const poll = setInterval(async () => {
+    try { showBackupProgress(await api("/api/backups/progress")); } catch (e) { /* next tick */ }
+  }, 500);
   try {
     const made = await post("/api/backups", {});
     banner(`Saved ${made.path}`, true);
     chosenBackup = made.name;
   } catch (error) { banner(error.message); }
+  clearInterval(poll);
+  showBackupProgress({ running: false });
+  button.disabled = false;
   loadBackups();
 };
 

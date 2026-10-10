@@ -1,5 +1,10 @@
 # Changes
 
+## 1.1.0 — 2026-10-10
+- Design UI, Backup tab: "Back up now" shows progress (album being read, n/total) while the backup
+  runs, and stays disabled until it finishes. The server refuses a second concurrent backup with
+  409 (`GET /api/backups/progress` reports the state).
+
 ## 1.0.0 — 2026-10-10
 **Breaking.** The description hint is reduced to how an album is played: two keys, `chunk` and
 `chunk_order`, from the one concept in `PyImmichFrame/docs/TODOs/playback-order.md`. The old major
@@ -18,6 +23,10 @@ stays on the `release/0` branch.
   5/year random).
 - `docs/hints.md`, requirements N31 (rewritten) and N35/N36 (removed), design §4 and the README
   follow.
+- `scripts/migrate-hints.py <config.toml> [--write]` moves an old config over: drops the removed
+  keys, adds a `chunk` guessed from the rule shape (trip 3/day random, birthday 3/year
+  chronological, people or places 5/year random), lists albums to check by hand. Dry run by
+  default, `--write` keeps a `.bak`, idempotent, comments and layout survive.
 
 ## 0.14.4 — 2026-10-09
 - Design UI: the album, duplicates and trips filter fields, and the trips
