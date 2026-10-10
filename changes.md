@@ -1,13 +1,17 @@
 # Changes
 
-## 1.2.1 — 2026-10-10
-- Design UI, Builder: removed the second, duplicate row of Save / Dry run / Run now / Analyze
-  buttons under the preview (it shared ids with the top row and did nothing).
-
 ## 1.3.0 — 2026-10-10
 - Design UI: sort selector on the Albums tab (name A–Z / Z–A, last run newest / oldest first; albums
   that never ran go last) and on the Trips tab (newest, oldest, name, most media, longest). The
   choice is remembered in the browser.
+- Design UI, Builder: a "← Albums" button returns to the Albums page when the builder was opened
+  from it (Edit, New album, New person album).
+- Fix: sharing was never saved. The builder sent the share list as `share_with`, the API reads
+  `shares`, so the list was dropped on every save. The builder now sends `shares`.
+
+## 1.2.1 — 2026-10-10
+- Design UI, Builder: removed the second, duplicate row of Save / Dry run / Run now / Analyze
+  buttons under the preview (it shared ids with the top row and did nothing).
 
 ## 1.2.0 — 2026-10-10
 - Design UI, Backup tab: a backup can get a title and a description ("Rename / describe" on its
