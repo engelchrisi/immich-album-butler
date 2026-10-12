@@ -373,7 +373,7 @@ class ImmichClient:
         Used only by the explicit design-mode GPS backfill flow: never by the
         unattended runtime. Needs `asset.update` on the key.
         """
-        self.request("PATCH", f"assets/{asset_id}", {
+        self.request("PUT", f"assets/{asset_id}", {
             "latitude": latitude,
             "longitude": longitude,
         })

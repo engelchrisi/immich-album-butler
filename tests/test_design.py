@@ -795,6 +795,7 @@ class GpsFillTests(DesignTestCase):
             "longitude": chosen["longitude"],
         }]})
         self.assertEqual(result["updated"], 1)
+        self.assertIn(("PUT", f"/api/assets/{fake_id(3)}"), self.stub.requests)
         refreshed = self.client.asset(fake_id(3))
         exif = refreshed.get("exifInfo") or {}
         self.assertIsNotNone(exif.get("latitude"))
