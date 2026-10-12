@@ -102,6 +102,28 @@ capture times and donor time gaps instead of raw coordinates or asset IDs;
 unresolved fixes use the same checkboxes and Apply action. Runtime mode never
 calls this path.
 
+GPS backfill writes `PUT /assets/{id}` (`latitude`/`longitude` only); an
+earlier version wrongly sent `PATCH`, which Immich silently ignores -- no
+error, no write, so the fix looked applied until the next load.
+
+That endpoint is also what Immich's own manual location editor calls, and
+persisting the value is Immich's job, not this project's: Immich writes
+location (and date) edits into an XMP sidecar next to the original via
+`exiftool`, and its metadata-extraction job always re-derives GPS from the
+file plus sidecar, overwriting the database on every scan. If that sidecar
+write fails -- the library's mount is read-only, or the Immich service
+account lacks filesystem permission even on a writable mount -- the API call
+still reports success and the database value is set immediately, but the
+next metadata scan finds no GPS in the file and wipes it again, with nothing
+visible to the API caller or the UI (upstream: immich-app/immich#10538,
+open). A GPS backfill through this project is only as durable as Immich's own
+editor for the same asset: nothing in this project can detect, retry or work
+around a silently failed sidecar write, since Immich gives no signal that it
+happened. The fix is always on the serving environment, not this project --
+the library needs to be writable, by both mount and filesystem permissions,
+for whichever account Immich runs as (confirmed working end-to-end in the
+maintainer's own deployment, 2026-10-12).
+
 `POST /api/albums` saves a rule under its slug, replacing one of the same slug. With `new: true`
 ("Save as…", N41) the slug comes from the new name only, and a name another rule already has
 (case-insensitive, or one slugging the same) is refused with 409, so the copy never overwrites
