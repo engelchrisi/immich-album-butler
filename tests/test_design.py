@@ -781,7 +781,9 @@ class GpsFillTests(DesignTestCase):
         self.assertEqual(len(result["candidates"]), 1)
         self.assertEqual(result["candidates"][0]["asset_id"], fake_id(3))
         self.assertEqual(result["candidates"][0]["confidence"], "high")
-        self.assertIn(fake_id(4), {u["asset_id"] for u in result["unresolved"]})
+        unresolved = {u["asset_id"]: u for u in result["unresolved"]}
+        self.assertIn(fake_id(4), unresolved)
+        self.assertGreaterEqual(len(unresolved[fake_id(4)]["nearby_donor_choices"]), 1)
 
     def test_apply_updates_the_selected_assets(self):
         self._scan()

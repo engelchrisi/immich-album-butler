@@ -93,7 +93,14 @@ computes candidate coordinates for trip media without GPS from same-day, geotagg
 trip media and reports confidence (`high`/`medium`/`low`), donor count, nearest
 time delta and donor spread (km). `/api/trips/gps-apply` updates only selected
 media, skips media that already has GPS, and reports partial failures per item.
-Runtime mode never calls this path.
+The API key needs Immich's `asset.update` permission; `album.update` alone does
+not authorize asset coordinate changes. After applying a day, the UI reloads the
+trip and GPS suggestions in place, keeping the selected day when candidates
+remain or advancing to the next day with candidates. Donor thumbnails are
+selectable buttons, and the selected source is highlighted. The review uses
+capture times and donor time gaps instead of raw coordinates or asset IDs;
+unresolved fixes use the same checkboxes and Apply action. Runtime mode never
+calls this path.
 
 `POST /api/albums` saves a rule under its slug, replacing one of the same slug. With `new: true`
 ("Save as…", N41) the slug comes from the new name only, and a name another rule already has

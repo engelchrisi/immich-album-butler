@@ -135,7 +135,13 @@ button.link { background: none; border: none; color: var(--accent); padding: 0.2
           cursor: pointer; }
 .toggle input { margin: 0; width: 1rem; height: 1rem; }
 .scan-note { margin: 0.5rem 0.2rem 1rem; }
-#trip-gps { margin-top: 1rem; }
+#trip-gps.cards {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
 .gps-row {
   display: grid;
   grid-template-columns: 2rem 4.5rem minmax(0, 1fr);
@@ -151,6 +157,25 @@ button.link { background: none; border: none; color: var(--accent); padding: 0.2
 }
 .gps-overview img { width: 56px; height: 56px; }
 .gps-donors { margin-top: 0.4rem; }
+.gps-donors .gps-donor-choice {
+  flex: 0 0 64px;
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border: 3px solid transparent;
+  border-radius: 6px;
+  overflow: hidden;
+  background: transparent;
+}
+.gps-donors .gps-donor-choice img { display: block; }
+.gps-donors .gps-donor-choice[aria-pressed="true"],
+.gps-donors .gps-donor-choice[aria-pressed="true"]:hover {
+  border-color: #d8a721;
+}
+.gps-donors .gps-donor-choice:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .check { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem; }
 .check input { flex: 0 0 auto; }
 
@@ -225,6 +250,8 @@ button.link { background: none; border: none; color: var(--accent); padding: 0.2
 .card .bar { margin: 0.7rem 0 0; }
 .card.album { display: flex; flex-direction: column; height: 100%; }
 .card.album .bar { margin-top: auto; }
+.card.trip-card { display: flex; flex-direction: column; height: 100%; }
+.card.trip-card > .bar { margin-top: auto; padding-top: 0.7rem; }
 .album-body { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 0.8rem;
               align-items: stretch; }
 /* The cover fills the height of the rows beside it, so no gap is left below it. */

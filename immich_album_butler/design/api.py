@@ -1006,18 +1006,36 @@ class DesignApi:
 
         candidates = []
         unresolved = []
+
+        def donor_choices_for(target: trips_module.Point,
+                              donor_pool: list[trips_module.Point]) -> list[dict]:
+            ranked = sorted(donor_pool,
+                            key=lambda d: (_gps_minutes(d.taken_at, target.taken_at),
+                                           d.taken_at, d.id))
+            return [{
+                "asset_id": d.id,
+                "latitude": round(d.latitude, 6),
+                "longitude": round(d.longitude, 6),
+                "taken_at": d.taken_at.isoformat(),
+                "minutes": round(_gps_minutes(d.taken_at, target.taken_at), 1),
+            } for d in ranked[:10]]
+
         for point in sorted(missing, key=lambda p: (p.taken_at, p.id)):
             day = point.taken_at.date()
             donors = [d for d in located if d.taken_at.date() == day]
             if not donors:
+                nearby = donor_choices_for(point, located)
                 unresolved.append({"asset_id": point.id,
                                    "taken_at": point.taken_at.isoformat(),
-                                   "reason": "no located media on the same day"})
+                                   "reason": "no located media on the same day",
+                                   "nearby_donor_choices": nearby})
                 continue
 
             near = [d for d in donors if _gps_minutes(d.taken_at, point.taken_at) <= GPS_NEAR_MIN]
             wide = [d for d in donors if _gps_minutes(d.taken_at, point.taken_at) <= GPS_NEAR_MAX]
             pool = near or wide or donors
+            ranked = sorted(pool, key=lambda d: (_gps_minutes(d.taken_at, point.taken_at),
+                                                 d.taken_at, d.id))
             window = (f"<= {GPS_NEAR_MIN} min" if near else
                       f"<= {GPS_NEAR_MAX} min" if wide else "same day")
 
@@ -1027,25 +1045,35 @@ class DesignApi:
                                                    centre_lat, centre_lon)
                          for d in pool)
             if spread > GPS_SPREAD_REJECT_KM:
+                nearby = donor_choices_for(point, donors)
                 unresolved.append({"asset_id": point.id,
                                    "taken_at": point.taken_at.isoformat(),
                                    "reason": ("same-day donor locations are too spread out "
-                                              f"({spread:.1f} km)")})
+                                              f"({spread:.1f} km)"),
+                                   "nearby_donor_choices": nearby})
                 continue
 
-            nearest = min(_gps_minutes(d.taken_at, point.taken_at) for d in pool)
+            nearest = _gps_minutes(ranked[0].taken_at, point.taken_at)
             confidence = _gps_confidence(nearest, spread, len(pool))
+            best = ranked[0]
+            donor_choices = donor_choices_for(point, pool)
             candidates.append({
                 "asset_id": point.id,
                 "taken_at": point.taken_at.isoformat(),
-                "latitude": round(centre_lat, 6),
-                "longitude": round(centre_lon, 6),
+                "latitude": round(best.latitude, 6),
+                "longitude": round(best.longitude, 6),
                 "confidence": confidence,
                 "donor_count": len(pool),
                 "window": window,
                 "nearest_minutes": round(nearest, 1),
                 "spread_km": round(spread, 2),
-                "donor_ids": [d.id for d in pool[:10]],
+                "donor_ids": [d.id for d in ranked[:10]],
+                "donor_choices": donor_choices,
+                "source_asset_id": best.id,
+                "suggested_median": {
+                    "latitude": round(centre_lat, 6),
+                    "longitude": round(centre_lon, 6),
+                },
             })
 
         return {

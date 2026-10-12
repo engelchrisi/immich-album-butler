@@ -76,18 +76,30 @@ function banner(message, ok = false) {
 const TABS = ["albums", "builder", "trips", "duplicates", "backup"];
 const SUBTABS = ["rule", "options", "sharing", "player"];
 
+function setPanel(name) {
+  for (const panel of document.querySelectorAll(".panel")) {
+    panel.classList.toggle("active", panel.id === name);
+  }
+}
+
 function activateTab(name) {
   for (const el of document.querySelectorAll(".tab")) {
     el.classList.toggle("active", el.dataset.tab === name);
   }
-  for (const panel of document.querySelectorAll(".panel")) {
-    panel.classList.toggle("active", panel.id === name);
-  }
+  setPanel(name);
   $("builder-back").hidden = !(name === "builder" && state.fromAlbums);
   if (name === "albums") loadAlbums();
   if (name === "trips") loadTrips(false);
   if (name === "duplicates") loadDuplicates();
   if (name === "backup") loadBackups();
+}
+
+function showTripGpsPage() {
+  for (const el of document.querySelectorAll(".tab")) {
+    el.classList.toggle("active", el.dataset.tab === "trips");
+  }
+  setPanel("trip-gps-page");
+  $("builder-back").hidden = true;
 }
 
 /* The builder's own sub-tabs (Rule/Options/Sharing/Player) get a path segment
@@ -106,6 +118,7 @@ function activateSubtab(name) {
 function route(path) {
   const albumMatch = /^\/albums\/([^/]+)$/.exec(path);
   if (albumMatch) return openAlbumView(decodeURIComponent(albumMatch[1]), { push: false });
+  if (path === "/trips/gps") return showTripGpsPage();
 
   const builderMatch = /^\/builder\/([^/]+)(?:\/([^/]+))?$/.exec(path);
   if (builderMatch) {
@@ -168,6 +181,7 @@ $("tabs").addEventListener("click", (event) => {
 });
 
 window.addEventListener("popstate", () => route(location.pathname));
+$("trip-gps-back").onclick = () => navigate("/trips");
 
 /* -- albums tab --------------------------------------------------------- */
 
@@ -1840,8 +1854,13 @@ function renderTripList() {
   for (const trip of shown) {
     const strips = editStrips({ ...trip, matched: trip.total });
     const known = !!trip.in_album;
+    const fillGps = button(`Fix missing GPS (${trip.unlocated})`, () => fillTripGps(trip));
+    if (!trip.unlocated) {
+      fillGps.disabled = true;
+      fillGps.title = "All photos in this trip already have GPS";
+    }
     const card = el("div", {
-        class: `card ${data.albums_error ? "" : known ? "has-album" : "no-album"}` },
+      class: `card trip-card ${data.albums_error ? "" : known ? "has-album" : "no-album"}` },
       el("h3", {}, trip.name),
       // "covered by" is a saved rule whose dates span the trip. Worth its own
       // tag only when it is not the album already shown: a rule not run yet.
@@ -1851,14 +1870,13 @@ function renderTripList() {
         coveredElsewhere(trip) ? el("span", { class: "pill" },
                    `rule: ${trip.covered_by}`) : "") : "",
       el("div", { class: "meta" },
-        `${trip.start} → ${trip.end} · ${trip.days} days · ${trip.total} media ` +
-        `(${trip.located} located, ${trip.unlocated} without GPS)`),
+        `${trip.start} → ${trip.end} · ${trip.days} days · ${trip.total} media`),
       el("div", { class: "meta" },
         [...trip.countries, ...trip.cities.slice(0, 3)].join(", ")),
       ...strips,
       el("div", { class: "bar" },
         button("Open in builder", () => fromTrip(trip)),
-        button("Fill missing GPS", () => fillTripGps(trip))));
+        fillGps));
     list.append(card);
   }
 }
@@ -1867,7 +1885,8 @@ function coveredElsewhere(trip) {
   return trip.covered_by && trip.covered_by !== (trip.in_album && trip.in_album.name);
 }
 
-async function fillTripGps(trip) {
+async function fillTripGps(trip, preferredDay = "") {
+  navigate("/trips/gps");
   banner("Looking for GPS suggestions…", true);
   const panel = $("trip-gps");
   panel.replaceChildren(el("div", { class: "spin" }, "Building GPS suggestions…"));
@@ -1883,6 +1902,9 @@ async function fillTripGps(trip) {
   if (result.note) panel.append(el("div", { class: "muted" }, result.note));
 
   const candidates = result.candidates || [];
+  const orderedCandidates = [...candidates].sort((a, b) =>
+    (a.taken_at || "").localeCompare(b.taken_at || "")
+      || (a.asset_id || "").localeCompare(b.asset_id || ""));
   const unresolved = result.unresolved || [];
   panel.append(el("div", { class: "card" },
     el("h3", {}, `GPS suggestions for ${trip.name}`),
@@ -1890,100 +1912,288 @@ async function fillTripGps(trip) {
       `${result.without_gps || 0} without GPS · ${candidates.length} candidate` +
       `${candidates.length === 1 ? "" : "s"} · ${unresolved.length} unresolved`)));
 
-  const selected = [];
-  if (candidates.length) {
-    const apply = button("Apply selected fixes", () => {
-      const picked = selected.filter((entry) => entry.check.checked).map((entry) => entry.item);
-      applyTripGps(picked, trip);
-    });
-    apply.classList.add("primary");
-    const pickAll = button("Select all", () => {
-      for (const entry of selected) entry.check.checked = true;
-    });
-    const pickNone = button("Select none", () => {
-      for (const entry of selected) entry.check.checked = false;
-    });
+  const selected = new Map(orderedCandidates.map((item) =>
+    [item.asset_id, item.confidence === "high"]));
+  const sourceByAsset = new Map(orderedCandidates.map((item) => {
+    const choices = Array.isArray(item.donor_choices) ? item.donor_choices : [];
+    const firstChoice = choices[0] || {
+      asset_id: (item.donor_ids || [])[0] || "",
+      latitude: item.latitude,
+      longitude: item.longitude,
+      taken_at: item.taken_at,
+      minutes: item.nearest_minutes,
+    };
+    return [item.asset_id, firstChoice];
+  }));
+  const unresolvedSourceByAsset = new Map(unresolved.map((item) => {
+    const choices = Array.isArray(item.nearby_donor_choices) ? item.nearby_donor_choices : [];
+    return [item.asset_id, choices[0] || null];
+  }));
+  const unresolvedSelected = new Map(unresolved.map((item) => [item.asset_id, false]));
+  const byDay = new Map();
+  for (const item of orderedCandidates) {
+    const day = (item.taken_at || "").slice(0, 10) || "(no date)";
+    if (!byDay.has(day)) byDay.set(day, []);
+    byDay.get(day).push(item);
+  }
+  const days = [...byDay.keys()].sort((a, b) =>
+    a === "(no date)" ? 1 : b === "(no date)" ? -1 : a.localeCompare(b));
+  let activeDay = !preferredDay
+    ? ""
+    : days.includes(preferredDay)
+      ? preferredDay
+      : days.find((day) => day > preferredDay) || days[0] || "";
+  let visibleCandidates = [...orderedCandidates];
+
+  if (!candidates.length && !unresolved.length) {
     panel.append(el("div", { class: "card" },
       el("h3", {}, "Apply"),
-      el("div", { class: "meta" },
-        "Review rows below, then apply only selected fixes."),
-      el("div", { class: "bar" }, pickAll, pickNone, apply)));
+      el("div", { class: "meta" }, "No GPS suggestions available.")));
+    return banner("No GPS suggestions to apply.", true);
+  }
 
+  const apply = button("", () => {
+    const pickedCandidates = visibleCandidates
+      .filter((item) => selected.get(item.asset_id))
+      .map((item) => {
+        const source = sourceByAsset.get(item.asset_id);
+        return {
+          ...item,
+          latitude: source ? source.latitude : item.latitude,
+          longitude: source ? source.longitude : item.longitude,
+        };
+      });
+    const pickedUnresolved = unresolved
+      .filter((item) => unresolvedSelected.get(item.asset_id))
+      .map((item) => {
+        const source = unresolvedSourceByAsset.get(item.asset_id);
+        return source ? {
+          asset_id: item.asset_id,
+          latitude: source.latitude,
+          longitude: source.longitude,
+        } : null;
+      })
+      .filter(Boolean);
+    applyTripGps([...pickedCandidates, ...pickedUnresolved], trip, activeDay);
+  });
+  apply.classList.add("primary");
+
+  const refreshApplyLabel = () => {
+    const candidateCount = visibleCandidates
+      .filter((item) => selected.get(item.asset_id)).length;
+    const unresolvedCount = unresolved
+      .filter((item) => unresolvedSelected.get(item.asset_id)
+        && unresolvedSourceByAsset.get(item.asset_id)).length;
+    const total = candidateCount + unresolvedCount;
+    apply.textContent = `Apply selected fixes (${total})`;
+    apply.disabled = total === 0;
+  };
+
+  let daySelect = null;
+  let renderReview = () => {};
+  let renderUnresolved = () => {};
+  const applyControls = [];
+  if (candidates.length) {
+    daySelect = el("select", {});
+    daySelect.append(el("option", { value: "" }, "All days"));
+    for (const day of days) daySelect.append(el("option", { value: day }, day));
+    daySelect.value = activeDay;
+
+    const selectConfidence = (confidence) => {
+      for (const item of visibleCandidates) {
+        if (item.confidence === confidence) selected.set(item.asset_id, true);
+      }
+      renderReview();
+      refreshApplyLabel();
+    };
+    applyControls.push(
+      el("label", { class: "field inline" },
+        el("span", {}, "Day"), daySelect),
+      button("Select all high", () => selectConfidence("high")),
+      button("Select all medium", () => selectConfidence("medium")),
+      button("Select all low", () => selectConfidence("low")),
+    );
+  }
+  if (unresolved.length) {
+    applyControls.push(button("Select all unresolved", () => {
+      for (const item of unresolved) {
+        if (unresolvedSourceByAsset.get(item.asset_id)) {
+          unresolvedSelected.set(item.asset_id, true);
+        }
+      }
+      renderUnresolved();
+      refreshApplyLabel();
+    }));
+  }
+  applyControls.push(button("Deselect all", () => {
+    for (const item of orderedCandidates) selected.set(item.asset_id, false);
+    for (const item of unresolved) unresolvedSelected.set(item.asset_id, false);
+    renderReview();
+    renderUnresolved();
+    refreshApplyLabel();
+  }));
+  applyControls.push(apply);
+  panel.append(el("div", { class: "card" },
+    el("h3", {}, "Apply"),
+    el("div", { class: "meta" },
+      candidates.length
+        ? "Choose a day, select fixes below, then apply. Unresolved photos can be selected after choosing a GPS source."
+        : "Choose a GPS source for an unresolved photo, select it, then apply."),
+    el("div", { class: "bar" }, ...applyControls)));
+
+  if (candidates.length) {
     const overview = el("div", { class: "card" },
-      el("h3", {}, "Overview (all candidate photos)"),
+      el("h3", {}, "Photos missing GPS (all candidates)"),
       el("div", { class: "meta" },
-        "Hover a thumbnail for details; use the review list below to choose per photo."));
-    const strip = el("div", { class: "strip gps-overview" });
-    for (const item of candidates) {
-      strip.append(el("img", { src: `/api/thumb/${item.asset_id}`, loading: "lazy", alt: "" }));
-    }
-    overview.append(strip);
+        "These thumbnails are photos currently missing GPS. Hover for details; " +
+        "use the review list below to choose per photo."),
+      el("div", { class: "meta" }, "Gold frame = currently selected GPS source."));
+    const overviewBody = el("div", {});
+    const renderOverview = () => {
+      overviewBody.replaceChildren();
+      const groups = activeDay ? [activeDay] : days;
+      for (const day of groups) {
+        const items = byDay.get(day) || [];
+        const strip = el("div", { class: "strip gps-overview" });
+        for (const item of items) {
+          strip.append(el("img", { src: `/api/thumb/${item.asset_id}`, loading: "lazy", alt: "" }));
+        }
+        overviewBody.append(
+          el("div", { class: "strip-label" },
+            `${day} · ${items.length} photo${items.length === 1 ? "" : "s"}`),
+          strip,
+        );
+      }
+    };
+    overview.append(overviewBody);
     panel.append(overview);
 
     const review = el("div", { class: "card" },
       el("h3", {}, "Review and select"),
       el("div", { class: "meta" },
-        "Hover any thumbnail for detailed metadata. Choose each fix one by one."));
+        "Choose a GPS source photo, then check the fixes to apply."));
+    const reviewBody = el("div", {});
+    renderReview = () => {
+      reviewBody.replaceChildren();
+      visibleCandidates = activeDay
+        ? [...(byDay.get(activeDay) || [])]
+        : [...orderedCandidates];
+      for (const item of visibleCandidates) {
+        const check = el("input", { type: "checkbox" });
+        check.checked = !!selected.get(item.asset_id);
+        check.onchange = () => {
+          selected.set(item.asset_id, check.checked);
+          refreshApplyLabel();
+        };
 
-    for (const item of candidates) {
-      const check = el("input", { type: "checkbox" });
-      // High confidence is preselected; medium/low needs explicit opt-in.
-      check.checked = item.confidence === "high";
-      selected.push({ check, item });
+        const target = el("img", {
+          src: `/api/thumb/${item.asset_id}`,
+          loading: "lazy",
+          alt: "",
+        });
+        const source = sourceByAsset.get(item.asset_id);
+        const selectedDonorId = source ? source.asset_id : "";
+        const choices = Array.isArray(item.donor_choices) ? item.donor_choices : [];
+        const donors = el("div", { class: "strip gps-donors" });
+        for (const choice of choices) {
+          donors.append(gpsDonorButton(choice, choice.asset_id === selectedDonorId, () => {
+            sourceByAsset.set(item.asset_id, choice);
+            renderReview();
+          }));
+        }
 
-      const target = el("img", {
-        src: `/api/thumb/${item.asset_id}`,
-        loading: "lazy",
-        alt: "",
-      });
-      const donors = el("div", { class: "strip gps-donors" });
-      for (const donorId of item.donor_ids || []) {
-        donors.append(el("img", { src: `/api/thumb/${donorId}`, loading: "lazy", alt: "" }));
+        reviewBody.append(el("div", { class: "gps-row" },
+          el("label", { class: "gps-pick", title: "Apply this GPS fix" }, check),
+          el("div", { class: "gps-target" }, target),
+          el("div", { class: "gps-detail" },
+            el("div", {},
+              el("b", {}, `${item.confidence.toUpperCase()} confidence · ` +
+                (fmt.when(item.taken_at) || "time unknown"))),
+            el("div", { class: "meta" },
+              `GPS source ${gpsTimeDelta(source?.minutes ?? item.nearest_minutes)} · ` +
+              `donor spread ${item.spread_km} km · ${item.donor_count} donors`),
+            el("div", { class: "meta" }, "Choose a source photo:"),
+            donors,
+          )));
       }
+    };
 
-      review.append(el("div", { class: "gps-row" },
-        el("label", { class: "gps-pick", title: "Apply this GPS fix" }, check),
-        el("div", { class: "gps-target" }, target),
-        el("div", { class: "gps-detail" },
-          el("div", {},
-            el("b", {}, `${item.confidence.toUpperCase()} · ${item.asset_id}`)),
-          el("div", { class: "meta" },
-            `→ ${item.latitude}, ${item.longitude} · ${item.window} · nearest ${item.nearest_minutes} min · ` +
-            `spread ${item.spread_km} km · ${item.donor_count} donor(s)`),
-          el("div", { class: "meta" }, "GPS taken from:"),
-          donors,
-        )));
-    }
+    daySelect.onchange = () => {
+      activeDay = daySelect.value;
+      renderOverview();
+      renderReview();
+      refreshApplyLabel();
+    };
+
+    renderOverview();
+    renderReview();
+    review.append(reviewBody);
     panel.append(review);
   }
 
   if (unresolved.length) {
-    panel.append(el("div", { class: "card" },
+    const card = el("div", { class: "card" },
       el("h3", {}, "Unresolved"),
-      ...unresolved.map((item) =>
-        el("div", { class: "gps-row" },
-          el("div", { class: "gps-pick" }),
+      el("div", { class: "meta" },
+        "No safe automatic fix. Nearby located photos are shown so you can pick a source."));
+
+    renderUnresolved = () => {
+      const rows = [];
+      for (const item of unresolved) {
+        const choices = Array.isArray(item.nearby_donor_choices) ? item.nearby_donor_choices : [];
+        const selectedSource = unresolvedSourceByAsset.get(item.asset_id);
+        const selectedDonorId = selectedSource ? selectedSource.asset_id : "";
+
+        const donors = el("div", { class: "strip gps-donors" });
+        for (const choice of choices) {
+          donors.append(gpsDonorButton(choice, choice.asset_id === selectedDonorId, () => {
+            unresolvedSourceByAsset.set(item.asset_id, choice);
+            renderUnresolved();
+          }));
+        }
+
+        const check = el("input", { type: "checkbox" });
+        check.checked = !!unresolvedSelected.get(item.asset_id);
+        check.disabled = !selectedSource;
+        check.onchange = () => {
+          unresolvedSelected.set(item.asset_id, check.checked);
+          refreshApplyLabel();
+        };
+
+        rows.push(el("div", { class: "gps-row" },
+          el("label", { class: "gps-pick", title: "Include this fix in Apply selected fixes" },
+            check),
           el("div", { class: "gps-target" },
             el("img", { src: `/api/thumb/${item.asset_id}`, loading: "lazy", alt: "" })),
           el("div", { class: "gps-detail" },
-            el("div", {}, el("b", {}, item.asset_id)),
-            el("div", { class: "meta" }, item.reason))))));
+            el("div", {}, el("b", {}, fmt.when(item.taken_at) || "Photo without GPS")),
+            el("div", { class: "meta" }, item.reason),
+            (choices.length
+              ? el("div", { class: "meta" }, "Choose a nearby located photo:")
+              : el("div", { class: "meta" }, "No nearby located photos found in this trip.")),
+            donors,
+          )));
+      }
+      card.replaceChildren(
+        el("h3", {}, "Unresolved"),
+        el("div", { class: "meta" },
+          "No safe automatic fix. Nearby located photos are shown so you can pick a source."),
+        ...rows,
+      );
+    };
+
+    renderUnresolved();
+    panel.append(card);
   }
 
-  if (!candidates.length) {
-    panel.append(el("div", { class: "card" },
-      el("h3", {}, "Apply"),
-      el("div", { class: "meta" }, "No suggestions available to apply.")));
-    return banner("No GPS suggestions to apply.", true);
-  }
-
-  const preselected = selected.filter((entry) => entry.check.checked).length;
+  refreshApplyLabel();
+  const preselected = orderedCandidates.filter((item) => selected.get(item.asset_id)).length;
   banner(`Preview ready: ${candidates.length} suggestion${candidates.length === 1 ? "" : "s"}; ` +
-         `${preselected} preselected.`, true);
+         `${unresolved.length} unresolved; ${preselected} preselected.`, true);
   panel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-async function applyTripGps(candidates, trip) {
+async function applyTripGps(candidates, trip, preferredDay = "") {
   if (!candidates.length) {
     return banner("No photos selected.");
   }
@@ -1999,9 +2209,15 @@ async function applyTripGps(candidates, trip) {
         longitude: item.longitude,
       })),
     });
-    banner(`GPS fill: updated ${applied.updated}/${applied.requested}` +
-           (applied.failed.length ? `, ${applied.failed.length} failed` : ""), true);
+    const failed = applied.failed || [];
+    const skipped = applied.skipped || [];
+    const message = `GPS fill: updated ${applied.updated}/${applied.requested}` +
+      (skipped.length ? `, ${skipped.length} skipped` : "") +
+      (failed.length ? `, ${failed.length} failed` : "");
+    banner(message, failed.length === 0);
     await loadTrips(false);
+    await fillTripGps(trip, preferredDay);
+    banner(message, failed.length === 0);
   } catch (error) {
     banner(error.message);
   }
@@ -2122,6 +2338,32 @@ function button(label, onclick) {
   const node = el("button", {}, label);
   node.onclick = onclick;
   return node;
+}
+
+function gpsDonorButton(choice, selected, onselect) {
+  const when = fmt.when(choice.taken_at) || "time unknown";
+  const label = `${selected ? "Selected GPS source" : "Choose GPS source"}: ` +
+    `${gpsTimeDelta(choice.minutes)} · ${when}`;
+  const node = button("", onselect);
+  node.type = "button";
+  node.className = "gps-donor-choice";
+  node.title = label;
+  node.setAttribute("aria-label", label);
+  node.setAttribute("aria-pressed", String(selected));
+  node.append(el("img", {
+    src: `/api/thumb/${choice.asset_id}`,
+    loading: "lazy",
+    alt: "",
+  }));
+  return node;
+}
+
+function gpsTimeDelta(minutes) {
+  const value = Number(minutes);
+  if (!Number.isFinite(value)) return "time difference unknown";
+  if (value < 1) return "less than 1 min apart";
+  const formatted = Number.isInteger(value) ? String(value) : value.toFixed(1);
+  return `${formatted} min apart`;
 }
 
 function removableChip(label, remove) {
