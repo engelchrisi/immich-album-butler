@@ -416,6 +416,11 @@ function editAlbumDraft(album) {
 
 /* -- builder: form <-> draft -------------------------------------------- */
 
+function resetBuilderAnalysis() {
+  $("analysis").replaceChildren(el("div", { class: "muted" },
+    "Press Analyze to look for near misses for this album."));
+}
+
 function fillForm() {
   const { draft } = state;
   $("album-name").value = draft.name;
@@ -440,6 +445,7 @@ function fillForm() {
     draft.match.on_from || draft.match.from);
   renderChosenPeople();
   renderChosenPlaces();
+  resetBuilderAnalysis();
   refreshSubtabBadges();
   refreshPreview();
 }
@@ -1780,6 +1786,7 @@ applyOnlyNew();
 async function loadTrips(rescan) {
   const list = $("trip-list");
   const note = $("scan-note");
+  $("trip-gps").replaceChildren();
   note.textContent = rescan
     ? "Scanning the whole library — this takes a while…" : "";
   list.replaceChildren(el("div", { class: "spin" }, rescan ? "Scanning…"
@@ -1862,14 +1869,16 @@ function coveredElsewhere(trip) {
 
 async function fillTripGps(trip) {
   banner("Looking for GPS suggestions…", true);
+  const panel = $("trip-gps");
+  panel.replaceChildren(el("div", { class: "spin" }, "Building GPS suggestions…"));
   let result;
   try {
     result = await post("/api/trips/gps-preview", { asset_ids: trip.asset_ids || [] });
   } catch (error) {
+    panel.replaceChildren();
     return banner(error.message);
   }
 
-  const panel = $("analysis");
   panel.replaceChildren();
   if (result.note) panel.append(el("div", { class: "muted" }, result.note));
 
@@ -1881,33 +1890,98 @@ async function fillTripGps(trip) {
       `${result.without_gps || 0} without GPS · ${candidates.length} candidate` +
       `${candidates.length === 1 ? "" : "s"} · ${unresolved.length} unresolved`)));
 
-  for (const item of candidates.slice(0, 20)) {
-    panel.append(el("div", { class: "card" },
-      el("h3", {}, `${item.confidence.toUpperCase()} · ${item.asset_id}`),
+  const selected = [];
+  if (candidates.length) {
+    const review = el("div", { class: "card" },
+      el("h3", {}, "Review and select"),
       el("div", { class: "meta" },
-        `${item.latitude}, ${item.longitude} · ${item.window} · ` +
-        `nearest ${item.nearest_minutes} min · spread ${item.spread_km} km · ` +
-        `${item.donor_count} donor(s)`)));
+        "Hover any thumbnail for detailed metadata. Choose each fix one by one."));
+
+    for (const item of candidates) {
+      const check = el("input", { type: "checkbox" });
+      // High confidence is preselected; medium/low needs explicit opt-in.
+      check.checked = item.confidence === "high";
+      selected.push({ check, item });
+
+      const target = el("img", {
+        src: `/api/thumb/${item.asset_id}`,
+        loading: "lazy",
+        alt: "",
+      });
+      const donors = el("div", { class: "strip gps-donors" });
+      for (const donorId of item.donor_ids || []) {
+        donors.append(el("img", { src: `/api/thumb/${donorId}`, loading: "lazy", alt: "" }));
+      }
+
+      review.append(el("div", { class: "gps-row" },
+        el("label", { class: "gps-pick", title: "Apply this GPS fix" }, check),
+        el("div", { class: "gps-target" }, target),
+        el("div", { class: "gps-detail" },
+          el("div", {},
+            el("b", {}, `${item.confidence.toUpperCase()} · ${item.asset_id}`)),
+          el("div", { class: "meta" },
+            `→ ${item.latitude}, ${item.longitude} · ${item.window} · nearest ${item.nearest_minutes} min · ` +
+            `spread ${item.spread_km} km · ${item.donor_count} donor(s)`),
+          el("div", { class: "meta" }, "GPS taken from:"),
+          donors,
+        )));
+    }
+    panel.append(review);
   }
+
   if (unresolved.length) {
     panel.append(el("div", { class: "card" },
       el("h3", {}, "Unresolved"),
-      ...unresolved.slice(0, 20).map((item) =>
-        el("div", { class: "meta" }, `${item.asset_id}: ${item.reason}`))));
+      ...unresolved.map((item) =>
+        el("div", { class: "gps-row" },
+          el("div", { class: "gps-pick" }),
+          el("div", { class: "gps-target" },
+            el("img", { src: `/api/thumb/${item.asset_id}`, loading: "lazy", alt: "" })),
+          el("div", { class: "gps-detail" },
+            el("div", {}, el("b", {}, item.asset_id)),
+            el("div", { class: "meta" }, item.reason))))));
   }
 
-  const high = candidates.filter((item) => item.confidence === "high");
-  if (!high.length) {
-    return banner("No high-confidence GPS suggestions to apply.", true);
+  if (!candidates.length) {
+    panel.append(el("div", { class: "card" },
+      el("h3", {}, "Apply"),
+      el("div", { class: "meta" }, "No suggestions available to apply.")));
+    return banner("No GPS suggestions to apply.", true);
   }
-  if (!confirm(`Apply ${high.length} high-confidence GPS fill` +
-               `${high.length === 1 ? "" : "s"} for this trip?`)) {
+
+  const apply = button("Apply selected fixes", () => {
+    const picked = selected.filter((entry) => entry.check.checked).map((entry) => entry.item);
+    applyTripGps(picked, trip);
+  });
+  apply.classList.add("primary");
+  const pickAll = button("Select all", () => {
+    for (const entry of selected) entry.check.checked = true;
+  });
+  const pickNone = button("Select none", () => {
+    for (const entry of selected) entry.check.checked = false;
+  });
+  panel.append(el("div", { class: "card" },
+    el("h3", {}, "Apply"),
+    el("div", { class: "meta" },
+      "Only selected rows are applied. Rows already carrying GPS are skipped server-side."),
+    el("div", { class: "bar" }, pickAll, pickNone, apply)));
+
+  const preselected = selected.filter((entry) => entry.check.checked).length;
+  banner(`Preview ready: ${candidates.length} suggestion${candidates.length === 1 ? "" : "s"}; ` +
+         `${preselected} preselected.`, true);
+}
+
+async function applyTripGps(candidates, trip) {
+  if (!candidates.length) {
+    return banner("No photos selected.");
+  }
+  if (!confirm(`Apply ${candidates.length} selected GPS fix` +
+               `${candidates.length === 1 ? "" : "s"} for ${trip.name}?`)) {
     return banner("GPS fill cancelled.", true);
   }
-
   try {
     const applied = await post("/api/trips/gps-apply", {
-      fills: high.map((item) => ({
+      fills: candidates.map((item) => ({
         asset_id: item.asset_id,
         latitude: item.latitude,
         longitude: item.longitude,
@@ -1915,6 +1989,7 @@ async function fillTripGps(trip) {
     });
     banner(`GPS fill: updated ${applied.updated}/${applied.requested}` +
            (applied.failed.length ? `, ${applied.failed.length} failed` : ""), true);
+    await loadTrips(false);
   } catch (error) {
     banner(error.message);
   }
