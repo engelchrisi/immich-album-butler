@@ -1892,6 +1892,34 @@ async function fillTripGps(trip) {
 
   const selected = [];
   if (candidates.length) {
+    const apply = button("Apply selected fixes", () => {
+      const picked = selected.filter((entry) => entry.check.checked).map((entry) => entry.item);
+      applyTripGps(picked, trip);
+    });
+    apply.classList.add("primary");
+    const pickAll = button("Select all", () => {
+      for (const entry of selected) entry.check.checked = true;
+    });
+    const pickNone = button("Select none", () => {
+      for (const entry of selected) entry.check.checked = false;
+    });
+    panel.append(el("div", { class: "card" },
+      el("h3", {}, "Apply"),
+      el("div", { class: "meta" },
+        "Review rows below, then apply only selected fixes."),
+      el("div", { class: "bar" }, pickAll, pickNone, apply)));
+
+    const overview = el("div", { class: "card" },
+      el("h3", {}, "Overview (all candidate photos)"),
+      el("div", { class: "meta" },
+        "Hover a thumbnail for details; use the review list below to choose per photo."));
+    const strip = el("div", { class: "strip gps-overview" });
+    for (const item of candidates) {
+      strip.append(el("img", { src: `/api/thumb/${item.asset_id}`, loading: "lazy", alt: "" }));
+    }
+    overview.append(strip);
+    panel.append(overview);
+
     const review = el("div", { class: "card" },
       el("h3", {}, "Review and select"),
       el("div", { class: "meta" },
@@ -1949,26 +1977,10 @@ async function fillTripGps(trip) {
     return banner("No GPS suggestions to apply.", true);
   }
 
-  const apply = button("Apply selected fixes", () => {
-    const picked = selected.filter((entry) => entry.check.checked).map((entry) => entry.item);
-    applyTripGps(picked, trip);
-  });
-  apply.classList.add("primary");
-  const pickAll = button("Select all", () => {
-    for (const entry of selected) entry.check.checked = true;
-  });
-  const pickNone = button("Select none", () => {
-    for (const entry of selected) entry.check.checked = false;
-  });
-  panel.append(el("div", { class: "card" },
-    el("h3", {}, "Apply"),
-    el("div", { class: "meta" },
-      "Only selected rows are applied. Rows already carrying GPS are skipped server-side."),
-    el("div", { class: "bar" }, pickAll, pickNone, apply)));
-
   const preselected = selected.filter((entry) => entry.check.checked).length;
   banner(`Preview ready: ${candidates.length} suggestion${candidates.length === 1 ? "" : "s"}; ` +
          `${preselected} preselected.`, true);
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function applyTripGps(candidates, trip) {

@@ -149,6 +149,7 @@ button.link { background: none; border: none; color: var(--accent); padding: 0.2
 .gps-target img, .gps-donors img {
   width: 64px; height: 64px; object-fit: cover; border-radius: 4px; background: var(--thumb-bg);
 }
+.gps-overview img { width: 56px; height: 56px; }
 .gps-donors { margin-top: 0.4rem; }
 .check { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem; }
 .check input { flex: 0 0 auto; }
