@@ -416,6 +416,10 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
                 return api.run(body, dry_run=bool(body.get("dry_run")))
             if path == "/api/add-assets":
                 return api.add_assets(body)
+            if path == "/api/trips/gps-preview":
+                return api.trip_gps_preview(body)
+            if path == "/api/trips/gps-apply":
+                return api.trip_gps_apply(body)
             if path == "/api/duplicates/remove":
                 return api.remove_duplicates(body)
             if path == "/api/backups":

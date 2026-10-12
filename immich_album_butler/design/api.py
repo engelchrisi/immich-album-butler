@@ -25,6 +25,7 @@ import random
 import re
 import threading
 import time
+import statistics
 from pathlib import Path
 from typing import Callable
 
@@ -69,6 +70,37 @@ ALBUM_INDEX_TTL = 600               # seconds
 # What an asset id looks like. Ids go into a URL path towards Immich, so
 # anything else is refused rather than passed on.
 ASSET_ID = re.compile(r"[A-Za-z0-9-]{1,64}")
+
+# GPS backfill: high confidence means a tight same-day cluster close in time.
+GPS_NEAR_MIN = 30
+GPS_NEAR_MAX = 120
+GPS_SPREAD_REJECT_KM = 25.0
+GPS_CONF_HIGH_KM = 2.0
+GPS_CONF_MED_KM = 5.0
+GPS_CONF_HIGH_MIN = 90
+GPS_CONF_MED_MIN = 240
+
+
+def _gps_minutes(a: dt.datetime, b: dt.datetime) -> float:
+    return abs((a - b).total_seconds()) / 60.0
+
+
+def _gps_confidence(nearest_minutes: float, spread_km: float, donors: int) -> str:
+    if donors >= 2 and nearest_minutes <= GPS_CONF_HIGH_MIN and spread_km <= GPS_CONF_HIGH_KM:
+        return "high"
+    if donors >= 1 and nearest_minutes <= GPS_CONF_MED_MIN and spread_km <= GPS_CONF_MED_KM:
+        return "medium"
+    return "low"
+
+
+def _gps_float(value, *, low: float, high: float, name: str) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        raise ApiError(f"{name} must be a number") from None
+    if parsed < low or parsed > high:
+        raise ApiError(f"{name} must be between {low} and {high}")
+    return parsed
 
 
 def _edges(ids: list[str]) -> dict:
@@ -937,10 +969,164 @@ class DesignApi:
                              if index is not None else None),
                 "thumbnails": _sample(trip.asset_ids, taken,
                                       seed=f"{trip.start}{trip.end}"),
+                "asset_ids": list(trip.asset_ids),
             })
         return {"trips": rows, "assets": len(points),
                 "albums_error": albums_error,
                 "scanned_at": scanned_at.isoformat() if scanned_at else None}
+
+    def trip_gps_preview(self, payload: dict) -> dict:
+        """Suggest coordinates for media in a trip that currently have none.
+
+        Donors come from located media in the same trip on the same day,
+        preferring tighter time windows where possible.
+        """
+        raw_ids = payload.get("asset_ids") or []
+        if not isinstance(raw_ids, list):
+            raise ApiError("asset_ids must be a list")
+        asset_ids: list[str] = []
+        for value in raw_ids:
+            asset_id = str(value)
+            if not ASSET_ID.fullmatch(asset_id):
+                raise ApiError("bad media id")
+            if asset_id not in asset_ids:
+                asset_ids.append(asset_id)
+        if not asset_ids:
+            raise ApiError("no media given")
+
+        points, scanned_at = self._points()
+        if not points:
+            return {"candidates": [], "unresolved": [], "scanned_at": None,
+                    "note": "no library scan yet -- open the Trips tab to build one"}
+
+        by_id = {point.id: point for point in points}
+        trip_points = [by_id[i] for i in asset_ids if i in by_id]
+        located = [point for point in trip_points if point.located]
+        missing = [point for point in trip_points if not point.located]
+
+        candidates = []
+        unresolved = []
+        for point in sorted(missing, key=lambda p: (p.taken_at, p.id)):
+            day = point.taken_at.date()
+            donors = [d for d in located if d.taken_at.date() == day]
+            if not donors:
+                unresolved.append({"asset_id": point.id,
+                                   "taken_at": point.taken_at.isoformat(),
+                                   "reason": "no located media on the same day"})
+                continue
+
+            near = [d for d in donors if _gps_minutes(d.taken_at, point.taken_at) <= GPS_NEAR_MIN]
+            wide = [d for d in donors if _gps_minutes(d.taken_at, point.taken_at) <= GPS_NEAR_MAX]
+            pool = near or wide or donors
+            window = (f"<= {GPS_NEAR_MIN} min" if near else
+                      f"<= {GPS_NEAR_MAX} min" if wide else "same day")
+
+            centre_lat = statistics.median(d.latitude for d in pool)
+            centre_lon = statistics.median(d.longitude for d in pool)
+            spread = max(trips_module.haversine_km(d.latitude, d.longitude,
+                                                   centre_lat, centre_lon)
+                         for d in pool)
+            if spread > GPS_SPREAD_REJECT_KM:
+                unresolved.append({"asset_id": point.id,
+                                   "taken_at": point.taken_at.isoformat(),
+                                   "reason": ("same-day donor locations are too spread out "
+                                              f"({spread:.1f} km)")})
+                continue
+
+            nearest = min(_gps_minutes(d.taken_at, point.taken_at) for d in pool)
+            confidence = _gps_confidence(nearest, spread, len(pool))
+            candidates.append({
+                "asset_id": point.id,
+                "taken_at": point.taken_at.isoformat(),
+                "latitude": round(centre_lat, 6),
+                "longitude": round(centre_lon, 6),
+                "confidence": confidence,
+                "donor_count": len(pool),
+                "window": window,
+                "nearest_minutes": round(nearest, 1),
+                "spread_km": round(spread, 2),
+                "donor_ids": [d.id for d in pool[:10]],
+            })
+
+        return {
+            "scanned_at": scanned_at.isoformat() if scanned_at else None,
+            "trip_assets": len(trip_points),
+            "located": len(located),
+            "without_gps": len(missing),
+            "candidates": candidates,
+            "unresolved": unresolved,
+        }
+
+    def trip_gps_apply(self, payload: dict) -> dict:
+        """Apply selected GPS fills to currently-unlocated media only."""
+        fills = payload.get("fills") or []
+        if not isinstance(fills, list) or not fills:
+            raise ApiError("choose at least one media item to update")
+
+        wanted = []
+        for item in fills:
+            if not isinstance(item, dict):
+                raise ApiError("fills must be a list of objects")
+            asset_id = str(item.get("asset_id") or "")
+            if not ASSET_ID.fullmatch(asset_id):
+                raise ApiError("bad media id")
+            latitude = _gps_float(item.get("latitude"), low=-90.0, high=90.0,
+                                  name="latitude")
+            longitude = _gps_float(item.get("longitude"), low=-180.0, high=180.0,
+                                   name="longitude")
+            wanted.append((asset_id, latitude, longitude))
+
+        updated: list[tuple[str, float, float]] = []
+        skipped: list[dict] = []
+        failed: list[dict] = []
+        for asset_id, latitude, longitude in wanted:
+            try:
+                data = self.client.asset(asset_id)
+            except ImmichError as exc:
+                failed.append({"asset_id": asset_id, "error": str(exc)})
+                continue
+
+            exif = data.get("exifInfo") or {}
+            if exif.get("latitude") is not None and exif.get("longitude") is not None:
+                skipped.append({"asset_id": asset_id,
+                                "reason": "already has GPS"})
+                continue
+
+            try:
+                self.client.set_asset_coordinates(asset_id, latitude, longitude)
+                updated.append((asset_id, latitude, longitude))
+            except ImmichError as exc:
+                failed.append({"asset_id": asset_id, "error": str(exc)})
+
+        # Keep the scan cache coherent after explicit writes.
+        if updated and self._scan is not None:
+            location_by_id = {asset_id: (lat, lon) for asset_id, lat, lon in updated}
+            patched = []
+            for point in self._scan:
+                if point.id not in location_by_id:
+                    patched.append(point)
+                    continue
+                lat, lon = location_by_id[point.id]
+                patched.append(trips_module.Point(
+                    id=point.id,
+                    taken_at=point.taken_at,
+                    latitude=lat,
+                    longitude=lon,
+                    city=point.city,
+                    state=point.state,
+                    country=point.country,
+                    is_video=point.is_video,
+                ))
+            self._scan = patched
+            self._scanned_at = dt.datetime.now()
+            trips_module.save_scan(self.state_dir, self._scan)
+
+        return {
+            "requested": len(wanted),
+            "updated": len(updated),
+            "skipped": skipped,
+            "failed": failed,
+        }
 
     def _album_index(self, refresh: bool = False) -> dict[str, set[str]]:
         """Every album in Immich and the media it holds, by album name.

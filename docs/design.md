@@ -30,7 +30,7 @@ mode's preview, so the preview cannot drift from what a run does.
 | `cover.py` | Cover choice by rule or file name |
 | `trips.py` | Trip detection from geotagged photos away from home |
 | `analyze.py` | Near-miss suggestions for a rule |
-| `design/api.py` | The whole design feature as plain Python (pickers, preview, analyze, save, run) |
+| `design/api.py` | The whole design feature as plain Python (pickers, preview, analyze, save, run, trip GPS backfill preview/apply) |
 | `design/server.py` | HTTP layer: login, routing, static files, thumbnail proxy |
 | `design/auth.py` | scrypt hashes, constant-time compare, sessions |
 | `design/static/` | `index.html`, `login.html`, `app.js`, `style.css`, `icon.svg` |
@@ -86,7 +86,14 @@ Login in front of everything. Read: `/api/whoami`, `/api/people`, `/api/places`,
 `/api/groups`, `/api/accounts`, `/api/immich-albums`, `/api/trips`, `/api/duplicates[/album]`,
 `/api/browse/album`, `/api/backups`, `/api/thumb/…`, `/api/asset/…`. Write: `/api/backups` (create), `/api/backups/restore` (`dry_run`, `config`, `album`), `/api/backups/delete` (`names`, bare `backup-*.json` names only), `/api/preview`, `/api/analyze`,
 `/api/albums`, `/api/groups`, `/api/run`, `/api/add-assets`, `/api/duplicates/remove`,
-`/api/cover`.
+`/api/cover`, `/api/trips/gps-preview`, `/api/trips/gps-apply`.
+
+Trip GPS backfill (N44) is design-mode-only and explicit. `/api/trips/gps-preview`
+computes candidate coordinates for trip media without GPS from same-day, geotagged
+trip media and reports confidence (`high`/`medium`/`low`), donor count, nearest
+time delta and donor spread (km). `/api/trips/gps-apply` updates only selected
+media, skips media that already has GPS, and reports partial failures per item.
+Runtime mode never calls this path.
 
 `POST /api/albums` saves a rule under its slug, replacing one of the same slug. With `new: true`
 ("Save as…", N41) the slug comes from the new name only, and a name another rule already has
@@ -124,6 +131,9 @@ installs `immich-album-butler.service` (daemon) and `immich-album-butler-design.
   would page tens of thousands of assets to find a handful.
 - Rotation (N29) draws from a bag rather than a plain random sample: a plain sample repeats itself,
   so over a year you would see the same few photos again and never the others.
+- Trip GPS backfill (N44) stays conservative: same-day donors only, with wide
+  donor clusters rejected, so a one-click convenience does not become silent,
+  broad geotag drift.
 - Mirror churn is rotation's real cost (N30): each run removes and re-adds up to `pics_per_year`
   assets per year, which shows in Immich's activity feed and can leave a caching client (e.g.
   PyImmichFrame's pool cache) behind for its refresh interval — so a weekly cadence is right and a

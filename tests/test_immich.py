@@ -231,6 +231,25 @@ class AlbumWriteTests(unittest.TestCase):
             with self.assertRaises(ImmichError):
                 client.delete_album(album.id)
 
+    def test_setting_asset_coordinates_updates_the_asset(self):
+        library = [make_asset(1, when=day(2019, 7, 1))]
+        with StubImmich(library, page_size=100) as stub:
+            client = ImmichClient(stub.url, API_KEY)
+            client.set_asset_coordinates(fake_id(1), 41.9, 12.5)
+            refreshed = client.asset(fake_id(1))
+        exif = refreshed.get("exifInfo") or {}
+        self.assertEqual(exif.get("latitude"), 41.9)
+        self.assertEqual(exif.get("longitude"), 12.5)
+
+    def test_setting_asset_coordinates_needs_asset_update_scope(self):
+        library = [make_asset(1, when=day(2019, 7, 1))]
+        with StubImmich(library, missing_permissions={"asset.update"}) as stub:
+            client = ImmichClient(stub.url, API_KEY)
+            with self.assertRaises(ImmichError) as caught:
+                client.set_asset_coordinates(fake_id(1), 41.9, 12.5)
+        self.assertEqual(caught.exception.status, 403)
+        self.assertIn("asset.update", str(caught.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

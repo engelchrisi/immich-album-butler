@@ -759,6 +759,55 @@ class TripTests(DesignTestCase):
         self.assertEqual(searches, 0)
 
 
+class GpsFillTests(DesignTestCase):
+    def setUp(self):
+        self.assets = [
+            make_asset(1, when=day(2020, 3, 1, 10), lat=35.7000, lon=139.7000,
+                       city="Tokyo", country="Japan"),
+            make_asset(2, when=day(2020, 3, 1, 10), lat=35.7006, lon=139.7007,
+                       city="Tokyo", country="Japan"),
+            make_asset(3, when=day(2020, 3, 1, 10), city="Tokyo", country="Japan"),
+            make_asset(4, when=day(2020, 3, 2, 9), city="Tokyo", country="Japan"),
+        ]
+        super().setUp()
+
+    def _scan(self):
+        trips_module.save_scan(self.state_dir, trips_module.scan(self.client))
+        self.api._scan = None
+
+    def test_preview_suggests_coordinates_from_same_day_donors(self):
+        self._scan()
+        result = self.api.trip_gps_preview({"asset_ids": [fake_id(n) for n in (1, 2, 3, 4)]})
+        self.assertEqual(len(result["candidates"]), 1)
+        self.assertEqual(result["candidates"][0]["asset_id"], fake_id(3))
+        self.assertEqual(result["candidates"][0]["confidence"], "high")
+        self.assertIn(fake_id(4), {u["asset_id"] for u in result["unresolved"]})
+
+    def test_apply_updates_the_selected_assets(self):
+        self._scan()
+        preview = self.api.trip_gps_preview({"asset_ids": [fake_id(n) for n in (1, 2, 3)]})
+        chosen = preview["candidates"][0]
+        result = self.api.trip_gps_apply({"fills": [{
+            "asset_id": chosen["asset_id"],
+            "latitude": chosen["latitude"],
+            "longitude": chosen["longitude"],
+        }]})
+        self.assertEqual(result["updated"], 1)
+        refreshed = self.client.asset(fake_id(3))
+        exif = refreshed.get("exifInfo") or {}
+        self.assertIsNotNone(exif.get("latitude"))
+        self.assertIsNotNone(exif.get("longitude"))
+
+    def test_apply_skips_assets_that_already_have_gps(self):
+        result = self.api.trip_gps_apply({"fills": [{
+            "asset_id": fake_id(1),
+            "latitude": 35.7,
+            "longitude": 139.7,
+        }]})
+        self.assertEqual(result["updated"], 0)
+        self.assertEqual(result["skipped"][0]["asset_id"], fake_id(1))
+
+
 # --------------------------------------------------------------------------
 # the HTTP layer
 # --------------------------------------------------------------------------

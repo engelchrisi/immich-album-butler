@@ -412,6 +412,20 @@ def _make_handler(stub: StubImmich):
             stub.requests.append(("PATCH", path))
             body = self._body()
 
+            if path.startswith("/api/assets/") and path.count("/") == 3:
+                if not self._authorized("asset.update"):
+                    return
+                asset_id = path.split("/")[3]
+                asset = next((a for a in stub.assets if a["id"] == asset_id), None)
+                if asset is None:
+                    return self._send(404, {"message": "Not found"})
+                exif = asset.setdefault("exifInfo", {})
+                if "latitude" in body:
+                    exif["latitude"] = body["latitude"]
+                if "longitude" in body:
+                    exif["longitude"] = body["longitude"]
+                return self._send(200, _public(asset))
+
             # Setting a cover is the one call that needs album.update, so the
             # stub guards it separately -- a key without that permission has to
             # fail here and nowhere else.

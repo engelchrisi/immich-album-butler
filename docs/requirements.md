@@ -53,11 +53,12 @@ Priority: P1 = needed, P2 = wanted.
 | N41 | **Save as.** The builder can save a saved album's rule under a new name as a new album; the original rule and its Immich album are untouched. A name another rule already uses is refused | P2 |
 | N42 | **Builder URLs.** `/builder` (e.g. from the menu) opens an empty new-album form, or the unsaved draft started from *New album* or a trip; only `/builder/<slug>` (Edit on the Albums page) shows a saved album | P2 |
 | N43 | **Sorting.** The Albums page sorts by name (A–Z, Z–A) or by last run (newest or oldest first; albums that never ran, including normal Immich albums, always last); the Trips page by date (newest or oldest first), name, most media or longest. Client-side only; the choice is remembered per browser | P2 |
+| N44 | **Trip GPS backfill (manual).** In design mode's Trips tab, the user may request coordinate suggestions for trip media that have no GPS. Suggestions are inferred from same-day, geotagged trip media, carry a confidence label, and are previewed before any write. Applying GPS is explicit (confirmed by the user), never overwrites media that already has GPS, and reports per-item failures without stopping other updates | P2 |
 
 ## 2. Safety
 | # | Requirement | Prio |
 |---|---|---|
-| N22 | Writes albums only: never deletes assets, never modifies originals, never deletes an album, never `DELETE /assets` | P1 |
+| N22 | Writes albums only by default: never deletes assets, never modifies originals, never deletes an album, never `DELETE /assets`. The one exception is N44's explicit, user-confirmed GPS backfill in design mode, which updates location metadata for selected media only | P1 |
 | N23 | The API key comes from the environment (`IMMICH_KEY`), never a flag, a config file, a log or a browser | P1 |
 
 ## 3. Non-functional

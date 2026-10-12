@@ -366,6 +366,18 @@ class ImmichClient:
         """One asset's full record, EXIF included. Needs `asset.read`."""
         return self.request("GET", f"assets/{asset_id}") or {}
 
+    def set_asset_coordinates(self, asset_id: str, latitude: float,
+                              longitude: float) -> None:
+        """Set one asset's location fields.
+
+        Used only by the explicit design-mode GPS backfill flow: never by the
+        unattended runtime. Needs `asset.update` on the key.
+        """
+        self.request("PATCH", f"assets/{asset_id}", {
+            "latitude": latitude,
+            "longitude": longitude,
+        })
+
     def thumbnail(self, asset_id: str, size: str = "thumbnail") -> tuple[bytes, str]:
         """Fetch a thumbnail server-side, so the browser never sees the key."""
         url = f"{self.base_url}/api/assets/{asset_id}/thumbnail?size={size}"

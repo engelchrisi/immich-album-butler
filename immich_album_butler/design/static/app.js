@@ -1849,13 +1849,75 @@ function renderTripList() {
       el("div", { class: "meta" },
         [...trip.countries, ...trip.cities.slice(0, 3)].join(", ")),
       ...strips,
-      el("div", { class: "bar" }, button("Open in builder", () => fromTrip(trip))));
+      el("div", { class: "bar" },
+        button("Open in builder", () => fromTrip(trip)),
+        button("Fill missing GPS", () => fillTripGps(trip))));
     list.append(card);
   }
 }
 
 function coveredElsewhere(trip) {
   return trip.covered_by && trip.covered_by !== (trip.in_album && trip.in_album.name);
+}
+
+async function fillTripGps(trip) {
+  banner("Looking for GPS suggestions…", true);
+  let result;
+  try {
+    result = await post("/api/trips/gps-preview", { asset_ids: trip.asset_ids || [] });
+  } catch (error) {
+    return banner(error.message);
+  }
+
+  const panel = $("analysis");
+  panel.replaceChildren();
+  if (result.note) panel.append(el("div", { class: "muted" }, result.note));
+
+  const candidates = result.candidates || [];
+  const unresolved = result.unresolved || [];
+  panel.append(el("div", { class: "card" },
+    el("h3", {}, `GPS suggestions for ${trip.name}`),
+    el("div", { class: "meta" },
+      `${result.without_gps || 0} without GPS · ${candidates.length} candidate` +
+      `${candidates.length === 1 ? "" : "s"} · ${unresolved.length} unresolved`)));
+
+  for (const item of candidates.slice(0, 20)) {
+    panel.append(el("div", { class: "card" },
+      el("h3", {}, `${item.confidence.toUpperCase()} · ${item.asset_id}`),
+      el("div", { class: "meta" },
+        `${item.latitude}, ${item.longitude} · ${item.window} · ` +
+        `nearest ${item.nearest_minutes} min · spread ${item.spread_km} km · ` +
+        `${item.donor_count} donor(s)`)));
+  }
+  if (unresolved.length) {
+    panel.append(el("div", { class: "card" },
+      el("h3", {}, "Unresolved"),
+      ...unresolved.slice(0, 20).map((item) =>
+        el("div", { class: "meta" }, `${item.asset_id}: ${item.reason}`))));
+  }
+
+  const high = candidates.filter((item) => item.confidence === "high");
+  if (!high.length) {
+    return banner("No high-confidence GPS suggestions to apply.", true);
+  }
+  if (!confirm(`Apply ${high.length} high-confidence GPS fill` +
+               `${high.length === 1 ? "" : "s"} for this trip?`)) {
+    return banner("GPS fill cancelled.", true);
+  }
+
+  try {
+    const applied = await post("/api/trips/gps-apply", {
+      fills: high.map((item) => ({
+        asset_id: item.asset_id,
+        latitude: item.latitude,
+        longitude: item.longitude,
+      })),
+    });
+    banner(`GPS fill: updated ${applied.updated}/${applied.requested}` +
+           (applied.failed.length ? `, ${applied.failed.length} failed` : ""), true);
+  } catch (error) {
+    banner(error.message);
+  }
 }
 
 function fromTrip(trip) {
