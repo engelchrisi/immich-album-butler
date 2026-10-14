@@ -1,5 +1,9 @@
 # Changes
 
+## 1.5.2 — 2026-10-14
+- Tests: shorten fake HTTP-server shutdown polling and avoid redundant scrypt setup work, keeping
+  the same isolated server, authentication and session coverage with substantially less waiting.
+
 ## 1.5.1 — 2026-10-14
 - Design UI: image tooltips wait until the pointer has remained steady on a thumbnail for half a
   second, avoiding accidental popups while moving across photo grids.

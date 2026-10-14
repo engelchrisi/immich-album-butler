@@ -91,7 +91,12 @@ class StubImmich:
         stub = self
         handler = _make_handler(stub)
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        # shutdown() waits for serve_forever()'s polling loop.  Its 0.5 second
+        # default dominates a suite that creates a fresh stub for each test.
+        self._thread = threading.Thread(
+            target=self._server.serve_forever,
+            kwargs={"poll_interval": 0.02},
+            daemon=True)
         self._thread.start()
         return self
 

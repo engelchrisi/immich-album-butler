@@ -51,8 +51,14 @@ class HashTests(unittest.TestCase):
 
 
 class UsersTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # User lookup tests need a valid hash, but not a newly salted one for
+        # every method.  HashTests separately covers salt generation.
+        cls.password_hash = hash_password(PASSWORD)
+
     def setUp(self):
-        self.users = Users([User("designer", hash_password(PASSWORD))])
+        self.users = Users([User("designer", self.password_hash)])
 
     def test_the_right_credentials_return_the_user(self):
         self.assertEqual(self.users.check("designer", PASSWORD).name, "designer")
@@ -73,7 +79,9 @@ class UsersTests(unittest.TestCase):
 
 class SessionTests(unittest.TestCase):
     def setUp(self):
-        self.user = User("designer", hash_password(PASSWORD))
+        # Sessions retain only the user's name; password hashing is unrelated
+        # to every assertion in this class.
+        self.user = User("designer", "unused-in-session-tests")
         self.sessions = Sessions()
 
     def test_a_fresh_token_names_its_user(self):

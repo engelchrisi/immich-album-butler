@@ -868,6 +868,7 @@ class ServerTestCase(DesignTestCase):
     """A real socket, with one configured login."""
 
     logins = True
+    _password_hash = None
 
     def setUp(self):
         super().setUp()
@@ -875,19 +876,33 @@ class ServerTestCase(DesignTestCase):
                                                      Users, hash_password)
         from immich_album_butler.design.server import Idle
 
-        self.accounts = Users([User(USER, hash_password(PASSWORD))]
-                              if self.logins else [])
+        if self.logins and ServerTestCase._password_hash is None:
+            # The HTTP tests exercise authentication, not password creation.
+            # Production-strength scrypt is intentionally expensive, so make
+            # one valid hash for the suite instead of regenerating it per test.
+            ServerTestCase._password_hash = hash_password(PASSWORD)
+        self.accounts = Users(
+            [User(USER, ServerTestCase._password_hash)] if self.logins else [])
         self.sessions = Sessions()
         self.throttle = Throttle()
         handler = _make_handler(self.api, self.accounts, Idle(0),
                                 self.sessions, self.throttle)
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         self.server.daemon_threads = True
-        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        # Keep shutdown deterministic and cheap.  The default half-second
+        # polling interval otherwise gets paid once for every server test.
+        self.server_thread = threading.Thread(
+            target=self.server.serve_forever,
+            kwargs={"poll_interval": 0.02},
+            daemon=True)
+        self.server_thread.start()
         host, port = self.server.server_address[:2]
         self.host = f"{host}:{port}"
         self.base = f"http://{self.host}"
         self.cookie = None
+        # Cleanups run last-in, first-out: stop accepting work, close the
+        # socket, then prove the serving thread has exited.
+        self.addCleanup(self.server_thread.join, 5)
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
 
