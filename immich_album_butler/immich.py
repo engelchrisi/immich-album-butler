@@ -378,6 +378,18 @@ class ImmichClient:
             "longitude": longitude,
         })
 
+    def set_asset_favorite(self, asset_id: str, favorite: bool) -> None:
+        """Star or unstar one asset. Needs `asset.update` on the key."""
+        self.request("PUT", f"assets/{asset_id}",
+                     {"isFavorite": bool(favorite)})
+
+    def set_asset_rating(self, asset_id: str, rating: int) -> None:
+        """Set one asset's Immich/XMP rating, including -1 for rejected."""
+        if isinstance(rating, bool) or not isinstance(rating, int) \
+                or not -1 <= rating <= 5:
+            raise ValueError(f"rating must be -1..5, not {rating!r}")
+        self.request("PUT", f"assets/{asset_id}", {"rating": rating})
+
     def thumbnail(self, asset_id: str, size: str = "thumbnail") -> tuple[bytes, str]:
         """Fetch a thumbnail server-side, so the browser never sees the key."""
         url = f"{self.base_url}/api/assets/{asset_id}/thumbnail?size={size}"

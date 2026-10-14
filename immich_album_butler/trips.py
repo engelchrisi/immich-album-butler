@@ -30,7 +30,7 @@ from .immich import Asset, ImmichClient
 log = logging.getLogger(__name__)
 
 SCAN_FILE = "scan.json"
-SCAN_VERSION = 1
+SCAN_VERSION = 4
 
 # Defaults chosen to find holidays, not day trips.
 AWAY_KM = 100.0
@@ -51,6 +51,7 @@ class Point:
     city: str | None = None
     state: str | None = None
     country: str | None = None
+    camera: str | None = None
     is_video: bool = False
 
     @property
@@ -64,17 +65,18 @@ class Point:
         return cls(id=asset.id, taken_at=asset.taken_at,
                    latitude=asset.latitude, longitude=asset.longitude,
                    city=asset.city, state=asset.state, country=asset.country,
+                   camera=asset.camera,
                    is_video=asset.is_video)
 
     def to_json(self) -> list:
         return [self.id, self.taken_at.isoformat(), self.latitude, self.longitude,
-                self.city, self.state, self.country, self.is_video]
+                self.city, self.state, self.country, self.camera, self.is_video]
 
     @classmethod
     def from_json(cls, row: Sequence) -> "Point":
         return cls(id=row[0], taken_at=dt.datetime.fromisoformat(row[1]),
                    latitude=row[2], longitude=row[3], city=row[4], state=row[5],
-                   country=row[6], is_video=bool(row[7]))
+                   country=row[6], camera=row[7], is_video=bool(row[8]))
 
 
 @dataclass

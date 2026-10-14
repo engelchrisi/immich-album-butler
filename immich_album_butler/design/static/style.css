@@ -156,7 +156,39 @@ button.link { background: none; border: none; color: var(--accent); padding: 0.2
   width: 64px; height: 64px; object-fit: cover; border-radius: 4px; background: var(--thumb-bg);
 }
 .gps-overview img { width: 56px; height: 56px; }
+.gps-day-heading { margin: 1rem 0 0.4rem; }
+.gps-day-heading:first-child { margin-top: 0.6rem; }
+.gps-camera-heading { margin-top: 0.55rem; }
+.gps-camera-section {
+  margin: 1rem 0 0;
+  padding: 0.45rem 0.55rem;
+  border-radius: 5px;
+  background: var(--surface, var(--panel));
+}
 .gps-donors { margin-top: 0.4rem; }
+.gps-shared-picker { margin-top: 0.75rem; }
+.gps-shared-picker summary { cursor: pointer; font-weight: 600; }
+.gps-source-heading { margin: 0.75rem 0 0.25rem; }
+.gps-source-empty { margin-top: 0.75rem; }
+.gps-shared-donors {
+  max-height: 18rem;
+  overflow-y: auto;
+  align-content: flex-start;
+  padding: 0.35rem 0.2rem;
+}
+.gps-source-tile { flex: 0 0 64px; text-align: center; }
+.gps-source-tile .gps-source-favorite {
+  width: 2rem;
+  min-height: 1.5rem;
+  margin-top: 0.15rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.15rem;
+  line-height: 1;
+}
+.gps-source-tile .gps-source-favorite.active { color: #d8a721; }
 .gps-donors .gps-donor-choice {
   flex: 0 0 64px;
   width: 64px;
@@ -393,8 +425,26 @@ body.login .message {
   position: absolute; inset: 0; width: 100%; height: 100%;
   object-fit: contain; border-radius: 4px;
 }
-/* The builder preview's card has buttons, so it takes the pointer. */
+/* Every card has photo actions, so it takes the pointer and survives the trip
+   from its thumbnail to either corner button. */
 #hover-card.interactive { pointer-events: auto; }
+#hover-card .hover-photo-action {
+  position: absolute; z-index: 2; top: 4px; width: 56px; height: 56px;
+  padding: 10px; box-sizing: border-box; border: 0; border-radius: 28px;
+  background: rgba(0, 0, 0, 0.35); background-clip: content-box;
+  color: #fff; font-size: 22px; line-height: 36px; text-align: center;
+  cursor: pointer;
+}
+#hover-card .hover-photo-action.reject { left: 4px; font-size: 20px; }
+#hover-card .hover-photo-action.favorite { right: 4px; }
+#hover-card .hover-photo-action.reject.active { color: #ffb020; }
+#hover-card .hover-photo-action.favorite.active { color: #ff5a7a; }
+#hover-card .hover-photo-action:disabled { cursor: default; opacity: 0.6; }
+@media (hover: hover) {
+  #hover-card .hover-photo-action:not(:disabled):hover {
+    background-color: rgba(0, 0, 0, 0.55); transform: scale(1.1);
+  }
+}
 #hover-card .hover-side { flex: 1 1 auto; min-width: 0; display: flex;
                           flex-direction: column; gap: 0.8rem; }
 #hover-card .hover-actions { display: flex; flex-wrap: wrap; gap: 0.5rem;

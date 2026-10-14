@@ -179,13 +179,15 @@ class DesignApi:
         self.state_dir = Path(state_dir)
         self._scan: list[trips_module.Point] | None = None
         self._scanned_at: dt.datetime | None = None
-        self._albums: dict[str, set[str]] | None = None
+        self._albums: dict[str, tuple[str, set[str]]] | None = None
         self._albums_read: float = 0.0
         self._dups: list[dict] | None = None
         self._dups_at: dt.datetime | None = None
         self._backup_lock = threading.Lock()
         self._backup_progress: dict = {"running": False, "message": "",
                                        "done": 0, "total": 0}
+        self._rejected: dict[str, int | None] = {}
+        self._rejected_lock = threading.Lock()
         # Set by design/server.py once the bind-watcher exists, so the UI's
         # "Reload config" button has something to trigger.
         self.reload_trigger: Callable[[], None] | None = None
@@ -247,7 +249,46 @@ class DesignApi:
             "people": [p["name"] for p in data.get("people") or []
                        if p.get("name")],
             "favorite": bool(data.get("isFavorite")),
+            "rating": exif.get("rating"),
+            "rejected": exif.get("rating") == -1,
         }
+
+    def set_asset_favorite(self, asset_id: str, favorite: bool) -> dict:
+        """Toggle Immich's favourite flag from an image hover card."""
+        self._asset_id(asset_id)
+        if not isinstance(favorite, bool):
+            raise ApiError("favorite must be true or false")
+        self.client.set_asset_favorite(asset_id, favorite)
+        return {"id": asset_id, "favorite": favorite}
+
+    def set_asset_rejected(self, asset_id: str, rejected: bool) -> dict:
+        """Set Immich's rejected rating, remembering the old rating for undo."""
+        self._asset_id(asset_id)
+        if not isinstance(rejected, bool):
+            raise ApiError("rejected must be true or false")
+        current = (self.client.asset(asset_id).get("exifInfo") or {}).get("rating")
+        with self._rejected_lock:
+            if rejected:
+                prior = self._rejected.get(asset_id, current)
+                if prior == -1:
+                    prior = None
+                value = -1
+            else:
+                prior = self._rejected.get(asset_id)
+                value = prior if isinstance(prior, int) else 0
+        self.client.set_asset_rating(asset_id, value)
+        with self._rejected_lock:
+            if rejected:
+                self._rejected[asset_id] = prior
+            else:
+                self._rejected.pop(asset_id, None)
+        return {"id": asset_id, "rejected": rejected, "rating": value}
+
+    @staticmethod
+    def _asset_id(asset_id: str) -> str:
+        if not ASSET_ID.fullmatch(asset_id):
+            raise ApiError("not an asset id")
+        return asset_id
 
     # -- configuration ----------------------------------------------------
 
@@ -1003,9 +1044,28 @@ class DesignApi:
         trip_points = [by_id[i] for i in asset_ids if i in by_id]
         located = [point for point in trip_points if point.located]
         missing = [point for point in trip_points if not point.located]
+        album_id = str(payload.get("album_id") or "")
+        album_members = None
+        if album_id:
+            if not ASSET_ID.fullmatch(album_id):
+                raise ApiError("bad album id")
+            try:
+                album_members = self.client.album_asset_ids(album_id)
+            except ImmichError as exc:
+                raise ApiError(str(exc), status=502) from None
 
         candidates = []
         unresolved = []
+
+        donor_pool = ([point for point in points if point.located and point.id in album_members]
+                      if album_members is not None else located)
+        available_donors = [{
+            "asset_id": point.id,
+            "latitude": round(point.latitude, 6),
+            "longitude": round(point.longitude, 6),
+            "taken_at": point.taken_at.isoformat(),
+            "camera": point.camera,
+        } for point in sorted(donor_pool, key=lambda p: (p.taken_at, p.id))]
 
         def donor_choices_for(target: trips_module.Point,
                               donor_pool: list[trips_module.Point]) -> list[dict]:
@@ -1027,6 +1087,7 @@ class DesignApi:
                 nearby = donor_choices_for(point, located)
                 unresolved.append({"asset_id": point.id,
                                    "taken_at": point.taken_at.isoformat(),
+                                   "camera": point.camera,
                                    "reason": "no located media on the same day",
                                    "nearby_donor_choices": nearby})
                 continue
@@ -1048,6 +1109,7 @@ class DesignApi:
                 nearby = donor_choices_for(point, donors)
                 unresolved.append({"asset_id": point.id,
                                    "taken_at": point.taken_at.isoformat(),
+                                   "camera": point.camera,
                                    "reason": ("same-day donor locations are too spread out "
                                               f"({spread:.1f} km)"),
                                    "nearby_donor_choices": nearby})
@@ -1060,6 +1122,7 @@ class DesignApi:
             candidates.append({
                 "asset_id": point.id,
                 "taken_at": point.taken_at.isoformat(),
+                "camera": point.camera,
                 "latitude": round(best.latitude, 6),
                 "longitude": round(best.longitude, 6),
                 "confidence": confidence,
@@ -1081,6 +1144,7 @@ class DesignApi:
             "trip_assets": len(trip_points),
             "located": len(located),
             "without_gps": len(missing),
+            "available_donors": available_donors,
             "candidates": candidates,
             "unresolved": unresolved,
         }
@@ -1156,7 +1220,7 @@ class DesignApi:
             "failed": failed,
         }
 
-    def _album_index(self, refresh: bool = False) -> dict[str, set[str]]:
+    def _album_index(self, refresh: bool = False) -> dict[str, tuple[str, set[str]]]:
         """Every album in Immich and the media it holds, by album name.
 
         One search per album, so it is kept for a while rather than read on
@@ -1164,7 +1228,7 @@ class DesignApi:
         """
         stale = time.monotonic() - self._albums_read > ALBUM_INDEX_TTL
         if self._albums is None or refresh or stale:
-            self._albums = {album.name: self.client.album_asset_ids(album.id)
+            self._albums = {album.name: (album.id, self.client.album_asset_ids(album.id))
                             for album in self.client.albums()}
             self._albums_read = time.monotonic()
         return self._albums
@@ -1367,7 +1431,7 @@ def _covering(trip, windows) -> str | None:
     return None
 
 
-def _in_album(trip, index: dict[str, set[str]], taken: dict) -> dict | None:
+def _in_album(trip, index: dict[str, tuple[str, set[str]]], taken: dict) -> dict | None:
     """The Immich album that already holds this trip, if any.
 
     Asset-based, so it finds albums made by hand or imported as well as the
@@ -1379,7 +1443,7 @@ def _in_album(trip, index: dict[str, set[str]], taken: dict) -> dict | None:
     first = dt.datetime.combine(trip.start, dt.time.min) - ALBUM_SLACK
     last = dt.datetime.combine(trip.end, dt.time.max) + ALBUM_SLACK
     best = None
-    for name, members in index.items():
+    for name, (album_id, members) in index.items():
         if not members:
             continue
         held = len(ids & members) / len(ids)
@@ -1390,7 +1454,7 @@ def _in_album(trip, index: dict[str, set[str]], taken: dict) -> dict | None:
         if within / len(members) <= ALBUM_WITHIN:
             continue
         if best is None or held > best["share"]:
-            best = {"name": name, "share": held}
+            best = {"id": album_id, "name": name, "share": held}
     if best:
         best["share"] = round(best["share"] * 100)
     return best

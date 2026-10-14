@@ -1,5 +1,24 @@
 # Changes
 
+## 1.5.1 — 2026-10-14
+- Design UI: image tooltips wait until the pointer has remained steady on a thumbnail for half a
+  second, avoiding accidental popups while moving across photo grids.
+- GPS review: donor favorites are now a dedicated browser-saved source list, unrelated to Immich's
+  heart favorite, and only sources belonging to the current album are offered.
+
+## 1.5.0 — 2026-10-14
+- Design UI: every image hover card now stays open under the pointer and has PyImmichFrame-style
+  favourite (♡/♥) and "not wanted" (⊘) buttons. They update Immich's `isFavorite` flag and rejected
+  rating (`-1`) through the server-side proxy; undo restores the prior rating while the process runs.
+- GPS review: checked rows can share one source chosen from any geotagged photo in the trip, so a
+  bad nearby suggestion can be replaced for several photos with one selection.
+- Geotagged Immich favorites from across the library appear as quick-pick GPS sources.
+
+## 1.4.0 — 2026-10-14
+- Design UI, trip GPS backfill: group missing-location photos by EXIF camera make/model in the
+  overview, automatic review and unresolved review. Photos without camera metadata have their own
+  `Unknown camera` group.
+
 ## 1.3.0 — 2026-10-10
 - Design UI: sort selector on the Albums tab (name A–Z / Z–A, last run newest / oldest first; albums
   that never ran go last) and on the Trips tab (newest, oldest, name, most media, longest). The

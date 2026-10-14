@@ -36,7 +36,8 @@ def make_asset(number: int, *, when: str, lat: float | None = None,
                state: str | None = None, country: str | None = None,
                kind: str = "IMAGE", people: tuple[str, ...] = (),
                file_name: str | None = None, favorite: bool = False,
-               rating: int | None = None) -> dict:
+               rating: int | None = None, make: str | None = None,
+               model: str | None = None) -> dict:
     """One asset as Immich's search/metadata returns it."""
     return {
         "id": fake_id(number),
@@ -49,6 +50,7 @@ def make_asset(number: int, *, when: str, lat: float | None = None,
         "_people": list(people),          # stub-only, used for personIds filtering
         "exifInfo": {"latitude": lat, "longitude": lon, "city": city,
                      "state": state, "country": country, "rating": rating,
+                     "make": make, "model": model,
                      "dateTimeOriginal": when},
     }
 
@@ -357,6 +359,10 @@ def _make_handler(stub: StubImmich):
                     exif["latitude"] = body["latitude"]
                 if "longitude" in body:
                     exif["longitude"] = body["longitude"]
+                if "isFavorite" in body:
+                    asset["isFavorite"] = body["isFavorite"]
+                if "rating" in body:
+                    exif["rating"] = body["rating"]
                 return self._send(200, _public(asset))
 
             if path.startswith("/api/albums/") and path.endswith("/assets"):

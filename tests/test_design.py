@@ -123,6 +123,33 @@ class AssetDetailsTests(DesignTestCase):
     def test_only_a_curated_set_of_fields_leaves_the_server(self):
         self.assertNotIn("originalPath", self.api.asset_details(fake_id(1)))
 
+    def test_favorite_and_rejected_are_changed_from_the_hover_card(self):
+        self.assertEqual(self.api.set_asset_favorite(fake_id(1), True),
+                         {"id": fake_id(1), "favorite": True})
+        rejected = self.api.set_asset_rejected(fake_id(1), True)
+        self.assertTrue(rejected["rejected"])
+        details = self.api.asset_details(fake_id(1))
+        self.assertTrue(details["favorite"])
+        self.assertTrue(details["rejected"])
+        self.api.set_asset_rejected(fake_id(1), False)
+        self.api.set_asset_favorite(fake_id(1), False)
+
+    def test_undo_rejected_restores_the_previous_rating(self):
+        self.stub.assets[0]["exifInfo"]["rating"] = 4
+        self.api.set_asset_rejected(fake_id(1), True)
+        restored = self.api.set_asset_rejected(fake_id(1), False)
+        self.assertEqual(restored["rating"], 4)
+        self.assertEqual(self.api.asset_details(fake_id(1))["rating"], 4)
+
+    def test_photo_actions_require_booleans_and_asset_ids(self):
+        for work in (
+            lambda: self.api.set_asset_favorite(fake_id(1), "yes"),
+            lambda: self.api.set_asset_rejected(fake_id(1), 1),
+            lambda: self.api.set_asset_favorite("../users", True),
+        ):
+            with self.assertRaises(ApiError):
+                work()
+
     def test_something_that_is_not_an_id_is_refused(self):
         for bad in ("../users", "a/b", "x?size=1", ""):
             with self.assertRaises(ApiError):
@@ -716,7 +743,10 @@ class TripTests(DesignTestCase):
         """Any album counts, not just the butler's: this one was made by hand."""
         self.stub.add_album("Tokyo by hand", [fake_id(50 + n) for n in range(30)])
         trip = self.api.trips(rescan=True)["trips"][0]
-        self.assertEqual(trip["in_album"], {"name": "Tokyo by hand", "share": 75})
+        self.assertEqual(trip["in_album"], {
+            "id": self.stub.album_named("Tokyo by hand")["id"],
+            "name": "Tokyo by hand", "share": 75,
+        })
 
     def test_a_long_running_album_does_not_mark_it(self):
         """An album of everything, Rome included, holds the trip but is not it."""
@@ -767,7 +797,10 @@ class GpsFillTests(DesignTestCase):
             make_asset(2, when=day(2020, 3, 1, 10), lat=35.7006, lon=139.7007,
                        city="Tokyo", country="Japan"),
             make_asset(3, when=day(2020, 3, 1, 10), city="Tokyo", country="Japan"),
-            make_asset(4, when=day(2020, 3, 2, 9), city="Tokyo", country="Japan"),
+            make_asset(4, when=day(2020, 3, 2, 9), city="Tokyo", country="Japan",
+                       make="ExampleCam", model="Pocket 2"),
+            make_asset(5, when=day(2019, 1, 1, 12), lat=48.2000, lon=16.3700,
+                       city="Vienna", country="Austria"),
         ]
         super().setUp()
 
@@ -777,12 +810,20 @@ class GpsFillTests(DesignTestCase):
 
     def test_preview_suggests_coordinates_from_same_day_donors(self):
         self._scan()
-        result = self.api.trip_gps_preview({"asset_ids": [fake_id(n) for n in (1, 2, 3, 4)]})
+        album = self.stub.add_album("Tokyo 2020", [fake_id(n) for n in (1, 3, 4)])
+        result = self.api.trip_gps_preview({
+            "asset_ids": [fake_id(n) for n in (1, 2, 3, 4)],
+            "album_id": album["id"],
+        })
         self.assertEqual(len(result["candidates"]), 1)
         self.assertEqual(result["candidates"][0]["asset_id"], fake_id(3))
         self.assertEqual(result["candidates"][0]["confidence"], "high")
+        self.assertIsNone(result["candidates"][0]["camera"])
+        self.assertEqual([item["asset_id"] for item in result["available_donors"]],
+                         [fake_id(1)])
         unresolved = {u["asset_id"]: u for u in result["unresolved"]}
         self.assertIn(fake_id(4), unresolved)
+        self.assertEqual(unresolved[fake_id(4)]["camera"], "ExampleCam Pocket 2")
         self.assertGreaterEqual(len(unresolved[fake_id(4)]["nearby_donor_choices"]), 1)
 
     def test_apply_updates_the_selected_assets(self):
@@ -1102,6 +1143,21 @@ class RoutingTests(ServerTestCase):
         details = self.fetch(f"/api/asset/{fake_id(1)}")
         self.assertEqual(details["file_name"], "IMG_0001.jpg")
         self.assertNotIn(API_KEY, json.dumps(details))
+
+    def test_hover_card_photo_actions_are_served_over_http(self):
+        favorite = self.fetch(f"/api/asset/{fake_id(1)}/favorite", method="POST",
+                              body={"favorite": True})
+        rejected = self.fetch(f"/api/asset/{fake_id(1)}/reject", method="POST",
+                              body={"rejected": True})
+        self.assertTrue(favorite["favorite"])
+        self.assertTrue(rejected["rejected"])
+        details = self.fetch(f"/api/asset/{fake_id(1)}")
+        self.assertTrue(details["favorite"])
+        self.assertTrue(details["rejected"])
+        self.fetch(f"/api/asset/{fake_id(1)}/reject", method="POST",
+                   body={"rejected": False})
+        self.fetch(f"/api/asset/{fake_id(1)}/favorite", method="POST",
+                   body={"favorite": False})
 
     def test_one_albums_media_is_served_over_http(self):
         with self.assertRaises(urllib.error.HTTPError) as caught:

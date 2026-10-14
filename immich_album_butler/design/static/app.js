@@ -1892,7 +1892,10 @@ async function fillTripGps(trip, preferredDay = "") {
   panel.replaceChildren(el("div", { class: "spin" }, "Building GPS suggestions…"));
   let result;
   try {
-    result = await post("/api/trips/gps-preview", { asset_ids: trip.asset_ids || [] });
+    result = await post("/api/trips/gps-preview", {
+      asset_ids: trip.asset_ids || [],
+      album_id: trip.in_album?.id || "",
+    });
   } catch (error) {
     panel.replaceChildren();
     return banner(error.message);
@@ -1902,6 +1905,8 @@ async function fillTripGps(trip, preferredDay = "") {
   if (result.note) panel.append(el("div", { class: "muted" }, result.note));
 
   const candidates = result.candidates || [];
+  const availableDonors = result.available_donors || [];
+  const donorFavoriteIds = gpsDonorFavorites();
   const orderedCandidates = [...candidates].sort((a, b) =>
     (a.taken_at || "").localeCompare(b.taken_at || "")
       || (a.asset_id || "").localeCompare(b.asset_id || ""));
@@ -1930,6 +1935,20 @@ async function fillTripGps(trip, preferredDay = "") {
     return [item.asset_id, choices[0] || null];
   }));
   const unresolvedSelected = new Map(unresolved.map((item) => [item.asset_id, false]));
+  const cameraName = (item) => item.camera || "Unknown camera";
+  const byCamera = (items) => {
+    const groups = new Map();
+    for (const item of items) {
+      const camera = cameraName(item);
+      if (!groups.has(camera)) groups.set(camera, []);
+      groups.get(camera).push(item);
+    }
+    return [...groups.entries()].sort(([left], [right]) => {
+      if (left === "Unknown camera") return 1;
+      if (right === "Unknown camera") return -1;
+      return left.localeCompare(right);
+    });
+  };
   const byDay = new Map();
   for (const item of orderedCandidates) {
     const day = (item.taken_at || "").slice(0, 10) || "(no date)";
@@ -2041,6 +2060,77 @@ async function fillTripGps(trip, preferredDay = "") {
         : "Choose a GPS source for an unresolved photo, select it, then apply."),
     el("div", { class: "bar" }, ...applyControls)));
 
+  if (availableDonors.length) {
+    const assignSharedDonor = (donor) => {
+      const pickedCandidates = visibleCandidates
+        .filter((item) => selected.get(item.asset_id));
+      const pickedUnresolved = unresolved
+        .filter((item) => unresolvedSelected.get(item.asset_id));
+      const targets = [...pickedCandidates, ...pickedUnresolved];
+      if (!targets.length) {
+        return banner("Select one or more missing photos before choosing a shared GPS source.");
+      }
+      for (const item of pickedCandidates) {
+        sourceByAsset.set(item.asset_id, {
+          ...donor,
+          minutes: gpsMinutesBetween(donor.taken_at, item.taken_at),
+        });
+      }
+      for (const item of pickedUnresolved) {
+        unresolvedSourceByAsset.set(item.asset_id, {
+          ...donor,
+          minutes: gpsMinutesBetween(donor.taken_at, item.taken_at),
+        });
+      }
+      renderReview();
+      renderUnresolved();
+      refreshApplyLabel();
+      banner(`Shared GPS source assigned to ${targets.length} selected photo` +
+        `${targets.length === 1 ? "" : "s"}. Review, then apply.`, true);
+    };
+    const sourcesCard = el("div", { class: "card" });
+    const renderSources = () => {
+      const favorites = availableDonors
+        .filter((donor) => donorFavoriteIds.has(donor.asset_id));
+      const favoriteStrip = el("div", { class: "strip gps-donors gps-shared-donors" });
+      const allStrip = el("div", { class: "strip gps-donors gps-shared-donors" });
+      const toggleFavorite = (donor) => {
+        if (donorFavoriteIds.has(donor.asset_id)) donorFavoriteIds.delete(donor.asset_id);
+        else donorFavoriteIds.add(donor.asset_id);
+        saveGpsDonorFavorites(donorFavoriteIds);
+        renderSources();
+      };
+      for (const donor of favorites) {
+        favoriteStrip.append(gpsSharedDonorTile(
+          donor, () => assignSharedDonor(donor), true, () => toggleFavorite(donor)));
+      }
+      for (const donor of availableDonors) {
+        allStrip.append(gpsSharedDonorTile(
+          donor, () => assignSharedDonor(donor), donorFavoriteIds.has(donor.asset_id),
+          () => toggleFavorite(donor)));
+      }
+      const sourceSections = favorites.length ? [
+        el("h4", { class: "gps-source-heading" },
+          `Favorite GPS sources (${favorites.length})`),
+        favoriteStrip,
+      ] : [el("div", { class: "meta gps-source-empty" },
+        "No favorite GPS sources for this album yet. Use the stars below to add some.")];
+      sourcesCard.replaceChildren(
+      el("h3", {}, "Use one source for multiple photos"),
+      el("div", { class: "meta" },
+        "Check the missing photos you want to fix, then choose a GPS source from this album. " +
+        "Its GPS location will replace the proposed source for every checked photo currently shown."),
+        ...sourceSections,
+        el("details", { class: "gps-shared-picker" },
+          el("summary", {}, `Choose from all ${availableDonors.length} located album photos`),
+          el("div", { class: "meta" },
+            "The star saves a photo as a favorite GPS source in this browser."),
+          allStrip));
+    };
+    renderSources();
+    panel.append(sourcesCard);
+  }
+
   if (candidates.length) {
     const overview = el("div", { class: "card" },
       el("h3", {}, "Photos missing GPS (all candidates)"),
@@ -2054,15 +2144,23 @@ async function fillTripGps(trip, preferredDay = "") {
       const groups = activeDay ? [activeDay] : days;
       for (const day of groups) {
         const items = byDay.get(day) || [];
-        const strip = el("div", { class: "strip gps-overview" });
-        for (const item of items) {
-          strip.append(el("img", { src: `/api/thumb/${item.asset_id}`, loading: "lazy", alt: "" }));
+        overviewBody.append(el("h4", { class: "gps-day-heading" },
+          `${day} · ${items.length} photo${items.length === 1 ? "" : "s"}`));
+        for (const [camera, cameraItems] of byCamera(items)) {
+          const strip = el("div", { class: "strip gps-overview" });
+          for (const item of cameraItems) {
+            strip.append(el("img", {
+              src: `/api/thumb/${item.asset_id}`,
+              loading: "lazy",
+              alt: `${camera} photo missing GPS`,
+            }));
+          }
+          overviewBody.append(
+            el("div", { class: "strip-label gps-camera-heading" },
+              `${camera} · ${cameraItems.length}`),
+            strip,
+          );
         }
-        overviewBody.append(
-          el("div", { class: "strip-label" },
-            `${day} · ${items.length} photo${items.length === 1 ? "" : "s"}`),
-          strip,
-        );
       }
     };
     overview.append(overviewBody);
@@ -2078,7 +2176,10 @@ async function fillTripGps(trip, preferredDay = "") {
       visibleCandidates = activeDay
         ? [...(byDay.get(activeDay) || [])]
         : [...orderedCandidates];
-      for (const item of visibleCandidates) {
+      for (const [camera, cameraItems] of byCamera(visibleCandidates)) {
+        reviewBody.append(el("h4", { class: "gps-camera-section" },
+          `${camera} · ${cameraItems.length} photo${cameraItems.length === 1 ? "" : "s"}`));
+        for (const item of cameraItems) {
         const check = el("input", { type: "checkbox" });
         check.checked = !!selected.get(item.asset_id);
         check.onchange = () => {
@@ -2093,7 +2194,10 @@ async function fillTripGps(trip, preferredDay = "") {
         });
         const source = sourceByAsset.get(item.asset_id);
         const selectedDonorId = source ? source.asset_id : "";
-        const choices = Array.isArray(item.donor_choices) ? item.donor_choices : [];
+        const choices = Array.isArray(item.donor_choices) ? [...item.donor_choices] : [];
+        if (source && !choices.some((choice) => choice.asset_id === source.asset_id)) {
+          choices.unshift(source);
+        }
         const donors = el("div", { class: "strip gps-donors" });
         for (const choice of choices) {
           donors.append(gpsDonorButton(choice, choice.asset_id === selectedDonorId, () => {
@@ -2115,6 +2219,7 @@ async function fillTripGps(trip, preferredDay = "") {
             el("div", { class: "meta" }, "Choose a source photo:"),
             donors,
           )));
+        }
       }
     };
 
@@ -2139,10 +2244,17 @@ async function fillTripGps(trip, preferredDay = "") {
 
     renderUnresolved = () => {
       const rows = [];
-      for (const item of unresolved) {
-        const choices = Array.isArray(item.nearby_donor_choices) ? item.nearby_donor_choices : [];
+      for (const [camera, cameraItems] of byCamera(unresolved)) {
+        rows.push(el("h4", { class: "gps-camera-section" },
+          `${camera} · ${cameraItems.length} photo${cameraItems.length === 1 ? "" : "s"}`));
+        for (const item of cameraItems) {
+        const choices = Array.isArray(item.nearby_donor_choices)
+          ? [...item.nearby_donor_choices] : [];
         const selectedSource = unresolvedSourceByAsset.get(item.asset_id);
         const selectedDonorId = selectedSource ? selectedSource.asset_id : "";
+        if (selectedSource && !choices.some((choice) => choice.asset_id === selectedDonorId)) {
+          choices.unshift(selectedSource);
+        }
 
         const donors = el("div", { class: "strip gps-donors" });
         for (const choice of choices) {
@@ -2173,6 +2285,7 @@ async function fillTripGps(trip, preferredDay = "") {
               : el("div", { class: "meta" }, "No nearby located photos found in this trip.")),
             donors,
           )));
+        }
       }
       card.replaceChildren(
         el("h3", {}, "Unresolved"),
@@ -2358,6 +2471,52 @@ function gpsDonorButton(choice, selected, onselect) {
   return node;
 }
 
+function sharedGpsDonorButton(choice, onselect) {
+  const when = fmt.when(choice.taken_at) || "time unknown";
+  const camera = choice.camera || "Unknown camera";
+  const node = button("", onselect);
+  node.className = "gps-donor-choice";
+  node.title = `Use this GPS source for all checked photos: ${when} · ${camera}`;
+  node.setAttribute("aria-label", node.title);
+  node.append(el("img", {
+    src: `/api/thumb/${choice.asset_id}`,
+    loading: "lazy",
+    alt: "",
+  }));
+  return node;
+}
+
+const GPS_DONOR_FAVORITES = "gps-donor-favorites-v1";
+
+function gpsDonorFavorites() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(GPS_DONOR_FAVORITES) || "[]");
+    return new Set(Array.isArray(saved) ? saved.filter((id) => typeof id === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveGpsDonorFavorites(ids) {
+  try { localStorage.setItem(GPS_DONOR_FAVORITES, JSON.stringify([...ids])); } catch {}
+}
+
+function gpsSharedDonorTile(choice, onselect, favorite, ontoggle) {
+  const star = button(favorite ? "★" : "☆", ontoggle);
+  star.className = `gps-source-favorite${favorite ? " active" : ""}`;
+  star.title = favorite ? "Remove from favorite GPS sources" : "Add to favorite GPS sources";
+  star.setAttribute("aria-label", star.title);
+  return el("div", { class: "gps-source-tile" },
+    sharedGpsDonorButton(choice, onselect), star);
+}
+
+function gpsMinutesBetween(left, right) {
+  const leftTime = Date.parse(left || "");
+  const rightTime = Date.parse(right || "");
+  if (!Number.isFinite(leftTime) || !Number.isFinite(rightTime)) return null;
+  return Math.round(Math.abs(leftTime - rightTime) / 6000) / 10;
+}
+
 function gpsTimeDelta(minutes) {
   const value = Number(minutes);
   if (!Number.isFinite(value)) return "time difference unknown";
@@ -2402,7 +2561,12 @@ start();
 
 /* -- hover card: a large picture with everything Immich knows about it ---- */
 
-const hover = { timer: null, epoch: 0, card: null, details: new Map() };
+const HOVER_DELAY_MS = 500;
+const HOVER_STABLE_PX = 5;
+const hover = {
+  timer: null, hideTimer: null, epoch: 0, card: null, details: new Map(),
+  pendingImage: null, pendingId: "", anchorX: 0, anchorY: 0,
+};
 const THUMB = /^\/api\/thumb\/([A-Za-z0-9-]+)/;
 
 function hoverCard() {
@@ -2416,6 +2580,8 @@ function hoverCard() {
 function hideHoverCard() {
   clearTimeout(hover.timer);
   clearTimeout(hover.hideTimer);
+  hover.pendingImage = null;
+  hover.pendingId = "";
   hover.epoch += 1;
   if (hover.card) hover.card.hidden = true;
 }
@@ -2441,6 +2607,45 @@ function pickActions(taken) {
     pick("Set as last photo ⇥", "to"),
     el("div", { class: "muted" },
        "Media taken before the first or after the last are left out."));
+}
+
+function photoActions(id, details) {
+  const reject = el("button", {
+    type: "button", class: `hover-photo-action reject${details.rejected ? " active" : ""}`,
+    title: details.rejected ? "Show this photo again" : "Do not show this photo again",
+    "aria-label": details.rejected ? "Show this photo again" : "Do not show this photo again",
+  }, "⊘");
+  const favorite = el("button", {
+    type: "button", class: `hover-photo-action favorite${details.favorite ? " active" : ""}`,
+    title: details.favorite ? "Remove from favourites" : "Add to favourites",
+    "aria-label": details.favorite ? "Remove from favourites" : "Add to favourites",
+  }, details.favorite ? "♥" : "♡");
+
+  reject.onclick = async () => {
+    reject.disabled = true;
+    try {
+      const result = await post(`/api/asset/${id}/reject`, { rejected: !details.rejected });
+      details.rejected = result.rejected;
+      details.rating = result.rating;
+      reject.classList.toggle("active", details.rejected);
+      reject.title = reject.ariaLabel = details.rejected
+        ? "Show this photo again" : "Do not show this photo again";
+    } catch (error) { banner(error.message); }
+    finally { reject.disabled = false; }
+  };
+  favorite.onclick = async () => {
+    favorite.disabled = true;
+    try {
+      const result = await post(`/api/asset/${id}/favorite`, { favorite: !details.favorite });
+      details.favorite = result.favorite;
+      favorite.textContent = details.favorite ? "♥" : "♡";
+      favorite.classList.toggle("active", details.favorite);
+      favorite.title = favorite.ariaLabel = details.favorite
+        ? "Remove from favourites" : "Add to favourites";
+    } catch (error) { banner(error.message); }
+    finally { favorite.disabled = false; }
+  };
+  return [reject, favorite];
 }
 
 function assetDetails(id) {
@@ -2513,8 +2718,9 @@ async function showHoverCard(image, id) {
   big.onload = () => { if (epoch === hover.epoch) placeHoverCard(image); };
   const taken = image.dataset.taken;
   const actions = taken ? pickActions(taken) : "";
-  card.classList.toggle("interactive", !!taken);
-  card.replaceChildren(el("div", { class: "hover-picture" }, big),
+  card.classList.add("interactive");
+  const picture = el("div", { class: "hover-picture" }, big);
+  card.replaceChildren(picture,
                        el("div", { class: "hover-side" }, actions, body));
   card.hidden = false;
   placeHoverCard(image);
@@ -2523,6 +2729,7 @@ async function showHoverCard(image, id) {
     if (epoch !== hover.epoch) return;
     body.className = "hover-details";
     body.replaceChildren(detailRows(details));
+    picture.append(...photoActions(id, details));
   } catch (error) {
     if (epoch !== hover.epoch) return;
     body.textContent = `No details: ${error.message}`;
@@ -2530,13 +2737,33 @@ async function showHoverCard(image, id) {
   placeHoverCard(image);
 }
 
+function scheduleHoverCard(image, id, x, y) {
+  clearTimeout(hover.timer);
+  hover.pendingImage = image;
+  hover.pendingId = id;
+  hover.anchorX = x;
+  hover.anchorY = y;
+  hover.timer = setTimeout(() => {
+    if (hover.pendingImage !== image || !image.matches(":hover")) return;
+    hover.pendingImage = null;
+    hover.pendingId = "";
+    showHoverCard(image, id);
+  }, HOVER_DELAY_MS);
+}
+
 document.addEventListener("mouseover", (event) => {
   const image = event.target instanceof Element ? event.target.closest("img") : null;
   const match = image && THUMB.exec(image.getAttribute("src") || "");
   if (!match || image.closest("#hover-card") || !$("lightbox").hidden) return;
-  clearTimeout(hover.timer);
   clearTimeout(hover.hideTimer);
-  hover.timer = setTimeout(() => showHoverCard(image, match[1]), 250);
+  scheduleHoverCard(image, match[1], event.clientX, event.clientY);
+});
+
+document.addEventListener("mousemove", (event) => {
+  if (!hover.pendingImage) return;
+  const distance = Math.hypot(event.clientX - hover.anchorX, event.clientY - hover.anchorY);
+  if (distance < HOVER_STABLE_PX) return;
+  scheduleHoverCard(hover.pendingImage, hover.pendingId, event.clientX, event.clientY);
 });
 
 document.addEventListener("mouseout", (event) => {
@@ -2550,6 +2777,8 @@ document.addEventListener("mouseout", (event) => {
 hoverCard().addEventListener("mouseenter", () => {
   clearTimeout(hover.timer);
   clearTimeout(hover.hideTimer);
+  hover.pendingImage = null;
+  hover.pendingId = "";
 });
 hoverCard().addEventListener("mouseleave", hideHoverCard);
 document.addEventListener("scroll", hideHoverCard, true);

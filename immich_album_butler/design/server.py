@@ -432,6 +432,12 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
                 return api.delete_backups(body)
             if path == "/api/cover":
                 return api.set_cover(body)
+            if path.startswith("/api/asset/") and path.endswith("/favorite"):
+                asset_id = path[len("/api/asset/"):-len("/favorite")]
+                return api.set_asset_favorite(asset_id, body.get("favorite"))
+            if path.startswith("/api/asset/") and path.endswith("/reject"):
+                asset_id = path[len("/api/asset/"):-len("/reject")]
+                return api.set_asset_rejected(asset_id, body.get("rejected"))
             if path == "/api/reload-config":
                 return api.request_reload()
             raise ApiError(f"no route {path}", status=404)

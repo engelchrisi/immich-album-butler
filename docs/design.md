@@ -10,7 +10,8 @@ design mode  --writes-->  config.toml  --read by-->  runtime mode  --writes albu
 ```
 
 Design mode is the only writer of `config.toml`; runtime mode is the only code that changes
-albums in Immich (`runtime.apply`). `plan()` is read-only and is shared by `--dry-run` and design
+albums in Immich (`runtime.apply`). Design mode can also make the explicit asset metadata changes
+in N44-N45. `plan()` is read-only and is shared by `--dry-run` and design
 mode's preview, so the preview cannot drift from what a run does.
 
 ## 2. Modules
@@ -86,13 +87,31 @@ Login in front of everything. Read: `/api/whoami`, `/api/people`, `/api/places`,
 `/api/groups`, `/api/accounts`, `/api/immich-albums`, `/api/trips`, `/api/duplicates[/album]`,
 `/api/browse/album`, `/api/backups`, `/api/thumb/…`, `/api/asset/…`. Write: `/api/backups` (create), `/api/backups/restore` (`dry_run`, `config`, `album`), `/api/backups/delete` (`names`, bare `backup-*.json` names only), `/api/preview`, `/api/analyze`,
 `/api/albums`, `/api/groups`, `/api/run`, `/api/add-assets`, `/api/duplicates/remove`,
-`/api/cover`, `/api/trips/gps-preview`, `/api/trips/gps-apply`.
+`/api/cover`, `/api/trips/gps-preview`, `/api/trips/gps-apply`,
+`/api/asset/{id}/favorite`, `/api/asset/{id}/reject`.
+
+The one global hover card handles every image served by `/api/thumb/{id}`, so the favourite and
+reject controls apply in the builder, album browser, trips, duplicates and any later view that uses
+the thumbnail proxy. The card takes pointer events and delays closing between thumbnail and card.
+The two write routes accept booleans, keep the Immich key server-side, and call
+`PUT /api/assets/{id}` with only `isFavorite` or `rating`. Reject is rating `-1`; its prior rating is
+kept in process memory for undo and falls back to `0` after a restart.
 
 Trip GPS backfill (N44) is design-mode-only and explicit. `/api/trips/gps-preview`
 computes candidate coordinates for trip media without GPS from same-day, geotagged
 trip media and reports confidence (`high`/`medium`/`low`), donor count, nearest
 time delta and donor spread (km). `/api/trips/gps-apply` updates only selected
 media, skips media that already has GPS, and reports partial failures per item.
+The preview includes each missing asset's camera make/model from the versioned
+trip-scan cache, allowing the UI to group both suggested and unresolved fixes
+by camera. Assets without those EXIF fields appear under `Unknown camera`.
+It also returns the matched album's complete set of located media as
+`available_donors` (or the trip's located media when there is no matched album).
+The shared source picker can assign one of these donors to every checked row in
+one action; this only changes the preview until the normal confirmed Apply.
+GPS donor favorites are a separate browser-local list of asset IDs, not Immich's
+`isFavorite` heart. The UI intersects that list with `available_donors`, so a
+favorite source is offered only while reviewing the same album.
 The API key needs Immich's `asset.update` permission; `album.update` alone does
 not authorize asset coordinate changes. After applying a day, the UI reloads the
 trip and GPS suggestions in place, keeping the selected day when candidates

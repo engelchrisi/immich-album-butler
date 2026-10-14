@@ -250,6 +250,23 @@ class AlbumWriteTests(unittest.TestCase):
         self.assertEqual(caught.exception.status, 403)
         self.assertIn("asset.update", str(caught.exception))
 
+    def test_setting_favorite_and_rejected_rating_updates_the_asset(self):
+        library = [make_asset(1, when=day(2019, 7, 1), rating=3)]
+        with StubImmich(library, page_size=100) as stub:
+            client = ImmichClient(stub.url, API_KEY)
+            client.set_asset_favorite(fake_id(1), True)
+            client.set_asset_rating(fake_id(1), -1)
+            refreshed = client.asset(fake_id(1))
+        self.assertTrue(refreshed["isFavorite"])
+        self.assertEqual(refreshed["exifInfo"]["rating"], -1)
+
+    def test_an_invalid_rating_is_refused_before_calling_immich(self):
+        with StubImmich([], page_size=100) as stub:
+            client = ImmichClient(stub.url, API_KEY)
+            for rating in (True, -2, 6):
+                with self.assertRaises(ValueError):
+                    client.set_asset_rating(fake_id(1), rating)
+
 
 if __name__ == "__main__":
     unittest.main()

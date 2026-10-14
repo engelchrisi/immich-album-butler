@@ -413,6 +413,7 @@ run on every update; the **optional** ones depend on which features you use:
 | Permission | Purpose | Needed for |
 |---|---|---|
 | `asset.read` | **required** | Search and fetch asset metadata and thumbnails |
+| `asset.update` | optional | Favourite/reject buttons in image tooltips; trip GPS backfill |
 | `album.read` | **required** | List your albums |
 | `album.create` | **required** | Create new albums |
 | `albumAsset.create` | **required** | Add assets to albums |
@@ -490,12 +491,14 @@ and **Restore now**.
 butler's, your own hand-made ones, and those shared with you. It shows all the
 album's media, grouped by folder (where the original file is stored), day,
 month, year, camera, place or photo/video; the choice is remembered in the
-browser. Hovering a thumbnail shows the large picture with its details;
-clicking opens it full-screen, and ←/→ step through the album in the order
-shown. The only write it offers is the cover: hovering a picture and clicking
+browser. Hovering a thumbnail shows the large picture with its details and keeps
+the tooltip open when the pointer moves onto it. Its upper corners can mark the
+asset not wanted (`⊘`, Immich rating `-1`) or favourite/unfavourite it (`♡`/`♥`);
+these controls appear on image tooltips throughout design mode and need
+`asset.update`. Clicking opens it full-screen, and ←/→ step through the album in the order
+shown. The album view also offers the cover action: hovering a picture and clicking
 ★ sets it as the album's cover (needs `album.update`, like every other cover
-write) — for any album, whether or not the butler has a rule for it. It
-otherwise changes nothing.
+write) — for any album, whether or not the butler has a rule for it.
 
 ## Development
 
