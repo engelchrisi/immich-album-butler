@@ -290,9 +290,13 @@ button.link { background: none; border: none; color: var(--accent); padding: 0.2
 .album-cover { width: 96px; min-height: 96px; height: 100%; object-fit: cover;
                border-radius: 6px; background: var(--thumb-bg); }
 .album-main { min-width: 0; display: flex; flex-direction: column; gap: 0.3rem; }
-.album-head { display: flex; align-items: baseline; gap: 0.5rem; min-width: 0; }
-.album-head h3 { flex: 1 1 auto; min-width: 0; overflow: hidden;
-                 text-overflow: ellipsis; white-space: nowrap; }
+.album-head { display: flex; flex-wrap: wrap; align-items: baseline;
+              gap: 0.25rem 0.5rem; min-width: 0; }
+.album-head h3 {
+  flex: 1 0 100%; min-width: 0; margin-bottom: 0; overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  white-space: normal;
+}
 .album-head .pill { flex: 0 0 auto; }
 .album-info { display: grid; grid-template-columns: max-content minmax(0, 1fr);
               gap: 0.15rem 0.6rem; margin: 0; font-size: 0.85rem; }
