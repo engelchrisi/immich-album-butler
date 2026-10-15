@@ -1,5 +1,9 @@
 # Changes
 
+## 1.5.4 — 2026-10-15
+- Album generation: set a configured cover only when the Butler creates the album; later scheduled
+  and manual runs, and albums adopted by name, preserve the cover currently selected in Immich.
+
 ## 1.5.3 — 2026-10-15
 - Design UI: make the active "not wanted" state clearly visible and fix undo on Immich 3 by
   clearing an unrated asset with `null` instead of the now-invalid rating `0`.

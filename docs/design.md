@@ -156,7 +156,8 @@ all -- `slug` is `null`, most fields are `null`/empty). Each Albums card shows a
 failed / disabled / not run), labelled rows (Rule, Schedule, Last run or Error), chips for extras,
 and a footer with the actions. The Albums page's "View" button opens
 `/api/browse/album` for any of the three; `/api/cover` writes a chosen asset as an album's cover
-the same way, butler-managed or not (N34).
+the same way, butler-managed or not (N34). Runtime cover rules are creation-time defaults only;
+later scheduled and manual runs preserve that chosen cover (N6).
 
 ## 6. Deployment
 

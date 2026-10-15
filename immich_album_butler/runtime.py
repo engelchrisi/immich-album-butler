@@ -245,7 +245,7 @@ class Butler:
         if info is None:
             plan.creates_album = True
             plan.to_add = matched
-            plan.cover_asset_id = self._cover(album, result, None, plan)
+            plan.cover_asset_id = self._cover(album, result, plan)
             plan.to_share = self._sharing(album, {}, plan)
             self._describe(album, "", plan)
             return plan
@@ -263,7 +263,9 @@ class Butler:
         # the album (never the library, N22). Media added by hand does not
         # survive a run -- the rule is the single source of truth.
         plan.to_remove = sorted(current - set(matched))
-        plan.cover_asset_id = self._cover(album, result, info.cover_asset_id, plan)
+        # A configured cover is the album's creation-time default.  Once the
+        # album exists, preserve its current cover so a later scheduled or
+        # manual run cannot undo a cover chosen in Immich or in design mode.
         plan.current_shares = dict(info.shared_with)
         plan.to_share = self._sharing(album, plan.current_shares, plan)
         self._describe(album, info.description, plan)
@@ -334,13 +336,12 @@ class Butler:
                 grants.append((user.id, wanted.role))
         return grants
 
-    def _cover(self, album: Album, result, current: str | None,
-               plan: Plan) -> str | None:
+    def _cover(self, album: Album, result, plan: Plan) -> str | None:
         """Which asset the cover should become, or None to leave it as it is.
 
-        The choice is made among the assets the rule matched -- a cover is a
-        statement about the rule. A rule that cannot be satisfied (a file name
-        nobody has) becomes a warning on this album, never a failed run.
+        This is called only while creating an album. The choice is made among
+        the assets the rule matched. A rule that cannot be satisfied (a file
+        name nobody has) becomes a warning on this album, never a failed run.
         """
         if not album.sets_cover:
             return None
@@ -348,8 +349,6 @@ class Butler:
             chosen = cover.choose(album.cover, result.assets, result.by_person)
         except cover.CoverError as exc:
             plan.warnings.append(f"cover: {exc}")
-            return None
-        if chosen is None or chosen == current:
             return None
         return chosen
 

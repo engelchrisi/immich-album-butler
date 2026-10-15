@@ -158,16 +158,30 @@ class RunTests(unittest.TestCase):
         self.assertTrue(reports[0].cover_set)
         self.assertEqual(album["albumThumbnailAssetId"], fake_id(2))
 
-    def test_a_second_run_does_not_set_the_same_cover_again(self):
+    def test_a_later_run_preserves_a_manually_changed_cover(self):
         with StubImmich(group_assets(), people=PEOPLE, page_size=2) as stub:
             with Fixture({"the-three": GROUP_ALBUM}, stub) as fx:
                 config, state = fx.load()
                 run_once(fx.client, config, state)
+                album = stub.album_named("The Three")
+                album["albumThumbnailAssetId"] = fake_id(1)
                 stub.requests.clear()
                 config, state = fx.load()
                 again = run_once(fx.client, config, state)
         self.assertFalse(again[0].cover_set)
+        self.assertEqual(album["albumThumbnailAssetId"], fake_id(1))
         self.assertNotIn("PATCH", [method for method, _ in stub.requests])
+
+    def test_an_album_adopted_by_name_keeps_its_cover(self):
+        with StubImmich(group_assets(), people=PEOPLE, page_size=2) as stub:
+            album = stub.add_album("The Three", [fake_id(1), fake_id(2), fake_id(3)])
+            album["albumThumbnailAssetId"] = fake_id(1)
+            with Fixture({"the-three": GROUP_ALBUM}, stub) as fx:
+                config, state = fx.load()
+                reports = run_once(fx.client, config, state)
+        self.assertFalse(reports[0].created)
+        self.assertFalse(reports[0].cover_set)
+        self.assertEqual(album["albumThumbnailAssetId"], fake_id(1))
 
     def test_a_dry_run_says_it_would_set_a_cover_and_sets_none(self):
         with StubImmich(group_assets(), people=PEOPLE, page_size=2) as stub:

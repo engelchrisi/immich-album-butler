@@ -157,8 +157,8 @@ renames it to the other marker; it is never duplicated.
 
 ### Album covers
 
-The picture on the front of an album is a rule too, so the config still holds
-no UUIDs:
+The initial picture on the front of a newly created album can be selected by a
+rule, so the config still holds no UUIDs:
 
 | `cover` | The front picture becomes |
 |---|---|
@@ -171,6 +171,10 @@ no UUIDs:
 `"everyone"` is what a group album wants: one picture with the whole family in
 it. It costs nothing extra — the butler already knows which pictures each
 person appears in from matching them.
+
+The rule is applied only when the butler creates the album. Later scheduled or
+manual generations keep the cover currently set in Immich, including one you
+picked by hand. An existing album adopted by name keeps its cover too.
 
 Setting a cover is the **only** thing the butler does that needs the
 `album.update` permission on the API key. Without it the album is still filled
