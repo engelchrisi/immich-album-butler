@@ -95,7 +95,9 @@ reject controls apply in the builder, album browser, trips, duplicates and any l
 the thumbnail proxy. The card takes pointer events and delays closing between thumbnail and card.
 The two write routes accept booleans, keep the Immich key server-side, and call
 `PUT /api/assets/{id}` with only `isFavorite` or `rating`. Reject is rating `-1`; its prior rating is
-kept in process memory for undo and falls back to `0` after a restart.
+kept in process memory for undo and falls back to JSON `null` (unrated) after a restart. Immich 3
+rejects the older rating `0` representation. The pressed reject button uses a solid warning colour
+and exposes `aria-pressed`, making its current state clear visually and to assistive technology.
 
 Trip GPS backfill (N44) is design-mode-only and explicit. `/api/trips/gps-preview`
 computes candidate coordinates for trip media without GPS from same-day, geotagged

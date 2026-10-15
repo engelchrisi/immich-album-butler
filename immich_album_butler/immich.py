@@ -383,11 +383,13 @@ class ImmichClient:
         self.request("PUT", f"assets/{asset_id}",
                      {"isFavorite": bool(favorite)})
 
-    def set_asset_rating(self, asset_id: str, rating: int) -> None:
-        """Set one asset's Immich/XMP rating, including -1 for rejected."""
-        if isinstance(rating, bool) or not isinstance(rating, int) \
-                or not -1 <= rating <= 5:
-            raise ValueError(f"rating must be -1..5, not {rating!r}")
+    def set_asset_rating(self, asset_id: str, rating: int | None) -> None:
+        """Set an Immich/XMP rating; ``None`` clears it."""
+        if rating is not None and (isinstance(rating, bool)
+                                   or not isinstance(rating, int)
+                                   or rating not in (-1, 1, 2, 3, 4, 5)):
+            raise ValueError(
+                f"rating must be -1, 1..5, or None, not {rating!r}")
         self.request("PUT", f"assets/{asset_id}", {"rating": rating})
 
     def thumbnail(self, asset_id: str, size: str = "thumbnail") -> tuple[bytes, str]:

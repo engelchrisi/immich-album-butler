@@ -275,7 +275,8 @@ class DesignApi:
                 value = -1
             else:
                 prior = self._rejected.get(asset_id)
-                value = prior if isinstance(prior, int) else 0
+                # Immich 3 rejects rating 0. JSON null clears it to "unrated".
+                value = prior if isinstance(prior, int) and prior > 0 else None
         self.client.set_asset_rating(asset_id, value)
         with self._rejected_lock:
             if rejected:

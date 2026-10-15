@@ -257,13 +257,16 @@ class AlbumWriteTests(unittest.TestCase):
             client.set_asset_favorite(fake_id(1), True)
             client.set_asset_rating(fake_id(1), -1)
             refreshed = client.asset(fake_id(1))
+            client.set_asset_rating(fake_id(1), None)
+            cleared = client.asset(fake_id(1))
         self.assertTrue(refreshed["isFavorite"])
         self.assertEqual(refreshed["exifInfo"]["rating"], -1)
+        self.assertIsNone(cleared["exifInfo"]["rating"])
 
     def test_an_invalid_rating_is_refused_before_calling_immich(self):
         with StubImmich([], page_size=100) as stub:
             client = ImmichClient(stub.url, API_KEY)
-            for rating in (True, -2, 6):
+            for rating in (True, -2, 0, 6):
                 with self.assertRaises(ValueError):
                     client.set_asset_rating(fake_id(1), rating)
 

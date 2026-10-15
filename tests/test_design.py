@@ -5,6 +5,7 @@ auth, routing and the thumbnail proxy are exercised as a browser would.
 """
 
 import base64
+import copy
 import datetime as dt
 import json
 import re
@@ -71,7 +72,11 @@ class DesignTestCase(unittest.TestCase):
         self.config_dir.mkdir()
         (self.config_dir / "config.toml").write_text(CONFIG_TOML, encoding="utf-8")
 
-        self.stub = StubImmich(self.assets, people=PEOPLE, page_size=100)
+        # The stub mutates asset metadata when write routes are exercised.
+        # Give every test its own nested records so ratings and GPS changes do
+        # not leak through the module-level fixture into later tests.
+        self.stub = StubImmich(copy.deepcopy(self.assets),
+                               people=copy.deepcopy(PEOPLE), page_size=100)
         self.stub.__enter__()
         self.client = ImmichClient(self.stub.url, API_KEY)
         self.api = DesignApi(self.client, self.config_dir, self.state_dir)
@@ -133,6 +138,9 @@ class AssetDetailsTests(DesignTestCase):
         self.assertTrue(details["rejected"])
         self.api.set_asset_rejected(fake_id(1), False)
         self.api.set_asset_favorite(fake_id(1), False)
+        details = self.api.asset_details(fake_id(1))
+        self.assertIsNone(details["rating"])
+        self.assertFalse(details["rejected"])
 
     def test_undo_rejected_restores_the_previous_rating(self):
         self.stub.assets[0]["exifInfo"]["rating"] = 4
@@ -1173,6 +1181,9 @@ class RoutingTests(ServerTestCase):
                    body={"rejected": False})
         self.fetch(f"/api/asset/{fake_id(1)}/favorite", method="POST",
                    body={"favorite": False})
+        details = self.fetch(f"/api/asset/{fake_id(1)}")
+        self.assertIsNone(details["rating"])
+        self.assertFalse(details["rejected"])
 
     def test_one_albums_media_is_served_over_http(self):
         with self.assertRaises(urllib.error.HTTPError) as caught:

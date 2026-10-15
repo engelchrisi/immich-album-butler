@@ -1,5 +1,9 @@
 # Changes
 
+## 1.5.3 — 2026-10-15
+- Design UI: make the active "not wanted" state clearly visible and fix undo on Immich 3 by
+  clearing an unrated asset with `null` instead of the now-invalid rating `0`.
+
 ## 1.5.2 — 2026-10-14
 - Tests: shorten fake HTTP-server shutdown polling and avoid redundant scrypt setup work, keeping
   the same isolated server, authentication and session coverage with substantially less waiting.

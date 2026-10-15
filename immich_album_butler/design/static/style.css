@@ -437,7 +437,10 @@ body.login .message {
 }
 #hover-card .hover-photo-action.reject { left: 4px; font-size: 20px; }
 #hover-card .hover-photo-action.favorite { right: 4px; }
-#hover-card .hover-photo-action.reject.active { color: #ffb020; }
+#hover-card .hover-photo-action.reject.active {
+  color: #fff; background-color: #c2410c; background-clip: padding-box;
+  box-shadow: 0 0 0 2px #fff, 0 2px 8px rgba(0, 0, 0, 0.45);
+}
 #hover-card .hover-photo-action.favorite.active { color: #ff5a7a; }
 #hover-card .hover-photo-action:disabled { cursor: default; opacity: 0.6; }
 @media (hover: hover) {

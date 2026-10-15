@@ -2614,11 +2614,13 @@ function photoActions(id, details) {
     type: "button", class: `hover-photo-action reject${details.rejected ? " active" : ""}`,
     title: details.rejected ? "Show this photo again" : "Do not show this photo again",
     "aria-label": details.rejected ? "Show this photo again" : "Do not show this photo again",
+    "aria-pressed": String(details.rejected),
   }, "⊘");
   const favorite = el("button", {
     type: "button", class: `hover-photo-action favorite${details.favorite ? " active" : ""}`,
     title: details.favorite ? "Remove from favourites" : "Add to favourites",
     "aria-label": details.favorite ? "Remove from favourites" : "Add to favourites",
+    "aria-pressed": String(details.favorite),
   }, details.favorite ? "♥" : "♡");
 
   reject.onclick = async () => {
@@ -2628,6 +2630,7 @@ function photoActions(id, details) {
       details.rejected = result.rejected;
       details.rating = result.rating;
       reject.classList.toggle("active", details.rejected);
+      reject.setAttribute("aria-pressed", String(details.rejected));
       reject.title = reject.ariaLabel = details.rejected
         ? "Show this photo again" : "Do not show this photo again";
     } catch (error) { banner(error.message); }
@@ -2640,6 +2643,7 @@ function photoActions(id, details) {
       details.favorite = result.favorite;
       favorite.textContent = details.favorite ? "♥" : "♡";
       favorite.classList.toggle("active", details.favorite);
+      favorite.setAttribute("aria-pressed", String(details.favorite));
       favorite.title = favorite.ariaLabel = details.favorite
         ? "Remove from favourites" : "Add to favourites";
     } catch (error) { banner(error.message); }
