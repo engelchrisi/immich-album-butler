@@ -859,6 +859,29 @@ class GpsFillTests(DesignTestCase):
         self.assertEqual(result["updated"], 0)
         self.assertEqual(result["skipped"][0]["asset_id"], fake_id(1))
 
+    def test_album_preview_uses_its_current_members_without_a_trip_scan(self):
+        album = self.stub.add_album("Tokyo 2020", [fake_id(n) for n in (1, 2, 3, 4)])
+        result = self.api.album_gps_preview({"album_id": album["id"]})
+        self.assertEqual(result["album_assets"], 4)
+        self.assertEqual([item["asset_id"] for item in result["candidates"]], [fake_id(3)])
+        self.assertEqual([item["asset_id"] for item in result["available_donors"]],
+                         [fake_id(1), fake_id(2)])
+        self.assertEqual([item["asset_id"] for item in result["unresolved"]], [fake_id(4)])
+
+    def test_album_apply_refuses_a_photo_outside_the_album(self):
+        album = self.stub.add_album("Tokyo 2020", [fake_id(n) for n in (1, 3)])
+        with self.assertRaisesRegex(ApiError, "no longer in this album"):
+            self.api.album_gps_apply({"album_id": album["id"], "fills": [{
+                "asset_id": fake_id(4), "latitude": 35.7, "longitude": 139.7,
+            }]})
+
+    def test_album_apply_updates_a_current_member(self):
+        album = self.stub.add_album("Tokyo 2020", [fake_id(n) for n in (1, 3)])
+        result = self.api.album_gps_apply({"album_id": album["id"], "fills": [{
+            "asset_id": fake_id(3), "latitude": 35.7, "longitude": 139.7,
+        }]})
+        self.assertEqual(result["updated"], 1)
+
 
 # --------------------------------------------------------------------------
 # the HTTP layer

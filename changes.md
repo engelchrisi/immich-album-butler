@@ -1,5 +1,20 @@
 # Changes
 
+## 1.7.1 — 2026-10-15
+- GPS review: record privacy-safe batch progress and grouped HTTP failure
+  statuses in the design-service log, making a partial coordinate update
+  diagnosable without recording asset IDs or GPS coordinates.
+
+## 1.7.0 — 2026-10-15
+- GPS review: applying fixes now shows an animated in-progress state and
+  disables the Apply button until the request has completed, preventing a
+  duplicate update request for a long-running batch.
+
+## 1.6.0 — 2026-10-15
+- Design UI: every album viewer can now review and explicitly fix missing GPS
+  from its own located photos, without first visiting Trips. The album review
+  keeps trip GPS safeguards and uses 30% larger thumbnails.
+
 ## 1.5.4 — 2026-10-15
 - Album generation: set a configured cover only when the Butler creates the album; later scheduled
   and manual runs, and albums adopted by name, preserve the cover currently selected in Immich.

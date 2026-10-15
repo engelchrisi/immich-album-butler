@@ -19,6 +19,7 @@ const state = {
   accounts: [],         // other accounts on this server, for sharing
   accountsNote: "",
   extends: null,        // the unmanaged Immich album the preview would take over
+  gpsBackPath: "/trips",
 };
 
 function emptyDraft() {
@@ -94,12 +95,18 @@ function activateTab(name) {
   if (name === "backup") loadBackups();
 }
 
-function showTripGpsPage() {
+function showGpsPage({ tab = "trips", backPath = "/trips", backLabel = "← Back to Trips" } = {}) {
   for (const el of document.querySelectorAll(".tab")) {
-    el.classList.toggle("active", el.dataset.tab === "trips");
+    el.classList.toggle("active", el.dataset.tab === tab);
   }
   setPanel("trip-gps-page");
   $("builder-back").hidden = true;
+  state.gpsBackPath = backPath;
+  $("trip-gps-back").textContent = backLabel;
+}
+
+function showTripGpsPage() {
+  showGpsPage();
 }
 
 /* The builder's own sub-tabs (Rule/Options/Sharing/Player) get a path segment
@@ -116,6 +123,9 @@ function activateSubtab(name) {
 }
 
 function route(path) {
+  const albumGpsMatch = /^\/albums\/([^/]+)\/gps$/.exec(path);
+  if (albumGpsMatch) return openAlbumGpsReview(decodeURIComponent(albumGpsMatch[1]),
+                                                { push: false });
   const albumMatch = /^\/albums\/([^/]+)$/.exec(path);
   if (albumMatch) return openAlbumView(decodeURIComponent(albumMatch[1]), { push: false });
   if (path === "/trips/gps") return showTripGpsPage();
@@ -181,7 +191,7 @@ $("tabs").addEventListener("click", (event) => {
 });
 
 window.addEventListener("popstate", () => route(location.pathname));
-$("trip-gps-back").onclick = () => navigate("/trips");
+$("trip-gps-back").onclick = () => navigate(state.gpsBackPath || "/trips");
 
 /* -- albums tab --------------------------------------------------------- */
 
@@ -1603,6 +1613,10 @@ try { $("browse-group").value = localStorage.getItem(BROWSE_GROUP) || "folder"; 
 if (!$("browse-group").value) $("browse-group").value = "folder";
 
 $("browse-back").onclick = () => showTab("albums");
+$("browse-gps").disabled = true;
+$("browse-gps").onclick = () => {
+  if (browse.album) openAlbumGpsReview(browse.album.album_id);
+};
 $("browse-group").onchange = () => {
   try { localStorage.setItem(BROWSE_GROUP, $("browse-group").value); } catch {}
   renderBrowseAlbum();
@@ -1624,12 +1638,35 @@ async function openAlbumView(albumId, { push = true } = {}) {
     panel.classList.toggle("active", panel.id === "browse-album");
   }
   $("browse-title").textContent = "";
+  $("browse-gps").disabled = true;
   $("browse-album-note").textContent = "";
   $("browse-groups").replaceChildren(el("div", { class: "spin" }, "Loading…"));
   try { browse.album = await api(`/api/browse/album?id=${encodeURIComponent(albumId)}`); }
   catch (error) { banner(error.message); return showTab("albums"); }
   $("browse-title").textContent = browse.album.name;
+  $("browse-gps").disabled = false;
   renderBrowseAlbum();
+}
+
+async function openAlbumGpsReview(albumId, { push = true } = {}) {
+  let album = browse.album;
+  if (!album || album.album_id !== albumId) {
+    try { album = await api(`/api/browse/album?id=${encodeURIComponent(albumId)}`); }
+    catch (error) { return banner(error.message); }
+  }
+  return fillGpsReview({
+    name: album.name,
+    path: `/albums/${encodeURIComponent(albumId)}/gps`,
+    backPath: `/albums/${encodeURIComponent(albumId)}`,
+    backLabel: "← Back to album",
+    tab: "albums",
+    albumReview: true,
+    sourceScope: "album",
+    previewPath: "/api/albums/gps-preview",
+    applyPath: "/api/albums/gps-apply",
+    previewPayload: { album_id: albumId },
+    applyPayload: { album_id: albumId },
+  }, "", { push });
 }
 
 async function setCover(assetId) {
@@ -1886,16 +1923,30 @@ function coveredElsewhere(trip) {
 }
 
 async function fillTripGps(trip, preferredDay = "") {
-  navigate("/trips/gps");
+  return fillGpsReview({
+    name: trip.name,
+    path: "/trips/gps",
+    backPath: "/trips",
+    backLabel: "← Back to Trips",
+    tab: "trips",
+    refreshTrips: true,
+    sourceScope: trip.in_album?.id ? "album" : "trip",
+    previewPath: "/api/trips/gps-preview",
+    applyPath: "/api/trips/gps-apply",
+    previewPayload: { asset_ids: trip.asset_ids || [], album_id: trip.in_album?.id || "" },
+  }, preferredDay);
+}
+
+async function fillGpsReview(context, preferredDay = "", { push = true } = {}) {
+  if (push && location.pathname !== context.path) history.pushState(null, "", context.path);
+  showGpsPage(context);
   banner("Looking for GPS suggestions…", true);
   const panel = $("trip-gps");
+  panel.classList.toggle("album-gps", !!context.albumReview);
   panel.replaceChildren(el("div", { class: "spin" }, "Building GPS suggestions…"));
   let result;
   try {
-    result = await post("/api/trips/gps-preview", {
-      asset_ids: trip.asset_ids || [],
-      album_id: trip.in_album?.id || "",
-    });
+    result = await post(context.previewPath, context.previewPayload);
   } catch (error) {
     panel.replaceChildren();
     return banner(error.message);
@@ -1912,7 +1963,7 @@ async function fillTripGps(trip, preferredDay = "") {
       || (a.asset_id || "").localeCompare(b.asset_id || ""));
   const unresolved = result.unresolved || [];
   panel.append(el("div", { class: "card" },
-    el("h3", {}, `GPS suggestions for ${trip.name}`),
+    el("h3", {}, `GPS suggestions for ${context.name}`),
     el("div", { class: "meta" },
       `${result.without_gps || 0} without GPS · ${candidates.length} candidate` +
       `${candidates.length === 1 ? "" : "s"} · ${unresolved.length} unresolved`)));
@@ -1971,7 +2022,10 @@ async function fillTripGps(trip, preferredDay = "") {
     return banner("No GPS suggestions to apply.", true);
   }
 
+  let applying = false;
+  let applyingCount = 0;
   const apply = button("", () => {
+    if (applying) return;
     const pickedCandidates = visibleCandidates
       .filter((item) => selected.get(item.asset_id))
       .map((item) => {
@@ -1993,7 +2047,15 @@ async function fillTripGps(trip, preferredDay = "") {
         } : null;
       })
       .filter(Boolean);
-    applyTripGps([...pickedCandidates, ...pickedUnresolved], trip, activeDay);
+    applyGps([...pickedCandidates, ...pickedUnresolved], context, activeDay, () => {
+      applying = true;
+      applyingCount = pickedCandidates.length + pickedUnresolved.length;
+      refreshApplyLabel();
+    }).finally(() => {
+      applying = false;
+      apply.classList.remove("gps-apply-running");
+      refreshApplyLabel();
+    });
   });
   apply.classList.add("primary");
 
@@ -2004,6 +2066,13 @@ async function fillTripGps(trip, preferredDay = "") {
       .filter((item) => unresolvedSelected.get(item.asset_id)
         && unresolvedSourceByAsset.get(item.asset_id)).length;
     const total = candidateCount + unresolvedCount;
+    if (applying) {
+      apply.textContent = `Applying ${applyingCount} GPS fix${applyingCount === 1 ? "" : "es"}…`;
+      apply.disabled = true;
+      apply.classList.add("gps-apply-running");
+      return;
+    }
+    apply.classList.remove("gps-apply-running");
     apply.textContent = `Apply selected fixes (${total})`;
     apply.disabled = total === 0;
   };
@@ -2114,15 +2183,15 @@ async function fillTripGps(trip, preferredDay = "") {
           `Favorite GPS sources (${favorites.length})`),
         favoriteStrip,
       ] : [el("div", { class: "meta gps-source-empty" },
-        "No favorite GPS sources for this album yet. Use the stars below to add some.")];
+        `No favorite GPS sources for this ${context.sourceScope} yet. Use the stars below to add some.`)];
       sourcesCard.replaceChildren(
       el("h3", {}, "Use one source for multiple photos"),
       el("div", { class: "meta" },
-        "Check the missing photos you want to fix, then choose a GPS source from this album. " +
+        `Check the missing photos you want to fix, then choose a GPS source from this ${context.sourceScope}. ` +
         "Its GPS location will replace the proposed source for every checked photo currently shown."),
         ...sourceSections,
         el("details", { class: "gps-shared-picker" },
-          el("summary", {}, `Choose from all ${availableDonors.length} located album photos`),
+          el("summary", {}, `Choose from all ${availableDonors.length} located ${context.sourceScope} photos`),
           el("div", { class: "meta" },
             "The star saves a photo as a favorite GPS source in this browser."),
           allStrip));
@@ -2282,7 +2351,7 @@ async function fillTripGps(trip, preferredDay = "") {
             el("div", { class: "meta" }, item.reason),
             (choices.length
               ? el("div", { class: "meta" }, "Choose a nearby located photo:")
-              : el("div", { class: "meta" }, "No nearby located photos found in this trip.")),
+              : el("div", { class: "meta" }, `No nearby located photos found in this ${context.sourceScope}.`)),
             donors,
           )));
         }
@@ -2306,16 +2375,18 @@ async function fillTripGps(trip, preferredDay = "") {
   panel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-async function applyTripGps(candidates, trip, preferredDay = "") {
+async function applyGps(candidates, context, preferredDay = "", onstart = () => {}) {
   if (!candidates.length) {
     return banner("No photos selected.");
   }
   if (!confirm(`Apply ${candidates.length} selected GPS fix` +
-               `${candidates.length === 1 ? "" : "s"} for ${trip.name}?`)) {
+               `${candidates.length === 1 ? "" : "s"} for ${context.name}?`)) {
     return banner("GPS fill cancelled.", true);
   }
+  onstart();
   try {
-    const applied = await post("/api/trips/gps-apply", {
+    const applied = await post(context.applyPath, {
+      ...(context.applyPayload || {}),
       fills: candidates.map((item) => ({
         asset_id: item.asset_id,
         latitude: item.latitude,
@@ -2328,8 +2399,8 @@ async function applyTripGps(candidates, trip, preferredDay = "") {
       (skipped.length ? `, ${skipped.length} skipped` : "") +
       (failed.length ? `, ${failed.length} failed` : "");
     banner(message, failed.length === 0);
-    await loadTrips(false);
-    await fillTripGps(trip, preferredDay);
+    if (context.refreshTrips) await loadTrips(false);
+    await fillGpsReview(context, preferredDay, { push: false });
     banner(message, failed.length === 0);
   } catch (error) {
     banner(error.message);

@@ -420,6 +420,10 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
                 return api.trip_gps_preview(body)
             if path == "/api/trips/gps-apply":
                 return api.trip_gps_apply(body)
+            if path == "/api/albums/gps-preview":
+                return api.album_gps_preview(body)
+            if path == "/api/albums/gps-apply":
+                return api.album_gps_apply(body)
             if path == "/api/duplicates/remove":
                 return api.remove_duplicates(body)
             if path == "/api/backups":

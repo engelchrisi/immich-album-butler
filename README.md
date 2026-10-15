@@ -87,6 +87,19 @@ sudo systemctl restart immich-album-butler immich-album-butler-design
 Re-running the installer keeps `config.toml`, the env file and both state files; it only
 refreshes the package and the units.
 
+### Deploying from a workstation
+
+From a checkout with SSH access to the server, this one command packages the
+committed revision, installs it, and restarts both services:
+
+```sh
+sh deploy/deploy.sh root@example-host
+```
+
+Use `--design-only` when only the design UI needs restarting. A normal deploy
+is deliberately reproducible and uses `HEAD`; use `--working-tree` only when
+you intentionally want to deploy uncommitted local changes.
+
 ## Configuration
 
 **One file**, `/etc/immich-album-butler/config.toml` by default: the global
@@ -395,8 +408,10 @@ python3 -m immich_album_butler passwd alex      # asks twice, prints a block; ne
 - **Albums** — every Immich album this key can see, not only the butler's:
   each is tagged "manual", "scheduled" or "normal Immich album", filterable by
   that kind as well as by name. **View** opens an
-  album's media (see Browsing an album, below) for any of the three kinds;
-  an unmanaged one only offers View, since giving a new rule the same name
+  album's media (see Browsing an album, below) for any of the three kinds. Its
+  viewer can also **Fix missing GPS**, reviewing only that album's located
+  photos as donors; the review uses larger thumbnails than the Trips version.
+  An unmanaged one only offers View, since giving a new rule the same name
   as an existing album already extends it instead of making a second copy.
 - **Builder** — Who / When / Where pickers over one live preview: how many
   assets match, how many are already in the album, a thumbnail strip, and when
@@ -417,7 +432,7 @@ run on every update; the **optional** ones depend on which features you use:
 | Permission | Purpose | Needed for |
 |---|---|---|
 | `asset.read` | **required** | Search and fetch asset metadata and thumbnails |
-| `asset.update` | optional | Favourite/reject buttons in image tooltips; trip GPS backfill |
+| `asset.update` | optional | Favourite/reject buttons in image tooltips; trip and album GPS backfill |
 | `album.read` | **required** | List your albums |
 | `album.create` | **required** | Create new albums |
 | `albumAsset.create` | **required** | Add assets to albums |

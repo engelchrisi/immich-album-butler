@@ -31,7 +31,7 @@ mode's preview, so the preview cannot drift from what a run does.
 | `cover.py` | Cover choice by rule or file name |
 | `trips.py` | Trip detection from geotagged photos away from home |
 | `analyze.py` | Near-miss suggestions for a rule |
-| `design/api.py` | The whole design feature as plain Python (pickers, preview, analyze, save, run, trip GPS backfill preview/apply) |
+| `design/api.py` | The whole design feature as plain Python (pickers, preview, analyze, save, run, trip and album GPS backfill preview/apply) |
 | `design/server.py` | HTTP layer: login, routing, static files, thumbnail proxy |
 | `design/auth.py` | scrypt hashes, constant-time compare, sessions |
 | `design/static/` | `index.html`, `login.html`, `app.js`, `style.css`, `icon.svg` |
@@ -88,6 +88,7 @@ Login in front of everything. Read: `/api/whoami`, `/api/people`, `/api/places`,
 `/api/browse/album`, `/api/backups`, `/api/thumb/…`, `/api/asset/…`. Write: `/api/backups` (create), `/api/backups/restore` (`dry_run`, `config`, `album`), `/api/backups/delete` (`names`, bare `backup-*.json` names only), `/api/preview`, `/api/analyze`,
 `/api/albums`, `/api/groups`, `/api/run`, `/api/add-assets`, `/api/duplicates/remove`,
 `/api/cover`, `/api/trips/gps-preview`, `/api/trips/gps-apply`,
+`/api/albums/gps-preview`, `/api/albums/gps-apply`,
 `/api/asset/{id}/favorite`, `/api/asset/{id}/reject`.
 
 The one global hover card handles every image served by `/api/thumb/{id}`, so the favourite and
@@ -145,6 +146,15 @@ the library needs to be writable, by both mount and filesystem permissions,
 for whichever account Immich runs as (confirmed working end-to-end in the
 maintainer's own deployment, 2026-10-12).
 
+Album GPS backfill (N46) uses the same review and apply safeguards, but reads
+the selected album's current media directly instead of depending on the trip
+scan cache. `/api/albums/gps-preview` uses only that album's located media as
+both automatic and shared donors. `/api/albums/gps-apply` verifies that every
+selected target still belongs to that album before it writes. The review route
+is `/albums/<id>/gps`; it returns to `/albums/<id>` and its thumbnails are 30%
+larger than their Trips counterparts while the strips still wrap on narrow
+screens.
+
 `POST /api/albums` saves a rule under its slug, replacing one of the same slug. With `new: true`
 ("Save as…", N41) the slug comes from the new name only, and a name another rule already has
 (case-insensitive, or one slugging the same) is refused with 409, so the copy never overwrites
@@ -164,6 +174,11 @@ later scheduled and manual runs preserve that chosen cover (N6).
 `deploy/install.sh` copies the package to `/opt/immich-album-butler`, seeds config and env file,
 installs `immich-album-butler.service` (daemon) and `immich-album-butler-design.service`
 (not enabled; `ReadWritePaths` on the config directory because design mode writes it).
+`deploy/deploy.sh USER@HOST` is the local release helper: it archives committed
+`HEAD`, transfers it over SSH, normalises deployment-file line endings for a
+Windows checkout, runs the installer, and restarts both services. Its explicit
+`--working-tree` option is for a deliberate test deployment of local changes;
+`--design-only` limits the restart to the design service.
 
 ## 7. Decisions and risks
 

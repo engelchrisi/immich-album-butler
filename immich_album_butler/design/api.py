@@ -26,6 +26,7 @@ import re
 import threading
 import time
 import statistics
+from collections import Counter
 from pathlib import Path
 from typing import Callable
 
@@ -1044,7 +1045,6 @@ class DesignApi:
         by_id = {point.id: point for point in points}
         trip_points = [by_id[i] for i in asset_ids if i in by_id]
         located = [point for point in trip_points if point.located]
-        missing = [point for point in trip_points if not point.located]
         album_id = str(payload.get("album_id") or "")
         album_members = None
         if album_id:
@@ -1055,18 +1055,53 @@ class DesignApi:
             except ImmichError as exc:
                 raise ApiError(str(exc), status=502) from None
 
-        candidates = []
-        unresolved = []
-
         donor_pool = ([point for point in points if point.located and point.id in album_members]
                       if album_members is not None else located)
+        result = self._gps_preview(trip_points, donor_pool)
+        result.update({
+            "scanned_at": scanned_at.isoformat() if scanned_at else None,
+            "trip_assets": len(trip_points),
+        })
+        return result
+
+    def album_gps_preview(self, payload: dict) -> dict:
+        """Suggest GPS fills using only the selected album's own media.
+
+        Unlike a trip, an album can be reviewed without a library trip scan.
+        Its members are read fresh so the review reflects the album currently
+        open in Immich, including a hand-made or shared album.
+        """
+        album_id = str(payload.get("album_id") or "")
+        if not ASSET_ID.fullmatch(album_id):
+            raise ApiError("bad album id")
+        try:
+            albums = self.client.albums()
+            if not any(album.id == album_id for album in albums):
+                raise ApiError("no such album", status=404)
+            points = [trips_module.Point.from_asset(asset)
+                      for asset in self.client.search_metadata(album_ids=[album_id])]
+        except ImmichError as exc:
+            raise ApiError(str(exc), status=502) from None
+        album_points = [point for point in points if point is not None]
+        result = self._gps_preview(album_points,
+                                   [point for point in album_points if point.located])
+        result["album_assets"] = len(album_points)
+        return result
+
+    def _gps_preview(self, target_points: list[trips_module.Point],
+                     available_donor_points: list[trips_module.Point]) -> dict:
+        """Build the read-only GPS-review data for a trip or an album."""
+        located = [point for point in target_points if point.located]
+        missing = [point for point in target_points if not point.located]
+        candidates = []
+        unresolved = []
         available_donors = [{
             "asset_id": point.id,
             "latitude": round(point.latitude, 6),
             "longitude": round(point.longitude, 6),
             "taken_at": point.taken_at.isoformat(),
             "camera": point.camera,
-        } for point in sorted(donor_pool, key=lambda p: (p.taken_at, p.id))]
+        } for point in sorted(available_donor_points, key=lambda p: (p.taken_at, p.id))]
 
         def donor_choices_for(target: trips_module.Point,
                               donor_pool: list[trips_module.Point]) -> list[dict]:
@@ -1141,8 +1176,6 @@ class DesignApi:
             })
 
         return {
-            "scanned_at": scanned_at.isoformat() if scanned_at else None,
-            "trip_assets": len(trip_points),
             "located": len(located),
             "without_gps": len(missing),
             "available_donors": available_donors,
@@ -1169,20 +1202,33 @@ class DesignApi:
                                    name="longitude")
             wanted.append((asset_id, latitude, longitude))
 
+        log.info("GPS apply started: %d selected media", len(wanted))
         updated: list[tuple[str, float, float]] = []
         skipped: list[dict] = []
         failed: list[dict] = []
-        for asset_id, latitude, longitude in wanted:
+        failure_statuses: Counter[str] = Counter()
+
+        def log_progress(position: int) -> None:
+            if position % 25 == 0 or position == len(wanted):
+                log.info("GPS apply progress: %d/%d processed; %d updated, %d skipped, %d failed",
+                         position, len(wanted), len(updated), len(skipped), len(failed))
+
+        for position, (asset_id, latitude, longitude) in enumerate(wanted, start=1):
             try:
                 data = self.client.asset(asset_id)
             except ImmichError as exc:
                 failed.append({"asset_id": asset_id, "error": str(exc)})
+                failure_statuses[f"read:{exc.status or 'unknown'}"] += 1
+                log.warning("GPS apply media read failed at %d/%d (status %s)",
+                            position, len(wanted), exc.status or "unknown")
+                log_progress(position)
                 continue
 
             exif = data.get("exifInfo") or {}
             if exif.get("latitude") is not None and exif.get("longitude") is not None:
                 skipped.append({"asset_id": asset_id,
                                 "reason": "already has GPS"})
+                log_progress(position)
                 continue
 
             try:
@@ -1190,6 +1236,11 @@ class DesignApi:
                 updated.append((asset_id, latitude, longitude))
             except ImmichError as exc:
                 failed.append({"asset_id": asset_id, "error": str(exc)})
+                failure_statuses[f"write:{exc.status or 'unknown'}"] += 1
+                log.warning("GPS apply coordinate write failed at %d/%d (status %s)",
+                            position, len(wanted), exc.status or "unknown")
+
+            log_progress(position)
 
         # Keep the scan cache coherent after explicit writes.
         if updated and self._scan is not None:
@@ -1208,18 +1259,51 @@ class DesignApi:
                     city=point.city,
                     state=point.state,
                     country=point.country,
+                    camera=point.camera,
                     is_video=point.is_video,
                 ))
             self._scan = patched
             self._scanned_at = dt.datetime.now()
             trips_module.save_scan(self.state_dir, self._scan)
 
+        if failure_statuses:
+            statuses = ", ".join(f"{status}={count}"
+                                 for status, count in sorted(failure_statuses.items()))
+            log.warning("GPS apply completed: %d selected, %d updated, %d skipped, %d failed (%s)",
+                        len(wanted), len(updated), len(skipped), len(failed), statuses)
+        else:
+            log.info("GPS apply completed: %d selected, %d updated, %d skipped, no failures",
+                     len(wanted), len(updated), len(skipped))
         return {
             "requested": len(wanted),
             "updated": len(updated),
             "skipped": skipped,
             "failed": failed,
         }
+
+    def album_gps_apply(self, payload: dict) -> dict:
+        """Apply selected GPS fills, confined to one currently visible album."""
+        album_id = str(payload.get("album_id") or "")
+        if not ASSET_ID.fullmatch(album_id):
+            raise ApiError("bad album id")
+        fills = payload.get("fills") or []
+        if not isinstance(fills, list) or not fills:
+            raise ApiError("choose at least one media item to update")
+        asset_ids = []
+        for item in fills:
+            if not isinstance(item, dict):
+                raise ApiError("fills must be a list of objects")
+            asset_id = str(item.get("asset_id") or "")
+            if not ASSET_ID.fullmatch(asset_id):
+                raise ApiError("bad media id")
+            asset_ids.append(asset_id)
+        try:
+            members = self.client.album_asset_ids(album_id)
+        except ImmichError as exc:
+            raise ApiError(str(exc), status=502) from None
+        if any(asset_id not in members for asset_id in asset_ids):
+            raise ApiError("a selected photo is no longer in this album")
+        return self.trip_gps_apply(payload)
 
     def _album_index(self, refresh: bool = False) -> dict[str, tuple[str, set[str]]]:
         """Every album in Immich and the media it holds, by album name.

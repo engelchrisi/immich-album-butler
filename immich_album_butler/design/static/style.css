@@ -118,6 +118,17 @@ button:hover:not(:disabled) { border-color: var(--accent); }
 button:disabled { opacity: 0.5; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent);
                  font-weight: 600; }
+button.gps-apply-running {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+}
+button.gps-apply-running::before {
+  content: ""; width: 0.8rem; height: 0.8rem; border: 2px solid currentColor;
+  border-right-color: transparent; border-radius: 50%; animation: gps-spin 0.75s linear infinite;
+}
+@keyframes gps-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  button.gps-apply-running::before { animation: none; }
+}
 button.danger { color: var(--bad); }
 button.link { background: none; border: none; color: var(--accent); padding: 0.2rem;
               text-decoration: underline; flex: 0 0 auto; }
@@ -207,6 +218,18 @@ button.link { background: none; border: none; color: var(--accent); padding: 0.2
 .gps-donors .gps-donor-choice:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+/* Album review has more room than the compact Trips page: its photos are
+   deliberately 30% larger, while the strip still wraps on a narrow screen. */
+.album-gps .gps-row { grid-template-columns: 2rem 5.7rem minmax(0, 1fr); }
+.album-gps .gps-pick { min-height: 5.2rem; }
+.album-gps .gps-target img, .album-gps .gps-donors img {
+  width: 83px; height: 83px;
+}
+.album-gps .gps-overview img { width: 73px; height: 73px; }
+.album-gps .gps-source-tile { flex-basis: 83px; }
+.album-gps .gps-donors .gps-donor-choice {
+  flex-basis: 83px; width: 83px; height: 83px;
 }
 .check { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem; }
 .check input { flex: 0 0 auto; }
