@@ -868,6 +868,13 @@ class GpsFillTests(DesignTestCase):
                          [fake_id(1), fake_id(2)])
         self.assertEqual([item["asset_id"] for item in result["unresolved"]], [fake_id(4)])
 
+    def test_one_nearby_donor_is_high_confidence(self):
+        album = self.stub.add_album("Tokyo 2020", [fake_id(n) for n in (1, 3)])
+        result = self.api.album_gps_preview({"album_id": album["id"]})
+        candidate = result["candidates"][0]
+        self.assertEqual(candidate["donor_count"], 1)
+        self.assertEqual(candidate["confidence"], "high")
+
     def test_album_apply_refuses_a_photo_outside_the_album(self):
         album = self.stub.add_album("Tokyo 2020", [fake_id(n) for n in (1, 3)])
         with self.assertRaisesRegex(ApiError, "no longer in this album"):

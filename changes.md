@@ -1,5 +1,13 @@
 # Changes
 
+## 1.9.0 — 2026-10-17
+- GPS review: check one photo and Shift-click another to select or clear the
+  entire visible block between them, including unresolved photos with sources.
+
+## 1.8.0 — 2026-10-17
+- GPS review: one nearby donor photo is now sufficient for high confidence;
+  it must still be within 90 minutes and the 2 km spread limit.
+
 ## 1.7.1 — 2026-10-15
 - Design UI: the Albums page can collect missing-GPS photo counts for every
   album with live scan progress, show the result on each album card, and sort

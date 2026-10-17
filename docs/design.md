@@ -103,7 +103,9 @@ and exposes `aria-pressed`, making its current state clear visually and to assis
 Trip GPS backfill (N44) is design-mode-only and explicit. `/api/trips/gps-preview`
 computes candidate coordinates for trip media without GPS from same-day, geotagged
 trip media and reports confidence (`high`/`medium`/`low`), donor count, nearest
-time delta and donor spread (km). `/api/trips/gps-apply` updates only selected
+time delta and donor spread (km). One donor is sufficient for high confidence
+when it is within 90 minutes and 2 km; additional donors are not required.
+`/api/trips/gps-apply` updates only selected
 media, skips media that already has GPS, and reports partial failures per item.
 The preview includes each missing asset's camera make/model from the versioned
 trip-scan cache, allowing the UI to group both suggested and unresolved fixes
@@ -122,7 +124,9 @@ remain or advancing to the next day with candidates. Donor thumbnails are
 selectable buttons, and the selected source is highlighted. The review uses
 capture times and donor time gaps instead of raw coordinates or asset IDs;
 unresolved fixes use the same checkboxes and Apply action. Runtime mode never
-calls this path.
+calls this path. Checkbox selection supports the conventional inclusive range:
+check one visible row, then Shift-click another to apply its checked state to
+both endpoints and every displayed row between them.
 
 GPS backfill writes `PUT /assets/{id}` (`latitude`/`longitude` only); an
 earlier version wrongly sent `PATCH`, which Immich silently ignores -- no

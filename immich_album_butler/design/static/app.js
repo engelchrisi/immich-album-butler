@@ -2120,6 +2120,21 @@ async function fillGpsReview(context, preferredDay = "", { push = true } = {}) {
   let daySelect = null;
   let renderReview = () => {};
   let renderUnresolved = () => {};
+  let candidateRangeAnchor = null;
+  let unresolvedRangeAnchor = null;
+
+  // Range selection follows the rows as displayed. The second checkbox's
+  // state is applied to the whole inclusive range, for selecting or clearing.
+  const selectRange = (items, anchorId, endId, checked, selection) => {
+    const first = items.findIndex((item) => item.asset_id === anchorId);
+    const last = items.findIndex((item) => item.asset_id === endId);
+    if (first < 0 || last < 0) return false;
+    const low = Math.min(first, last), high = Math.max(first, last);
+    for (const item of items.slice(low, high + 1)) {
+      selection.set(item.asset_id, checked);
+    }
+    return true;
+  };
   const applyControls = [];
   if (candidates.length) {
     daySelect = el("select", {});
@@ -2278,21 +2293,30 @@ async function fillGpsReview(context, preferredDay = "", { push = true } = {}) {
     const review = el("div", { class: "card" },
       el("h3", {}, "Review and select"),
       el("div", { class: "meta" },
-        "Choose a GPS source photo, then check the fixes to apply."));
+        "Choose a GPS source photo, then check the fixes to apply. " +
+        "To select a block, check the first photo and Shift-click the last."));
     const reviewBody = el("div", {});
     renderReview = () => {
       reviewBody.replaceChildren();
       visibleCandidates = activeDay
         ? [...(byDay.get(activeDay) || [])]
         : [...orderedCandidates];
-      for (const [camera, cameraItems] of byCamera(visibleCandidates)) {
+      const cameraGroups = byCamera(visibleCandidates);
+      const displayedCandidates = cameraGroups.flatMap(([, items]) => items);
+      for (const [camera, cameraItems] of cameraGroups) {
         reviewBody.append(el("h4", { class: "gps-camera-section" },
           `${camera} · ${cameraItems.length} photo${cameraItems.length === 1 ? "" : "s"}`));
         for (const item of cameraItems) {
         const check = el("input", { type: "checkbox" });
         check.checked = !!selected.get(item.asset_id);
-        check.onchange = () => {
-          selected.set(item.asset_id, check.checked);
+        check.onclick = (event) => {
+          if (!(event.shiftKey && candidateRangeAnchor &&
+                selectRange(displayedCandidates, candidateRangeAnchor,
+                            item.asset_id, check.checked, selected))) {
+            selected.set(item.asset_id, check.checked);
+          }
+          candidateRangeAnchor = item.asset_id;
+          renderReview();
           refreshApplyLabel();
         };
 
@@ -2334,6 +2358,7 @@ async function fillGpsReview(context, preferredDay = "", { push = true } = {}) {
 
     daySelect.onchange = () => {
       activeDay = daySelect.value;
+      candidateRangeAnchor = null;
       renderOverview();
       renderReview();
       refreshApplyLabel();
@@ -2353,7 +2378,10 @@ async function fillGpsReview(context, preferredDay = "", { push = true } = {}) {
 
     renderUnresolved = () => {
       const rows = [];
-      for (const [camera, cameraItems] of byCamera(unresolved)) {
+      const cameraGroups = byCamera(unresolved);
+      const displayedUnresolved = cameraGroups.flatMap(([, items]) => items)
+        .filter((item) => unresolvedSourceByAsset.get(item.asset_id));
+      for (const [camera, cameraItems] of cameraGroups) {
         rows.push(el("h4", { class: "gps-camera-section" },
           `${camera} · ${cameraItems.length} photo${cameraItems.length === 1 ? "" : "s"}`));
         for (const item of cameraItems) {
@@ -2376,8 +2404,14 @@ async function fillGpsReview(context, preferredDay = "", { push = true } = {}) {
         const check = el("input", { type: "checkbox" });
         check.checked = !!unresolvedSelected.get(item.asset_id);
         check.disabled = !selectedSource;
-        check.onchange = () => {
-          unresolvedSelected.set(item.asset_id, check.checked);
+        check.onclick = (event) => {
+          if (!(event.shiftKey && unresolvedRangeAnchor &&
+                selectRange(displayedUnresolved, unresolvedRangeAnchor,
+                            item.asset_id, check.checked, unresolvedSelected))) {
+            unresolvedSelected.set(item.asset_id, check.checked);
+          }
+          unresolvedRangeAnchor = item.asset_id;
+          renderUnresolved();
           refreshApplyLabel();
         };
 
@@ -2399,7 +2433,8 @@ async function fillGpsReview(context, preferredDay = "", { push = true } = {}) {
       card.replaceChildren(
         el("h3", {}, "Unresolved"),
         el("div", { class: "meta" },
-          "No safe automatic fix. Nearby located photos are shown so you can pick a source."),
+          "No safe automatic fix. Pick sources before selecting. " +
+          "To select a block, check the first photo and Shift-click the last."),
         ...rows,
       );
     };

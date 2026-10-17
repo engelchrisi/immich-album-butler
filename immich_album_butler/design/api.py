@@ -87,7 +87,7 @@ def _gps_minutes(a: dt.datetime, b: dt.datetime) -> float:
 
 
 def _gps_confidence(nearest_minutes: float, spread_km: float, donors: int) -> str:
-    if donors >= 2 and nearest_minutes <= GPS_CONF_HIGH_MIN and spread_km <= GPS_CONF_HIGH_KM:
+    if donors >= 1 and nearest_minutes <= GPS_CONF_HIGH_MIN and spread_km <= GPS_CONF_HIGH_KM:
         return "high"
     if donors >= 1 and nearest_minutes <= GPS_CONF_MED_MIN and spread_km <= GPS_CONF_MED_KM:
         return "medium"
