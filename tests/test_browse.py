@@ -72,6 +72,15 @@ class AlbumListTests(BrowseTestCase):
         albums = self.api.albums()["albums"]
         self.assertEqual([a["name"] for a in albums], ["Italy 2019"])
 
+    def test_missing_gps_statistics_are_collected_for_every_album(self):
+        # The fake's images have no coordinates. Its video must not count.
+        result = self.api.collect_album_gps()
+        self.assertEqual(result, {"albums": 2})
+        albums = {a["name"]: a for a in self.api.albums()["albums"]}
+        self.assertEqual(albums["Italy 2019"]["missing_gps"], 2)
+        self.assertEqual(albums["Spain"]["missing_gps"], 2)
+        self.assertFalse(self.api.album_gps_progress()["running"])
+
 
 class AlbumPageTests(BrowseTestCase):
     def test_an_album_brings_what_it_is_grouped_by(self):

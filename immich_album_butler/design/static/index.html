@@ -33,6 +33,9 @@
     <button id="new-album" class="primary">New album</button>
     <button id="new-person-album">New person album</button>
     <button id="run-all-albums">Run all now</button>
+    <button id="collect-album-gps">Collect missing GPS</button>
+    <progress id="album-gps-bar" hidden></progress>
+    <span class="muted" id="album-gps-status"></span>
     <span class="muted" id="albums-note"></span>
     <input id="album-filter" type="search" placeholder="Filter albums by name…"
            autocomplete="off">
@@ -49,6 +52,7 @@
         <option value="name-desc">Name Z–A</option>
         <option value="run-desc">Last run, newest first</option>
         <option value="run-asc">Last run, oldest first</option>
+        <option value="gps-desc">Missing GPS photos, most first</option>
       </select></label>
   </div>
   <div id="album-list" class="cards"></div>

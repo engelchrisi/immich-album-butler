@@ -242,6 +242,13 @@ function sortAlbums(albums) {
   const byName = (a, b) => label(a).localeCompare(label(b), undefined, { sensitivity: "base" });
   const out = [...albums];
   if (mode === "name-desc") return out.sort((a, b) => byName(b, a));
+  if (mode === "gps-desc") {
+    return out.sort((a, b) => {
+      const x = a.missing_gps, y = b.missing_gps;
+      if (x == null || y == null) return (x == null) - (y == null) || byName(a, b);
+      return y - x || byName(a, b);
+    });
+  }
   if (mode === "run-desc" || mode === "run-asc") {
     const dir = mode === "run-desc" ? -1 : 1;
     const when = (a) => (a.last_run ? Date.parse(a.last_run) : NaN);
@@ -310,6 +317,9 @@ function renderAlbums() {
              : infoRow("Last run", "never")]
       : [infoRow("Items", album.asset_count == null ? "—" : String(album.asset_count)),
          album.shared ? infoRow("Shared", "with me") : ""];
+    if (album.missing_gps != null) {
+      rows.push(infoRow("Missing GPS", String(album.missing_gps)));
+    }
 
     // Extras as small chips, only when there are any.
     const chips = managed ? [
@@ -407,6 +417,36 @@ $("album-type-filter").onchange = renderAlbums;
 $("new-album").onclick = () => { state.fromAlbums = true; navigate("/builder/new"); };
 $("builder-back").onclick = () => { state.fromAlbums = false; navigate("/albums"); };
 $("run-all-albums").onclick = runAllAlbums;
+
+function showAlbumGpsProgress(p) {
+  const bar = $("album-gps-bar");
+  bar.hidden = !p.running;
+  if (p.total) { bar.max = p.total; bar.value = p.done; }
+  else bar.removeAttribute("value");
+  $("album-gps-status").textContent = !p.running ? ""
+    : p.total ? `${p.message} (${Math.min(p.done + 1, p.total)}/${p.total})`
+              : `${p.message}…`;
+}
+
+$("collect-album-gps").onclick = async () => {
+  const button = $("collect-album-gps");
+  if (button.disabled) return;
+  button.disabled = true;
+  button.classList.add("gps-apply-running");
+  showAlbumGpsProgress({ running: true, message: "Starting", done: 0, total: 0 });
+  const poll = setInterval(async () => {
+    try { showAlbumGpsProgress(await api("/api/albums/gps-progress")); } catch {}
+  }, 500);
+  try {
+    const result = await post("/api/albums/gps-stats", {});
+    banner(`Collected missing GPS statistics for ${result.albums} album${result.albums === 1 ? "" : "s"}.`, true);
+    await loadAlbums();
+  } catch (error) { banner(error.message); }
+  clearInterval(poll);
+  showAlbumGpsProgress({ running: false });
+  button.classList.remove("gps-apply-running");
+  button.disabled = false;
+};
 
 $("builder-new-album").onclick = () => navigate("/builder/new");
 

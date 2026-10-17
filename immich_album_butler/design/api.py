@@ -187,6 +187,10 @@ class DesignApi:
         self._backup_lock = threading.Lock()
         self._backup_progress: dict = {"running": False, "message": "",
                                        "done": 0, "total": 0}
+        self._album_gps_lock = threading.Lock()
+        self._album_gps_progress: dict = {"running": False, "message": "",
+                                          "done": 0, "total": 0}
+        self._album_gps_stats: dict[str, int] = {}
         self._rejected: dict[str, int | None] = {}
         self._rejected_lock = threading.Lock()
         # Set by design/server.py once the bind-watcher exists, so the UI's
@@ -414,6 +418,7 @@ class DesignApi:
                 "last_run": getattr(record, "last_run", None),
                 "last_result": getattr(record, "last_result", None),
                 "last_error": getattr(record, "last_error", None),
+                "missing_gps": self._album_gps_stats.get(info.id) if info else None,
             })
 
         # Every other Immich album this key can see, the butler's or not, so
@@ -435,11 +440,50 @@ class DesignApi:
                 "chunk": None, "chunk_order": None, "hint": None,
                 "shares": [], "schedule": "", "schedule_inherited": False,
                 "match": None, "last_run": None, "last_result": None, "last_error": None,
+                "missing_gps": self._album_gps_stats.get(info.id),
             })
 
         return {"albums": rows,
                 "default_schedule": str(config.settings.schedule),
                 "errors": config.errors}
+
+    def collect_album_gps(self) -> dict:
+        """Count unlocated photos in every visible album, only on request."""
+        if not self._album_gps_lock.acquire(blocking=False):
+            raise ApiError("GPS statistics are already being collected", status=409)
+        try:
+            try:
+                albums = self.client.albums()
+            except ImmichError as exc:
+                raise ApiError(str(exc), status=502) from None
+            total = len(albums)
+            self._album_gps_progress = {"running": True, "message": "Starting",
+                                        "done": 0, "total": total}
+            stats: dict[str, int] = {}
+            for position, album in enumerate(albums):
+                self._album_gps_progress = {
+                    "running": True, "message": f"Scanning {album.name}",
+                    "done": position, "total": total,
+                }
+                try:
+                    assets = self.client.search_metadata(
+                        album_ids=[album.id], with_exif=True)
+                    stats[album.id] = sum(
+                        1 for asset in assets
+                        if not asset.is_video and not asset.located)
+                except ImmichError as exc:
+                    log.warning("Could not collect GPS statistics for album %s: %s",
+                                album.name, exc)
+                self._album_gps_progress["done"] = position + 1
+            self._album_gps_stats = stats
+            return {"albums": len(stats)}
+        finally:
+            self._album_gps_progress = {"running": False, "message": "",
+                                        "done": 0, "total": 0}
+            self._album_gps_lock.release()
+
+    def album_gps_progress(self) -> dict:
+        return self._album_gps_progress
 
     def set_cover(self, payload: dict) -> dict:
         """Point any album's cover at one of its own pictures, chosen by hand.

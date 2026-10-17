@@ -1,6 +1,9 @@
 # Changes
 
 ## 1.7.1 — 2026-10-15
+- Design UI: the Albums page can collect missing-GPS photo counts for every
+  album with live scan progress, show the result on each album card, and sort
+  albums by the largest missing-GPS count.
 - GPS review: record privacy-safe batch progress and grouped HTTP failure
   statuses in the design-service log, making a partial coordinate update
   diagnosable without recording asset IDs or GPS coordinates.

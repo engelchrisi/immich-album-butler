@@ -377,6 +377,8 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
                                   query.get("country", ""), query.get("state", ""))
             if path == "/api/albums":
                 return api.albums()
+            if path == "/api/albums/gps-progress":
+                return api.album_gps_progress()
             if path == "/api/accounts":
                 return api.accounts()
             if path == "/api/immich-albums":
@@ -409,6 +411,8 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
                 return api.analyze(body)
             if path == "/api/albums":
                 return api.save_album(body)
+            if path == "/api/albums/gps-stats":
+                return api.collect_album_gps()
             if path == "/api/groups":
                 return api.save_group(body.get("name", ""),
                                       body.get("members") or [])
