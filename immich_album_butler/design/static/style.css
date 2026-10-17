@@ -169,6 +169,14 @@ button.link { background: none; border: none; color: var(--accent); padding: 0.2
 .gps-overview img { width: 56px; height: 56px; }
 .gps-day-heading { margin: 1rem 0 0.4rem; }
 .gps-day-heading:first-child { margin-top: 0.6rem; }
+.gps-summary-year > summary { cursor: pointer; font-weight: 700; }
+.gps-summary-days { margin-top: 0.8rem; }
+.gps-summary-month { margin: 1rem 0 0.2rem; }
+.gps-summary-day { display: flex; flex-wrap: wrap; align-items: center;
+  gap: 0.7rem; padding: 0.7rem 0; border-top: 1px solid var(--line); }
+.gps-high-alternatives { margin: 0.35rem 0; }
+.gps-high-alternatives > summary { cursor: pointer; }
+.gps-high-row .gps-detail > button { margin-top: 0.35rem; }
 .gps-camera-heading { margin-top: 0.55rem; }
 .gps-camera-section {
   margin: 1rem 0 0;
@@ -200,6 +208,11 @@ button.link { background: none; border: none; color: var(--accent); padding: 0.2
   line-height: 1;
 }
 .gps-source-tile .gps-source-favorite.active { color: #d8a721; }
+.gps-source-tile .gps-source-save, .gps-source-tile .gps-source-remove {
+  min-height: 1.4rem; margin-top: 0.15rem; padding: 0 0.25rem; font-size: 0.72rem;
+}
+.gps-source-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 0.78rem; }
 .gps-donors .gps-donor-choice {
   flex: 0 0 64px;
   width: 64px;

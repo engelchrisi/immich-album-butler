@@ -20,6 +20,7 @@ const state = {
   accountsNote: "",
   extends: null,        // the unmanaged Immich album the preview would take over
   gpsBackPath: "/trips",
+  albumGpsDays: new Map(), // album ID -> last GPS overview's affected days
 };
 
 function emptyDraft() {
@@ -123,6 +124,12 @@ function activateSubtab(name) {
 }
 
 function route(path) {
+  const albumGpsHighMatch = /^\/albums\/([^/]+)\/gps\/high\/(\d+)$/.exec(path);
+  if (albumGpsHighMatch) return openAlbumGpsHigh(
+    decodeURIComponent(albumGpsHighMatch[1]), Number(albumGpsHighMatch[2]), { push: false });
+  const albumGpsDayMatch = /^\/albums\/([^/]+)\/gps\/(\d{4}-\d{2}-\d{2})$/.exec(path);
+  if (albumGpsDayMatch) return openAlbumGpsDay(
+    decodeURIComponent(albumGpsDayMatch[1]), albumGpsDayMatch[2], { push: false });
   const albumGpsMatch = /^\/albums\/([^/]+)\/gps$/.exec(path);
   if (albumGpsMatch) return openAlbumGpsReview(decodeURIComponent(albumGpsMatch[1]),
                                                 { push: false });
@@ -1689,24 +1696,326 @@ async function openAlbumView(albumId, { push = true } = {}) {
 }
 
 async function openAlbumGpsReview(albumId, { push = true } = {}) {
-  let album = browse.album;
-  if (!album || album.album_id !== albumId) {
-    try { album = await api(`/api/browse/album?id=${encodeURIComponent(albumId)}`); }
-    catch (error) { return banner(error.message); }
+  const albumName = browse.album?.album_id === albumId ? browse.album.name : "Album";
+  const path = `/albums/${encodeURIComponent(albumId)}/gps`;
+  if (push && location.pathname !== path) history.pushState(null, "", path);
+  showGpsPage({ tab: "albums", backPath: `/albums/${encodeURIComponent(albumId)}`,
+    backLabel: "← Back to album" });
+  const panel = $("trip-gps");
+  panel.classList.add("album-gps");
+  panel.replaceChildren(el("div", { class: "spin" }, "Building GPS overview…"));
+  let summary;
+  try {
+    summary = await post("/api/albums/gps-summary", { album_id: albumId });
+  } catch (error) {
+    panel.replaceChildren();
+    return banner(error.message);
   }
+  state.albumGpsDays.set(albumId, summary.days || []);
+  const displayName = summary.album_name || albumName;
+  panel.replaceChildren(el("div", { class: "card" },
+    el("h3", {}, `Missing GPS in ${displayName}`),
+    el("div", { class: "meta" },
+      `${summary.without_gps} photos across ${summary.days.length} affected days`)));
+  if (!summary.days.length) {
+    panel.append(el("div", { class: "card" }, "Every dated photo has GPS."));
+    return banner("No missing GPS photos.", true);
+  }
+  const highAction = button(`Review HIGH matches (${summary.high})`,
+    () => openAlbumGpsHigh(albumId, 1));
+  highAction.classList.add("primary");
+  highAction.disabled = !summary.high;
+  panel.append(el("div", { class: "card" },
+    el("h3", {}, "Fix HIGH matches across days"),
+    el("div", { class: "meta" },
+      "Review up to 50 suggested fixes at once, exclude any uncertain photos, then apply the selected batch."),
+    highAction));
+  const byYear = new Map();
+  for (const day of summary.days) {
+    const year = day.day.slice(0, 4);
+    if (!byYear.has(year)) byYear.set(year, []);
+    byYear.get(year).push(day);
+  }
+  const years = [...byYear.keys()].sort().reverse();
+  for (const year of years) {
+    const days = byYear.get(year).sort((a, b) => b.day.localeCompare(a.day));
+    const total = days.reduce((sum, day) => sum + day.missing, 0);
+    const body = el("div", { class: "gps-summary-days" });
+    const byMonth = new Map();
+    for (const day of days) {
+      const month = day.day.slice(0, 7);
+      if (!byMonth.has(month)) byMonth.set(month, []);
+      byMonth.get(month).push(day);
+    }
+    for (const [month, monthDays] of byMonth) {
+      const monthName = `${MONTHS[Number(month.slice(5)) - 1]} ${year}`;
+      body.append(el("h4", { class: "gps-summary-month" }, monthName));
+      for (const day of monthDays) {
+        body.append(el("div", { class: "gps-summary-day" },
+          el("div", {}, el("b", {}, day.day),
+            el("div", { class: "meta" },
+              `${day.missing} missing · ${day.high} HIGH · ${day.candidates} suggested · ${day.unresolved} unresolved`)),
+          button("Review day", () => openAlbumGpsDay(albumId, day.day))));
+      }
+    }
+    panel.append(el("details", year === years[0]
+      ? { class: "card gps-summary-year", open: "" }
+      : { class: "card gps-summary-year" },
+      el("summary", {}, `${year} · ${total} missing · ` +
+        `${days.reduce((sum, day) => sum + day.high, 0)} HIGH across ${days.length} days`), body));
+  }
+  banner(`GPS overview ready: ${summary.without_gps} missing photos.`, true);
+}
+
+async function openAlbumGpsDay(albumId, day, { push = true } = {}) {
+  const albumName = browse.album?.album_id === albumId ? browse.album.name : "Album";
+  let dayNavigation = null;
+  try {
+    dayNavigation = albumGpsDayNavigation(await albumGpsDays(albumId), day);
+  } catch (_) { /* The focused review reports its own request failure. */ }
   return fillGpsReview({
-    name: album.name,
-    path: `/albums/${encodeURIComponent(albumId)}/gps`,
-    backPath: `/albums/${encodeURIComponent(albumId)}`,
-    backLabel: "← Back to album",
+    name: `${albumName} · ${day}`,
+    path: `/albums/${encodeURIComponent(albumId)}/gps/${day}`,
+    backPath: `/albums/${encodeURIComponent(albumId)}/gps`,
+    backLabel: "← GPS overview",
     tab: "albums",
     albumReview: true,
-    sourceScope: "album",
+    sourceScope: "day",
     previewPath: "/api/albums/gps-preview",
+    albumDonorPreviewPath: "/api/albums/gps-donors",
+    albumDonorPreviewPayload: { album_id: albumId },
     applyPath: "/api/albums/gps-apply",
-    previewPayload: { album_id: albumId },
+    previewPayload: { album_id: albumId, day },
     applyPayload: { album_id: albumId },
-  }, "", { push });
+    albumId,
+    dayNavigation,
+    day,
+  }, day, { push });
+}
+
+async function albumGpsDays(albumId, refresh = false) {
+  if (!refresh && state.albumGpsDays.has(albumId)) return state.albumGpsDays.get(albumId);
+  const summary = await post("/api/albums/gps-summary", { album_id: albumId });
+  const days = summary.days || [];
+  state.albumGpsDays.set(albumId, days);
+  return days;
+}
+
+function albumGpsDayNavigation(days, day) {
+  const year = day.slice(0, 4);
+  const inYear = days.map((item) => item.day).filter((item) => item.startsWith(`${year}-`))
+    .sort();
+  const position = inYear.indexOf(day);
+  if (position >= 0) {
+    return { year, previous: inYear[position - 1] || "", next: inYear[position + 1] || "" };
+  }
+  return {
+    year,
+    previous: [...inYear].reverse().find((item) => item < day) || "",
+    next: inYear.find((item) => item > day) || "",
+  };
+}
+
+async function openAlbumGpsHigh(albumId, page = 1, { push = true } = {}) {
+  const path = `/albums/${encodeURIComponent(albumId)}/gps/high/${page}`;
+  if (push && location.pathname !== path) history.pushState(null, "", path);
+  showGpsPage({ tab: "albums", backPath: `/albums/${encodeURIComponent(albumId)}/gps`,
+    backLabel: "← GPS overview" });
+  const panel = $("trip-gps");
+  panel.classList.add("album-gps");
+  panel.replaceChildren(el("div", { class: "spin" }, "Loading HIGH matches…"));
+  let result;
+  try {
+    result = await post("/api/albums/gps-high-preview", { album_id: albumId, page });
+  } catch (error) {
+    panel.replaceChildren();
+    return banner(error.message);
+  }
+  const candidates = result.candidates || [];
+  const selected = new Map(candidates.map((item) => [item.asset_id, true]));
+  const sources = new Map(candidates.map((item) =>
+    [item.asset_id, item.donor_choices?.[0] || null]));
+  const first = (page - 1) * result.page_size + 1;
+  const last = Math.min(page * result.page_size, result.total);
+  const name = result.album_name || "Album";
+  panel.replaceChildren(el("div", { class: "card" },
+    el("h3", {}, `HIGH GPS matches in ${name}`),
+    el("div", { class: "meta" }, result.total
+      ? `Showing ${first}–${last} of ${result.total} HIGH matches, newest first.`
+      : "No HIGH matches remain."),
+    el("div", { class: "meta" },
+      "Each row shows the missing photo and its proposed GPS source. Deselect any uncertain match or open its day for detailed review.")));
+  if (!candidates.length) {
+    panel.append(el("div", { class: "card" },
+      result.total && page > 1
+        ? button("Go to first batch", () => openAlbumGpsHigh(albumId, 1))
+        : button("Back to GPS overview", () => openAlbumGpsReview(albumId))));
+    return;
+  }
+
+  let savedDonors = [];
+  try { savedDonors = (await api("/api/gps-donors")).donors || []; }
+  catch (error) { banner(`Saved GPS donors unavailable: ${error.message}`); }
+  let applying = false;
+  const applyButtons = [];
+  const otherControls = [];
+  const sourceRenderers = new Map();
+  const refreshButtons = () => {
+    const count = [...selected.values()].filter(Boolean).length;
+    for (const apply of applyButtons) {
+      apply.textContent = applying ? `Applying ${count} GPS fixes…`
+        : `Apply selected HIGH fixes (${count})`;
+      apply.disabled = applying || count === 0;
+      apply.classList.toggle("gps-apply-running", applying);
+    }
+    for (const control of otherControls) control.disabled = applying;
+    for (const control of panel.querySelectorAll(".gps-high-row input, .gps-high-row button")) {
+      control.disabled = applying;
+    }
+  };
+  const applySelected = async () => {
+    if (applying) return;
+    const fills = candidates.filter((item) => selected.get(item.asset_id))
+      .map((item) => ({ asset_id: item.asset_id,
+        latitude: sources.get(item.asset_id)?.latitude ?? item.latitude,
+        longitude: sources.get(item.asset_id)?.longitude ?? item.longitude }));
+    if (!fills.length) return;
+    if (!confirm(`Apply ${fills.length} selected HIGH GPS fix` +
+                 `${fills.length === 1 ? "" : "es"} in ${name}?`)) return;
+    applying = true;
+    refreshButtons();
+    try {
+      const applied = await post("/api/albums/gps-apply", { album_id: albumId, fills });
+      await openAlbumGpsHigh(albumId, 1);
+      const failed = applied.failed?.length || 0;
+      const skipped = applied.skipped?.length || 0;
+      banner(`GPS fill: updated ${applied.updated}/${applied.requested}` +
+        (skipped ? `, ${skipped} skipped` : "") +
+        (failed ? `, ${failed} failed` : ""), failed === 0);
+    } catch (error) {
+      banner(error.message);
+    } finally {
+      applying = false;
+      refreshButtons();
+    }
+  };
+  const controls = () => {
+    const apply = button("", applySelected);
+    apply.classList.add("primary");
+    applyButtons.push(apply);
+    const previous = button("← Previous batch", () => openAlbumGpsHigh(albumId, page - 1));
+    previous.disabled = page <= 1;
+    const next = button("Next batch →", () => openAlbumGpsHigh(albumId, page + 1));
+    next.disabled = last >= result.total;
+    const selectAll = button("Select all in batch", () => {
+      for (const item of candidates) selected.set(item.asset_id, true);
+      for (const check of panel.querySelectorAll(".gps-high-row input[type=checkbox]"))
+        check.checked = true;
+      refreshButtons();
+    });
+    const deselectAll = button("Deselect all", () => {
+      for (const item of candidates) selected.set(item.asset_id, false);
+      for (const check of panel.querySelectorAll(".gps-high-row input[type=checkbox]"))
+        check.checked = false;
+      refreshButtons();
+    });
+    otherControls.push(selectAll, deselectAll);
+    if (!previous.disabled) otherControls.push(previous);
+    if (!next.disabled) otherControls.push(next);
+    return el("div", { class: "bar gps-high-controls" },
+      selectAll, deselectAll, apply, previous, next);
+  };
+  panel.append(el("div", { class: "card" }, controls()));
+  const savedCard = el("div", { class: "card gps-saved-donors" });
+  const assignSavedDonor = (donor) => {
+    const targets = candidates.filter((item) => selected.get(item.asset_id));
+    if (!targets.length) return banner("Select one or more HIGH matches first.");
+    for (const item of targets) {
+      sources.set(item.asset_id, {
+        ...donor, minutes: gpsMinutesBetween(donor.taken_at, item.taken_at),
+      });
+      sourceRenderers.get(item.asset_id)?.();
+    }
+    banner(`Saved donor “${donor.name}” assigned to ${targets.length} selected HIGH match` +
+      `${targets.length === 1 ? "" : "es"}.`, true);
+  };
+  const renderSavedDonors = () => {
+    const strip = el("div", { class: "strip gps-donors gps-shared-donors" });
+    const remove = async (donor) => {
+      if (!confirm(`Remove saved GPS donor “${donor.name}”?`)) return;
+      try {
+        savedDonors = (await post("/api/gps-donors/remove", { name: donor.name })).donors || [];
+        renderSavedDonors();
+      } catch (error) { banner(error.message); }
+    };
+    for (const donor of savedDonors) {
+      strip.append(savedGpsDonorTile(donor, () => assignSavedDonor(donor), () => remove(donor)));
+    }
+    savedCard.replaceChildren(
+      el("h3", {}, "Saved GPS donors"),
+      el("div", { class: "meta" }, savedDonors.length
+        ? "Choose one to assign its location to every checked HIGH match in this batch."
+        : "Save a proposed donor below to reuse it here and in future GPS reviews."),
+      savedDonors.length ? strip : "");
+  };
+  renderSavedDonors();
+  panel.append(savedCard);
+  const rows = el("div", { class: "card" });
+  let currentDay = "";
+  for (const item of candidates) {
+    const day = item.taken_at.slice(0, 10);
+    if (day !== currentDay) {
+      rows.append(el("h4", { class: "gps-day-heading" }, day));
+      currentDay = day;
+    }
+    const check = el("input", { type: "checkbox" });
+    check.checked = true;
+    check.onchange = () => { selected.set(item.asset_id, check.checked); refreshButtons(); };
+    const choices = item.donor_choices || [];
+    const donors = el("div", { class: "strip gps-donors" });
+    const sourceInfo = el("div", { class: "meta" });
+    const alternatives = el("details", { class: "gps-high-alternatives" },
+      el("summary", {}, `Other GPS sources (${Math.max(0, choices.length - 1)})`));
+    const alternativeStrip = el("div", { class: "strip gps-donors" });
+    const renderSource = () => {
+      const source = sources.get(item.asset_id);
+      sourceInfo.textContent =
+        `GPS source ${gpsTimeDelta(source?.minutes ?? item.nearest_minutes)} · ` +
+        `${item.donor_count} donor${item.donor_count === 1 ? "" : "s"} · spread ${item.spread_km} km`;
+      donors.replaceChildren(gpsDonorButton(source, true, () => {}));
+      if (alternatives.open) {
+        alternativeStrip.replaceChildren(...choices
+          .filter((choice) => choice.asset_id !== source?.asset_id)
+          .map((choice) => gpsDonorButton(choice, false, () => {
+            sources.set(item.asset_id, choice);
+            renderSource();
+            alternatives.open = false;
+          })));
+      }
+    };
+    sourceRenderers.set(item.asset_id, renderSource);
+    alternatives.ontoggle = () => {
+      if (alternatives.open) renderSource();
+      else alternativeStrip.replaceChildren();
+    };
+    alternatives.append(alternativeStrip);
+    renderSource();
+    rows.append(el("div", { class: "gps-row gps-high-row" },
+      el("label", { class: "gps-pick", title: "Include this HIGH GPS fix" }, check),
+      el("div", { class: "gps-target" },
+        el("img", { src: `/api/thumb/${item.asset_id}`, loading: "lazy", alt: "Photo missing GPS" })),
+      el("div", { class: "gps-detail" },
+        el("b", {}, fmt.when(item.taken_at) || day),
+        sourceInfo, donors,
+        choices.length > 1 ? alternatives : "",
+        button("Save donor…", async () => {
+          const changed = await saveGpsDonor(sources.get(item.asset_id));
+          if (changed) { savedDonors = changed; renderSavedDonors(); }
+        }),
+        button("Review day", () => openAlbumGpsDay(albumId, day)))));
+  }
+  panel.append(rows, el("div", { class: "card" }, controls()));
+  refreshButtons();
 }
 
 async function setCover(assetId) {
@@ -1992,11 +2301,16 @@ async function fillGpsReview(context, preferredDay = "", { push = true } = {}) {
     return banner(error.message);
   }
 
+  if (result.album_name && context.day) context.name = `${result.album_name} · ${context.day}`;
+
   panel.replaceChildren();
   if (result.note) panel.append(el("div", { class: "muted" }, result.note));
 
   const candidates = result.candidates || [];
   const availableDonors = result.available_donors || [];
+  let savedDonors = [];
+  try { savedDonors = (await api("/api/gps-donors")).donors || []; }
+  catch (error) { banner(`Saved GPS donors unavailable: ${error.message}`); }
   const donorFavoriteIds = gpsDonorFavorites();
   const orderedCandidates = [...candidates].sort((a, b) =>
     (a.taken_at || "").localeCompare(b.taken_at || "")
@@ -2007,6 +2321,19 @@ async function fillGpsReview(context, preferredDay = "", { push = true } = {}) {
     el("div", { class: "meta" },
       `${result.without_gps || 0} without GPS · ${candidates.length} candidate` +
       `${candidates.length === 1 ? "" : "s"} · ${unresolved.length} unresolved`)));
+
+  if (context.dayNavigation) {
+    const navigation = context.dayNavigation;
+    const previous = button("Previous day", () =>
+      openAlbumGpsDay(context.albumId, navigation.previous));
+    previous.disabled = !navigation.previous;
+    const next = button("Next day", () =>
+      openAlbumGpsDay(context.albumId, navigation.next));
+    next.disabled = !navigation.next;
+    panel.append(el("div", { class: "card gps-day-navigation" },
+      el("div", { class: "meta" }, `Navigate affected days in ${navigation.year}.`),
+      el("div", { class: "bar" }, previous, next)));
+  }
 
   const selected = new Map(orderedCandidates.map((item) =>
     [item.asset_id, item.confidence === "high"]));
@@ -2160,9 +2487,7 @@ async function fillGpsReview(context, preferredDay = "", { push = true } = {}) {
   if (unresolved.length) {
     applyControls.push(button("Select all unresolved", () => {
       for (const item of unresolved) {
-        if (unresolvedSourceByAsset.get(item.asset_id)) {
-          unresolvedSelected.set(item.asset_id, true);
-        }
+        unresolvedSelected.set(item.asset_id, true);
       }
       renderUnresolved();
       refreshApplyLabel();
@@ -2180,11 +2505,11 @@ async function fillGpsReview(context, preferredDay = "", { push = true } = {}) {
     el("h3", {}, "Apply"),
     el("div", { class: "meta" },
       candidates.length
-        ? "Choose a day, select fixes below, then apply. Unresolved photos can be selected after choosing a GPS source."
-        : "Choose a GPS source for an unresolved photo, select it, then apply."),
+        ? "Choose a day, select fixes below, then apply. Select unresolved photos, then assign a GPS source."
+        : "Select unresolved photos, choose a GPS source, then apply."),
     el("div", { class: "bar" }, ...applyControls)));
 
-  if (availableDonors.length) {
+  if (availableDonors.length || savedDonors.length || context.albumDonorPreviewPath) {
     const assignSharedDonor = (donor) => {
       const pickedCandidates = visibleCandidates
         .filter((item) => selected.get(item.asset_id));
@@ -2213,43 +2538,122 @@ async function fillGpsReview(context, preferredDay = "", { push = true } = {}) {
         `${targets.length === 1 ? "" : "s"}. Review, then apply.`, true);
     };
     const sourcesCard = el("div", { class: "card" });
+    let albumDonorResult = null;
+    let albumDonorsLoading = false;
     const renderSources = () => {
       const favorites = availableDonors
         .filter((donor) => donorFavoriteIds.has(donor.asset_id));
       const favoriteStrip = el("div", { class: "strip gps-donors gps-shared-donors" });
       const allStrip = el("div", { class: "strip gps-donors gps-shared-donors" });
+      const savedStrip = el("div", { class: "strip gps-donors gps-shared-donors" });
+      const albumStrip = el("div", { class: "strip gps-donors gps-shared-donors" });
+      const albumPickerBody = el("div", {});
       const toggleFavorite = (donor) => {
         if (donorFavoriteIds.has(donor.asset_id)) donorFavoriteIds.delete(donor.asset_id);
         else donorFavoriteIds.add(donor.asset_id);
         saveGpsDonorFavorites(donorFavoriteIds);
         renderSources();
       };
+      const saveNamed = async (donor) => {
+        const changed = await saveGpsDonor(donor);
+        if (!changed) return;
+        savedDonors = changed;
+        renderSources();
+      };
+      const removeNamed = async (donor) => {
+        if (!confirm(`Remove saved GPS donor “${donor.name}”?`)) return;
+        try {
+          savedDonors = (await post("/api/gps-donors/remove", { name: donor.name })).donors || [];
+          renderSources();
+        } catch (error) { banner(error.message); }
+      };
+      for (const donor of savedDonors) {
+        savedStrip.append(savedGpsDonorTile(donor, () => assignSharedDonor(donor),
+          () => removeNamed(donor)));
+      }
       for (const donor of favorites) {
         favoriteStrip.append(gpsSharedDonorTile(
-          donor, () => assignSharedDonor(donor), true, () => toggleFavorite(donor)));
+          donor, () => assignSharedDonor(donor), true, () => toggleFavorite(donor),
+          () => saveNamed(donor)));
       }
       for (const donor of availableDonors) {
         allStrip.append(gpsSharedDonorTile(
           donor, () => assignSharedDonor(donor), donorFavoriteIds.has(donor.asset_id),
-          () => toggleFavorite(donor)));
+          () => toggleFavorite(donor), () => saveNamed(donor)));
       }
+      const renderAlbumPicker = () => {
+        albumPickerBody.replaceChildren();
+        if (albumDonorsLoading) {
+          albumPickerBody.append(el("div", { class: "meta" }, "Loading album GPS sourcesâ€¦"));
+          return;
+        }
+        if (!albumDonorResult) {
+          albumPickerBody.append(el("div", { class: "meta" },
+            "Open this picker to load located photos from the current album."));
+          return;
+        }
+        const { donors = [], page, page_size: pageSize, total } = albumDonorResult;
+        const first = total ? (page - 1) * pageSize + 1 : 0;
+        const last = Math.min(page * pageSize, total);
+        albumPickerBody.append(el("div", { class: "meta" }, total
+          ? `Showing ${first}â€“${last} of ${total} located album photos, newest first.`
+          : "This album has no located photos."));
+        albumStrip.replaceChildren(...donors.map((donor) =>
+          sharedGpsDonorButton(donor, () => assignSharedDonor(donor))));
+        albumPickerBody.append(albumStrip);
+        if (total > pageSize) {
+          const previous = button("â† Newer photos", () => loadAlbumDonors(page - 1));
+          previous.disabled = page <= 1;
+          const next = button("Older photos â†’", () => loadAlbumDonors(page + 1));
+          next.disabled = last >= total;
+          albumPickerBody.append(el("div", { class: "bar" }, previous, next));
+        }
+      };
+      const loadAlbumDonors = async (page = 1) => {
+        if (albumDonorsLoading) return;
+        albumDonorsLoading = true;
+        renderAlbumPicker();
+        try {
+          albumDonorResult = await post(context.albumDonorPreviewPath, {
+            ...context.albumDonorPreviewPayload, page,
+          });
+        } catch (error) {
+          banner(`Album GPS sources unavailable: ${error.message}`);
+        } finally {
+          albumDonorsLoading = false;
+          renderAlbumPicker();
+        }
+      };
       const sourceSections = favorites.length ? [
         el("h4", { class: "gps-source-heading" },
           `Favorite GPS sources (${favorites.length})`),
         favoriteStrip,
       ] : [el("div", { class: "meta gps-source-empty" },
         `No favorite GPS sources for this ${context.sourceScope} yet. Use the stars below to add some.`)];
+      const albumPicker = context.albumDonorPreviewPath ? el("details", { class: "gps-shared-picker" },
+        el("summary", {}, "Choose from located photos in this album"),
+        albumPickerBody) : "";
+      if (albumPicker) {
+        albumPicker.ontoggle = () => {
+          if (albumPicker.open && !albumDonorResult) loadAlbumDonors();
+        };
+        renderAlbumPicker();
+      }
       sourcesCard.replaceChildren(
       el("h3", {}, "Use one source for multiple photos"),
       el("div", { class: "meta" },
-        `Check the missing photos you want to fix, then choose a GPS source from this ${context.sourceScope}. ` +
+        `Check the missing photos you want to fix, then choose a GPS source from this ${context.sourceScope}` +
+        `${context.albumDonorPreviewPath ? " or elsewhere in this album" : ""}. ` +
         "Its GPS location will replace the proposed source for every checked photo currently shown."),
+        savedDonors.length ? el("div", {},
+          el("h4", { class: "gps-source-heading" }, "Saved GPS donors"), savedStrip) : "",
         ...sourceSections,
         el("details", { class: "gps-shared-picker" },
           el("summary", {}, `Choose from all ${availableDonors.length} located ${context.sourceScope} photos`),
           el("div", { class: "meta" },
-            "The star saves a photo as a favorite GPS source in this browser."),
-          allStrip));
+            "The star saves a photo as a browser favorite. Save names a reusable donor for every GPS review."),
+          allStrip),
+        albumPicker);
     };
     renderSources();
     panel.append(sourcesCard);
@@ -2379,8 +2783,7 @@ async function fillGpsReview(context, preferredDay = "", { push = true } = {}) {
     renderUnresolved = () => {
       const rows = [];
       const cameraGroups = byCamera(unresolved);
-      const displayedUnresolved = cameraGroups.flatMap(([, items]) => items)
-        .filter((item) => unresolvedSourceByAsset.get(item.asset_id));
+      const displayedUnresolved = cameraGroups.flatMap(([, items]) => items);
       for (const [camera, cameraItems] of cameraGroups) {
         rows.push(el("h4", { class: "gps-camera-section" },
           `${camera} · ${cameraItems.length} photo${cameraItems.length === 1 ? "" : "s"}`));
@@ -2403,7 +2806,6 @@ async function fillGpsReview(context, preferredDay = "", { push = true } = {}) {
 
         const check = el("input", { type: "checkbox" });
         check.checked = !!unresolvedSelected.get(item.asset_id);
-        check.disabled = !selectedSource;
         check.onclick = (event) => {
           if (!(event.shiftKey && unresolvedRangeAnchor &&
                 selectRange(displayedUnresolved, unresolvedRangeAnchor,
@@ -2433,7 +2835,7 @@ async function fillGpsReview(context, preferredDay = "", { push = true } = {}) {
       card.replaceChildren(
         el("h3", {}, "Unresolved"),
         el("div", { class: "meta" },
-          "No safe automatic fix. Pick sources before selecting. " +
+          "No safe automatic fix. Select photos, then pick a shared or nearby source. " +
           "To select a block, check the first photo and Shift-click the last."),
         ...rows,
       );
@@ -2475,6 +2877,12 @@ async function applyGps(candidates, context, preferredDay = "", onstart = () => 
       (failed.length ? `, ${failed.length} failed` : "");
     banner(message, failed.length === 0);
     if (context.refreshTrips) await loadTrips(false);
+    if (context.albumId && context.day) {
+      try {
+        context.dayNavigation = albumGpsDayNavigation(
+          await albumGpsDays(context.albumId, true), context.day);
+      } catch (_) { /* The refreshed day review remains usable without nav. */ }
+    }
     await fillGpsReview(context, preferredDay, { push: false });
     banner(message, failed.length === 0);
   } catch (error) {
@@ -2647,13 +3055,40 @@ function saveGpsDonorFavorites(ids) {
   try { localStorage.setItem(GPS_DONOR_FAVORITES, JSON.stringify([...ids])); } catch {}
 }
 
-function gpsSharedDonorTile(choice, onselect, favorite, ontoggle) {
+function gpsSharedDonorTile(choice, onselect, favorite, ontoggle, onsave = null) {
   const star = button(favorite ? "★" : "☆", ontoggle);
   star.className = `gps-source-favorite${favorite ? " active" : ""}`;
   star.title = favorite ? "Remove from favorite GPS sources" : "Add to favorite GPS sources";
   star.setAttribute("aria-label", star.title);
+  const save = onsave ? button("Save", onsave) : "";
+  if (save) {
+    save.className = "gps-source-save";
+    save.title = "Save as a named GPS donor";
+  }
   return el("div", { class: "gps-source-tile" },
-    sharedGpsDonorButton(choice, onselect), star);
+    sharedGpsDonorButton(choice, onselect), star, save);
+}
+
+function savedGpsDonorTile(donor, onselect, onremove) {
+  const remove = button("×", onremove);
+  remove.className = "gps-source-remove";
+  remove.title = `Remove saved GPS donor ${donor.name}`;
+  return el("div", { class: "gps-source-tile gps-saved-source" },
+    sharedGpsDonorButton(donor, onselect),
+    el("div", { class: "gps-source-name" }, donor.name), remove);
+}
+
+async function saveGpsDonor(donor) {
+  const name = prompt("Name this reusable GPS donor:", "");
+  if (name === null) return null;
+  try {
+    const result = await post("/api/gps-donors", { name, asset_id: donor.asset_id });
+    banner(`Saved GPS donor “${name.trim()}”.`, true);
+    return result.donors || [];
+  } catch (error) {
+    banner(error.message);
+    return null;
+  }
 }
 
 function gpsMinutesBetween(left, right) {

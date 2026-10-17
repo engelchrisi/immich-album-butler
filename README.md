@@ -100,6 +100,15 @@ Use `--design-only` when only the design UI needs restarting. A normal deploy
 is deliberately reproducible and uses `HEAD`; use `--working-tree` only when
 you intentionally want to deploy uncommitted local changes.
 
+On Windows, use the equivalent PowerShell command. It packages the same safe
+snapshot, restarts the services, and verifies the installed version before it
+reports success:
+
+```powershell
+.\deploy\deploy.ps1 root@example-host
+.\deploy\deploy.ps1 root@example-host -WorkingTree
+```
+
 ## Configuration
 
 **One file**, `/etc/immich-album-butler/config.toml` by default: the global
@@ -446,6 +455,10 @@ run on every update; the **optional** ones depend on which features you use:
 
 Without an optional permission, that feature fails gracefully: the album still
 fills correctly, and the run reports what is missing.
+
+To use the design mode's **Delete Immich album** option, add `album.delete` to
+the API key. Without that scope, Immich reports “Missing required permission:
+album.delete”. Deleting an album never deletes the photos it contains.
 
 ### Signing in
 

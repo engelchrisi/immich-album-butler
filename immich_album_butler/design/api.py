@@ -131,6 +131,9 @@ def _sample(ids: list[str], taken: dict, seed: str) -> list[str]:
 
 DUPLICATES_FILE = "duplicates.json"
 DUPLICATES_VERSION = 1
+GPS_DONORS_FILE = "gps-donors.json"
+GPS_DONORS_VERSION = 1
+ALBUM_GPS_DONORS_PAGE_SIZE = 50
 
 
 def _save_duplicates(directory: Path, albums: list[dict],
@@ -158,6 +161,35 @@ def _load_duplicates(directory: Path) -> tuple[list[dict] | None, dt.datetime | 
     except (OSError, ValueError, KeyError, TypeError) as exc:
         log.warning("ignoring unreadable duplicates cache: %s", exc)
         return None, None
+
+
+def _load_gps_donors(directory: Path) -> list[dict]:
+    """Named, user-chosen donor photos kept independently of the browser."""
+    try:
+        data = json.loads((Path(directory) / GPS_DONORS_FILE).read_text(encoding="utf-8"))
+        donors = data.get("donors") if data.get("version") == GPS_DONORS_VERSION else None
+        if not isinstance(donors, list):
+            return []
+        return [donor for donor in donors
+                if isinstance(donor, dict)
+                and isinstance(donor.get("name"), str)
+                and ASSET_ID.fullmatch(str(donor.get("asset_id") or ""))
+                and isinstance(donor.get("latitude"), (int, float))
+                and isinstance(donor.get("longitude"), (int, float))]
+    except FileNotFoundError:
+        return []
+    except (OSError, ValueError, TypeError) as exc:
+        log.warning("ignoring unreadable GPS donor list: %s", exc)
+        return []
+
+
+def _save_gps_donors(directory: Path, donors: list[dict]) -> None:
+    path = Path(directory) / GPS_DONORS_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_suffix(".json.tmp")
+    temp.write_text(json.dumps({"version": GPS_DONORS_VERSION, "donors": donors},
+                               indent=2) + "\n", encoding="utf-8")
+    temp.replace(path)
 
 
 class ApiError(Exception):
@@ -191,6 +223,10 @@ class DesignApi:
         self._album_gps_progress: dict = {"running": False, "message": "",
                                           "done": 0, "total": 0}
         self._album_gps_stats: dict[str, int] = {}
+        self._album_gps_cache: dict[str, tuple[float, list[trips_module.Point]]] = {}
+        self._album_gps_names: dict[str, str] = {}
+        self._gps_donors: list[dict] | None = None
+        self._gps_donors_lock = threading.Lock()
         self._rejected: dict[str, int | None] = {}
         self._rejected_lock = threading.Lock()
         # Set by design/server.py once the bind-watcher exists, so the UI's
@@ -258,6 +294,69 @@ class DesignApi:
             "rejected": exif.get("rating") == -1,
         }
 
+    # -- saved GPS donor photos -------------------------------------------
+
+    def _saved_gps_donors(self) -> list[dict]:
+        if self._gps_donors is None:
+            self._gps_donors = _load_gps_donors(self.state_dir)
+        return self._gps_donors
+
+    def gps_donors(self) -> dict:
+        """Named donor photos saved for reuse in every GPS review."""
+        with self._gps_donors_lock:
+            donors = [dict(donor) for donor in self._saved_gps_donors()]
+        active = []
+        for donor in donors:
+            try:
+                asset = immich_module.Asset.from_api(self.client.asset(donor["asset_id"]))
+            except ImmichError:
+                continue
+            if asset.located and not asset.is_video and asset.rating != -1:
+                active.append(donor)
+        return {"donors": sorted(active, key=lambda donor: donor["name"].casefold())}
+
+    def save_gps_donor(self, payload: dict) -> dict:
+        """Save or replace a named donor after checking it has coordinates."""
+        name = str(payload.get("name") or "").strip()
+        asset_id = str(payload.get("asset_id") or "")
+        if not name or len(name) > 80 or any(ord(char) < 32 for char in name):
+            raise ApiError("give the GPS donor a name of up to 80 characters")
+        if not ASSET_ID.fullmatch(asset_id):
+            raise ApiError("not an asset id")
+        try:
+            asset = immich_module.Asset.from_api(self.client.asset(asset_id))
+        except ImmichError as exc:
+            raise ApiError(str(exc), status=502) from None
+        if asset.is_video or not asset.located or asset.rating == -1:
+            raise ApiError("choose a non-rejected photo that already has GPS")
+        donor = {
+            "name": name,
+            "asset_id": asset.id,
+            "latitude": round(asset.latitude, 6),
+            "longitude": round(asset.longitude, 6),
+            "taken_at": asset.taken_at.isoformat() if asset.taken_at else "",
+            "camera": asset.camera,
+        }
+        with self._gps_donors_lock:
+            donors = self._saved_gps_donors()
+            donors[:] = [old for old in donors if old["name"].casefold() != name.casefold()]
+            donors.append(donor)
+            _save_gps_donors(self.state_dir, donors)
+        return self.gps_donors()
+
+    def remove_gps_donor(self, payload: dict) -> dict:
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            raise ApiError("choose a saved GPS donor")
+        with self._gps_donors_lock:
+            donors = self._saved_gps_donors()
+            kept = [donor for donor in donors if donor["name"].casefold() != name.casefold()]
+            if len(kept) == len(donors):
+                raise ApiError("no such saved GPS donor", status=404)
+            donors[:] = kept
+            _save_gps_donors(self.state_dir, donors)
+        return self.gps_donors()
+
     def set_asset_favorite(self, asset_id: str, favorite: bool) -> dict:
         """Toggle Immich's favourite flag from an image hover card."""
         self._asset_id(asset_id)
@@ -288,6 +387,16 @@ class DesignApi:
                 self._rejected[asset_id] = prior
             else:
                 self._rejected.pop(asset_id, None)
+        if self._scan is not None:
+            self._scan = [trips_module.Point(
+                id=point.id, taken_at=point.taken_at,
+                latitude=point.latitude, longitude=point.longitude,
+                city=point.city, state=point.state, country=point.country,
+                camera=point.camera, is_video=point.is_video,
+                rating=value if point.id == asset_id else point.rating,
+            ) for point in self._scan]
+            trips_module.save_scan(self.state_dir, self._scan)
+        self._album_gps_cache.clear()
         return {"id": asset_id, "rejected": rejected, "rating": value}
 
     @staticmethod
@@ -1087,7 +1196,8 @@ class DesignApi:
                     "note": "no library scan yet -- open the Trips tab to build one"}
 
         by_id = {point.id: point for point in points}
-        trip_points = [by_id[i] for i in asset_ids if i in by_id]
+        trip_points = [by_id[i] for i in asset_ids
+                       if i in by_id and by_id[i].rating != -1]
         located = [point for point in trip_points if point.located]
         album_id = str(payload.get("album_id") or "")
         album_members = None
@@ -1099,7 +1209,8 @@ class DesignApi:
             except ImmichError as exc:
                 raise ApiError(str(exc), status=502) from None
 
-        donor_pool = ([point for point in points if point.located and point.id in album_members]
+        donor_pool = ([point for point in points if point.located and point.rating != -1
+                       and point.id in album_members]
                       if album_members is not None else located)
         result = self._gps_preview(trip_points, donor_pool)
         result.update({
@@ -1107,6 +1218,108 @@ class DesignApi:
             "trip_assets": len(trip_points),
         })
         return result
+
+    def _album_gps_points(self, album_id: str) -> list[trips_module.Point]:
+        """Read an album once while its GPS overview and days are reviewed."""
+        if not ASSET_ID.fullmatch(album_id):
+            raise ApiError("bad album id")
+        cached = self._album_gps_cache.get(album_id)
+        if cached and time.monotonic() - cached[0] < 300:
+            return cached[1]
+        try:
+            albums = self.client.albums()
+            album = next((album for album in albums if album.id == album_id), None)
+            if album is None:
+                raise ApiError("no such album", status=404)
+            self._album_gps_names[album_id] = album.name
+            points = [trips_module.Point.from_asset(asset)
+                      for asset in self.client.search_metadata(album_ids=[album_id])
+                      if asset.rating != -1]
+        except ImmichError as exc:
+            raise ApiError(str(exc), status=502) from None
+        result = [point for point in points if point is not None]
+        self._album_gps_cache[album_id] = (time.monotonic(), result)
+        return result
+
+    def album_gps_summary(self, payload: dict) -> dict:
+        """Return small, date-grouped counts without any thumbnail payload."""
+        album_id = str(payload.get("album_id") or "")
+        points = self._album_gps_points(album_id)
+        by_day: dict[dt.date, list[trips_module.Point]] = {}
+        for point in points:
+            by_day.setdefault(point.taken_at.date(), []).append(point)
+        days = []
+        for day, day_points in sorted(by_day.items()):
+            missing = [point for point in day_points if not point.located]
+            if not missing:
+                continue
+            preview = self._gps_preview(day_points,
+                                        [point for point in day_points if point.located])
+            days.append({"day": day.isoformat(), "missing": len(missing),
+                         "high": sum(candidate["confidence"] == "high"
+                                     for candidate in preview["candidates"]),
+                         "candidates": len(preview["candidates"]),
+                         "unresolved": len(preview["unresolved"])})
+        return {"album_assets": len(points),
+                "album_name": self._album_gps_names.get(album_id, "Album"),
+                "without_gps": sum(day["missing"] for day in days),
+                "high": sum(day["high"] for day in days),
+                "days": days}
+
+    def album_gps_high_preview(self, payload: dict) -> dict:
+        """Return one reviewable page of high-confidence fixes across the album."""
+        album_id = str(payload.get("album_id") or "")
+        page = payload.get("page", 1)
+        if type(page) is not int or page < 1:
+            raise ApiError("choose a valid HIGH review page")
+        points = self._album_gps_points(album_id)
+        by_day: dict[dt.date, list[trips_module.Point]] = {}
+        for point in points:
+            by_day.setdefault(point.taken_at.date(), []).append(point)
+        high = []
+        for day_points in by_day.values():
+            if all(point.located for point in day_points):
+                continue
+            preview = self._gps_preview(day_points,
+                                        [point for point in day_points if point.located])
+            high.extend(item for item in preview["candidates"]
+                        if item["confidence"] == "high")
+        high.sort(key=lambda item: (item["taken_at"], item["asset_id"]), reverse=True)
+        page_size = 50
+        start = (page - 1) * page_size
+        return {"album_name": self._album_gps_names.get(album_id, "Album"),
+                "total": len(high), "page": page, "page_size": page_size,
+                "candidates": high[start:start + page_size]}
+
+    def album_gps_donors(self, payload: dict) -> dict:
+        """Return one bounded page of located photos from an album.
+
+        These are an optional, session-only source pool for a focused album
+        day review. They are separate from named GPS donors and never written
+        to design-service state.
+        """
+        album_id = str(payload.get("album_id") or "")
+        page = payload.get("page", 1)
+        if type(page) is not int or page < 1:
+            raise ApiError("choose a valid album donor page")
+        points = self._album_gps_points(album_id)
+        donors = sorted((point for point in points if point.located),
+                        key=lambda point: (point.taken_at, point.id), reverse=True)
+        start = (page - 1) * ALBUM_GPS_DONORS_PAGE_SIZE
+        visible = donors[start:start + ALBUM_GPS_DONORS_PAGE_SIZE]
+        return {
+            "album_name": self._album_gps_names.get(album_id, "Album"),
+            "total": len(donors),
+            "page": page,
+            "page_size": ALBUM_GPS_DONORS_PAGE_SIZE,
+            "donors": [{
+                "asset_id": point.id,
+                "latitude": round(point.latitude, 6),
+                "longitude": round(point.longitude, 6),
+                "taken_at": point.taken_at.isoformat(),
+                "camera": point.camera,
+            } for point in visible],
+        }
 
     def album_gps_preview(self, payload: dict) -> dict:
         """Suggest GPS fills using only the selected album's own media.
@@ -1116,20 +1329,17 @@ class DesignApi:
         open in Immich, including a hand-made or shared album.
         """
         album_id = str(payload.get("album_id") or "")
-        if not ASSET_ID.fullmatch(album_id):
-            raise ApiError("bad album id")
         try:
-            albums = self.client.albums()
-            if not any(album.id == album_id for album in albums):
-                raise ApiError("no such album", status=404)
-            points = [trips_module.Point.from_asset(asset)
-                      for asset in self.client.search_metadata(album_ids=[album_id])]
-        except ImmichError as exc:
-            raise ApiError(str(exc), status=502) from None
-        album_points = [point for point in points if point is not None]
-        result = self._gps_preview(album_points,
-                                   [point for point in album_points if point.located])
+            day = dt.date.fromisoformat(str(payload.get("day") or ""))
+        except ValueError:
+            raise ApiError("choose a valid GPS review day") from None
+        album_points = self._album_gps_points(album_id)
+        day_points = [point for point in album_points if point.taken_at.date() == day]
+        result = self._gps_preview(day_points,
+                                   [point for point in day_points if point.located])
         result["album_assets"] = len(album_points)
+        result["album_name"] = self._album_gps_names.get(album_id, "Album")
+        result["day"] = day.isoformat()
         return result
 
     def _gps_preview(self, target_points: list[trips_module.Point],
@@ -1304,7 +1514,7 @@ class DesignApi:
                     state=point.state,
                     country=point.country,
                     camera=point.camera,
-                    is_video=point.is_video,
+                        is_video=point.is_video, rating=point.rating,
                 ))
             self._scan = patched
             self._scanned_at = dt.datetime.now()
@@ -1347,7 +1557,9 @@ class DesignApi:
             raise ApiError(str(exc), status=502) from None
         if any(asset_id not in members for asset_id in asset_ids):
             raise ApiError("a selected photo is no longer in this album")
-        return self.trip_gps_apply(payload)
+        result = self.trip_gps_apply(payload)
+        self._album_gps_cache.pop(album_id, None)
+        return result
 
     def _album_index(self, refresh: bool = False) -> dict[str, tuple[str, set[str]]]:
         """Every album in Immich and the media it holds, by album name.

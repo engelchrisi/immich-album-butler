@@ -89,6 +89,7 @@ Login in front of everything. Read: `/api/whoami`, `/api/people`, `/api/places`,
 `/api/albums`, `/api/groups`, `/api/run`, `/api/add-assets`, `/api/duplicates/remove`,
 `/api/cover`, `/api/trips/gps-preview`, `/api/trips/gps-apply`,
 `/api/albums/gps-preview`, `/api/albums/gps-apply`,
+`/api/gps-donors`, `/api/gps-donors/remove`,
 `/api/asset/{id}/favorite`, `/api/asset/{id}/reject`.
 
 The one global hover card handles every image served by `/api/thumb/{id}`, so the favourite and
@@ -117,6 +118,11 @@ one action; this only changes the preview until the normal confirmed Apply.
 GPS donor favorites are a separate browser-local list of asset IDs, not Immich's
 `isFavorite` heart. The UI intersects that list with `available_donors`, so a
 favorite source is offered only while reviewing the same album.
+Named GPS donors are different: `/api/gps-donors` persists a user-supplied
+name, asset ID and its checked coordinates in `gps-donors.json` under the
+design state directory. The API validates the source is a located photo when
+it is saved. These donors appear in every GPS review and may assign their
+location to all checked photos; the normal confirmed Apply is still required.
 The API key needs Immich's `asset.update` permission; `album.update` alone does
 not authorize asset coordinate changes. After applying a day, the UI reloads the
 trip and GPS suggestions in place, keeping the selected day when candidates
@@ -152,12 +158,36 @@ maintainer's own deployment, 2026-10-12).
 
 Album GPS backfill (N46) uses the same review and apply safeguards, but reads
 the selected album's current media directly instead of depending on the trip
-scan cache. `/api/albums/gps-preview` uses only that album's located media as
-both automatic and shared donors. `/api/albums/gps-apply` verifies that every
-selected target still belongs to that album before it writes. The review route
-is `/albums/<id>/gps`; it returns to `/albums/<id>` and its thumbnails are 30%
-larger than their Trips counterparts while the strips still wrap on narrow
-screens.
+scan cache. `/api/albums/gps-summary` returns only counts grouped by affected
+day, including HIGH confidence counts; `/albums/<id>/gps` presents those days
+under collapsible years without loading thumbnails. The separate
+`/api/albums/gps-high-preview` returns one 50-item page of HIGH suggestions
+across all days, newest first, with no whole-album donor list. Its review route
+is `/albums/<id>/gps/high/<page>`; the user may deselect rows, switch donors,
+review an individual day, and explicitly apply the selected page. A successful
+apply opens the first page of the remaining HIGH matches. Alternative donor
+thumbnails load only when their picker is expanded. The normal
+`/api/albums/gps-preview` requires a day and returns only
+that day's targets and located donors to `/albums/<id>/gps/<yyyy-mm-dd>`. The
+optional `/api/albums/gps-donors` picker pages through 50 located photos from
+that same album, newest first. Its choices exist only in the open review and
+are not saved unless the user explicitly makes one a named donor. The album
+scan is cached in memory for five minutes while moving between these
+pages and invalidated after an apply. `/api/albums/gps-apply` verifies that
+every selected target still belongs to that album before it writes. A day
+review returns to the GPS overview, and its thumbnails are 30% larger than
+their Trips counterparts while the strips still wrap on narrow screens.
+Each day row keeps its Review button directly beside its counts, rather than
+at the far edge of a wide display.
+Within a focused day review, Previous day and Next day move among affected
+days in that same calendar year. The overview's compact day list is reused;
+after an apply it refreshes before rebuilding the navigation.
+
+GPS review filters out assets with Immich rating `-1` (the design UI's
+not-wanted action) before producing targets or donors. The scan records the
+rating so Trip reviews retain that filtering from cache; toggling not wanted
+patches the cache and clears album GPS caches immediately. Saved donor entries
+are retained on disk but hidden while their source asset is rejected.
 
 `POST /api/albums` saves a rule under its slug, replacing one of the same slug. With `new: true`
 ("Save as…", N41) the slug comes from the new name only, and a name another rule already has
@@ -183,6 +213,10 @@ installs `immich-album-butler.service` (daemon) and `immich-album-butler-design.
 Windows checkout, runs the installer, and restarts both services. Its explicit
 `--working-tree` option is for a deliberate test deployment of local changes;
 `--design-only` limits the restart to the design service.
+`deploy/deploy.ps1` provides the same workflow for Windows: it starts from a
+HEAD snapshot and optionally overlays tracked working-tree changes, so ignored
+state and unrelated untracked files never enter the archive. It verifies both
+service state and the installed package version before reporting success.
 
 ## 7. Decisions and risks
 

@@ -1,5 +1,54 @@
 # Changes
 
+## 1.15.3 - 2026-10-17
+- Documented that design mode's Delete Immich album option requires the
+  optional `album.delete` API-key permission and never deletes its photos.
+
+## 1.15.2 - 2026-10-17
+- Fixed malformed arrow characters in the album GPS day-navigation labels.
+
+## 1.15.1 - 2026-10-17
+- Added a verified Windows PowerShell deployment helper. It stages a safe
+  source snapshot, restarts the selected Butler services, and confirms their
+  active state and installed version before reporting success.
+
+## 1.15.0 - 2026-10-17
+- Album GPS day reviews now offer Previous day and Next day navigation through
+  the other affected days in the current year.
+
+## 1.14.1 - 2026-10-17
+- Album GPS overview: keep each Review day button beside its counts on wide
+  screens.
+
+## 1.14.0 - 2026-10-17
+- GPS fixes now exclude photos marked not wanted, both as missing-GPS targets
+  and donor sources, including saved donors and album-wide donor browsing.
+
+## 1.13.0 - 2026-10-17
+- Album GPS day reviews can now browse 50 located photos at a time from the
+  current album as a temporary shared donor source, without saving them as
+  persistent donors.
+
+## 1.12.1 — 2026-10-17
+- GPS review: unresolved photos can now be selected before assigning a shared
+  donor, including Select all and Shift-click range selection.
+
+## 1.12.0 — 2026-10-17
+- GPS review: save a located photo under a name such as “Home” or “Parents’
+  home” and reuse it as a persistent donor in any detailed or HIGH batch
+  review. One click assigns it to every currently selected photo.
+
+## 1.11.0 — 2026-10-17
+- Album GPS overview now counts HIGH matches and offers a 50-photo review
+  queue across all days. Review proposed sources, exclude exceptions, and
+  apply selected HIGH fixes in one confirmed batch before continuing.
+
+## 1.10.0 — 2026-10-17
+- Album GPS review now starts with a compact, thumbnail-free overview grouped
+  by year and affected day; each day opens a separate focused review that only
+  loads that day's missing photos and donors, keeping decade-long person albums
+  responsive.
+
 ## 1.9.0 — 2026-10-17
 - GPS review: check one photo and Shift-click another to select or clear the
   entire visible block between them, including unresolved photos with sources.

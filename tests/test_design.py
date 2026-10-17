@@ -861,19 +861,112 @@ class GpsFillTests(DesignTestCase):
 
     def test_album_preview_uses_its_current_members_without_a_trip_scan(self):
         album = self.stub.add_album("Tokyo 2020", [fake_id(n) for n in (1, 2, 3, 4)])
-        result = self.api.album_gps_preview({"album_id": album["id"]})
+        result = self.api.album_gps_preview({"album_id": album["id"],
+                                             "day": "2020-03-01"})
         self.assertEqual(result["album_assets"], 4)
         self.assertEqual([item["asset_id"] for item in result["candidates"]], [fake_id(3)])
         self.assertEqual([item["asset_id"] for item in result["available_donors"]],
                          [fake_id(1), fake_id(2)])
-        self.assertEqual([item["asset_id"] for item in result["unresolved"]], [fake_id(4)])
+        self.assertEqual(result["unresolved"], [])
 
     def test_one_nearby_donor_is_high_confidence(self):
         album = self.stub.add_album("Tokyo 2020", [fake_id(n) for n in (1, 3)])
-        result = self.api.album_gps_preview({"album_id": album["id"]})
+        result = self.api.album_gps_preview({"album_id": album["id"],
+                                             "day": "2020-03-01"})
         candidate = result["candidates"][0]
         self.assertEqual(candidate["donor_count"], 1)
         self.assertEqual(candidate["confidence"], "high")
+
+    def test_named_gps_donor_is_persistent_and_replaces_its_name(self):
+        saved = self.api.save_gps_donor({"name": "Example home", "asset_id": fake_id(1)})
+        self.assertEqual(saved["donors"][0]["name"], "Example home")
+        self.assertEqual(saved["donors"][0]["asset_id"], fake_id(1))
+        self.assertTrue((self.state_dir / "gps-donors.json").exists())
+        saved = self.api.save_gps_donor({"name": "example HOME", "asset_id": fake_id(2)})
+        self.assertEqual(len(saved["donors"]), 1)
+        self.assertEqual(saved["donors"][0]["asset_id"], fake_id(2))
+        fresh = DesignApi(self.client, self.config_dir, self.state_dir)
+        self.assertEqual(fresh.gps_donors()["donors"][0]["asset_id"], fake_id(2))
+
+    def test_named_gps_donor_requires_location_and_can_be_removed(self):
+        with self.assertRaisesRegex(ApiError, "already has GPS"):
+            self.api.save_gps_donor({"name": "No location", "asset_id": fake_id(3)})
+        self.api.save_gps_donor({"name": "Example home", "asset_id": fake_id(1)})
+        self.assertEqual(self.api.remove_gps_donor({"name": "example HOME"})["donors"], [])
+        with self.assertRaisesRegex(ApiError, "no such saved"):
+            self.api.remove_gps_donor({"name": "Example home"})
+
+    def test_rejected_photos_are_excluded_from_gps_targets_and_donors(self):
+        album = self.stub.add_album("Tokyo 2020", [fake_id(n) for n in (1, 2, 3)])
+        self.api.save_gps_donor({"name": "Example donor", "asset_id": fake_id(1)})
+        self.api.set_asset_rejected(fake_id(1), True)
+        preview = self.api.album_gps_preview({"album_id": album["id"],
+                                              "day": "2020-03-01"})
+        self.assertEqual([donor["asset_id"] for donor in preview["available_donors"]],
+                         [fake_id(2)])
+        self.assertEqual(self.api.gps_donors()["donors"], [])
+        self.api.set_asset_rejected(fake_id(3), True)
+        self.assertEqual(self.api.album_gps_summary({"album_id": album["id"]})["days"], [])
+
+    def test_album_gps_summary_returns_counts_without_photo_payloads(self):
+        album = self.stub.add_album("Tokyo 2020", [fake_id(n) for n in (1, 2, 3, 4)])
+        result = self.api.album_gps_summary({"album_id": album["id"]})
+        self.assertEqual(result["without_gps"], 2)
+        self.assertEqual(sum(day["candidates"] for day in result["days"]), 1)
+        self.assertEqual(sum(day["unresolved"] for day in result["days"]), 1)
+        self.assertEqual(result["high"], 1)
+        self.assertEqual(sum(day["high"] for day in result["days"]), 1)
+        self.assertNotIn("candidates", result)
+        self.assertNotIn("available_donors", result)
+
+    def test_album_gps_donors_are_paginated_and_confined_to_the_album(self):
+        self.stub.assets.extend(
+            make_asset(n, when=(dt.datetime.fromisoformat(day(2020, 4, 1)) +
+                                dt.timedelta(days=n - 6)).isoformat(),
+                       lat=35.7, lon=139.7)
+            for n in range(6, 58))
+        album = self.stub.add_album("Tokyo 2020", [fake_id(1)] +
+                                    [fake_id(n) for n in range(6, 58)])
+        first = self.api.album_gps_donors({"album_id": album["id"], "page": 1})
+        second = self.api.album_gps_donors({"album_id": album["id"], "page": 2})
+        self.assertEqual(first["total"], 53)
+        self.assertEqual(len(first["donors"]), 50)
+        self.assertEqual(len(second["donors"]), 3)
+        self.assertNotIn(fake_id(5), [donor["asset_id"] for donor in first["donors"]])
+        with self.assertRaisesRegex(ApiError, "valid album donor page"):
+            self.api.album_gps_donors({"album_id": album["id"], "page": 0})
+
+    def test_album_high_review_pages_only_high_matches_across_days(self):
+        # One donor and many missing photos demonstrate that the review payload
+        # stays bounded even when the album has more than one batch to fix.
+        self.stub.assets.extend(make_asset(n, when=day(2020, 3, 1, 10))
+                                for n in range(10, 65))
+        self.stub.assets.append(make_asset(7, when=day(2020, 3, 1, 17)))
+        ids = [fake_id(1), fake_id(4), fake_id(7)] + [fake_id(n) for n in range(10, 65)]
+        album = self.stub.add_album("Photos of Alex", ids)
+        first = self.api.album_gps_high_preview({"album_id": album["id"], "page": 1})
+        second = self.api.album_gps_high_preview({"album_id": album["id"], "page": 2})
+        self.assertEqual(first["total"], 55)
+        self.assertEqual(len(first["candidates"]), 50)
+        self.assertEqual(len(second["candidates"]), 5)
+        self.assertTrue(all(item["confidence"] == "high"
+                            for item in first["candidates"] + second["candidates"]))
+        self.assertEqual({item["asset_id"] for item in first["candidates"]
+                          + second["candidates"]},
+                         {fake_id(n) for n in range(10, 65)})
+        self.assertNotIn("available_donors", first)
+        self.assertFalse(any(method == "PUT" for method, _ in self.stub.requests))
+        with self.assertRaisesRegex(ApiError, "valid HIGH review page"):
+            self.api.album_gps_high_preview({"album_id": album["id"], "page": 0})
+
+    def test_album_preview_requires_and_limits_itself_to_one_day(self):
+        album = self.stub.add_album("Tokyo 2020", [fake_id(n) for n in (1, 2, 3, 4)])
+        with self.assertRaisesRegex(ApiError, "valid GPS review day"):
+            self.api.album_gps_preview({"album_id": album["id"]})
+        result = self.api.album_gps_preview({"album_id": album["id"],
+                                             "day": "2020-03-02"})
+        self.assertEqual(result["without_gps"], 1)
+        self.assertEqual(result["day"], "2020-03-02")
 
     def test_album_apply_refuses_a_photo_outside_the_album(self):
         album = self.stub.add_album("Tokyo 2020", [fake_id(n) for n in (1, 3)])
@@ -884,10 +977,12 @@ class GpsFillTests(DesignTestCase):
 
     def test_album_apply_updates_a_current_member(self):
         album = self.stub.add_album("Tokyo 2020", [fake_id(n) for n in (1, 3)])
+        self.assertEqual(self.api.album_gps_summary({"album_id": album["id"]})["high"], 1)
         result = self.api.album_gps_apply({"album_id": album["id"], "fills": [{
             "asset_id": fake_id(3), "latitude": 35.7, "longitude": 139.7,
         }]})
         self.assertEqual(result["updated"], 1)
+        self.assertEqual(self.api.album_gps_summary({"album_id": album["id"]})["high"], 0)
 
 
 # --------------------------------------------------------------------------
