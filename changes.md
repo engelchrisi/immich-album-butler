@@ -1,5 +1,8 @@
 # Changes
 
+## 1.15.4 - 2026-10-17
+- Fixed malformed arrow characters in the album donor-pager labels.
+
 ## 1.15.3 - 2026-10-17
 - Documented that design mode's Delete Immich album option requires the
   optional `album.delete` API-key permission and never deletes its photos.

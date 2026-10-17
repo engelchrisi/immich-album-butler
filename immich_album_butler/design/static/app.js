@@ -2602,9 +2602,9 @@ async function fillGpsReview(context, preferredDay = "", { push = true } = {}) {
           sharedGpsDonorButton(donor, () => assignSharedDonor(donor))));
         albumPickerBody.append(albumStrip);
         if (total > pageSize) {
-          const previous = button("â† Newer photos", () => loadAlbumDonors(page - 1));
+          const previous = button("Newer photos", () => loadAlbumDonors(page - 1));
           previous.disabled = page <= 1;
-          const next = button("Older photos â†’", () => loadAlbumDonors(page + 1));
+          const next = button("Older photos", () => loadAlbumDonors(page + 1));
           next.disabled = last >= total;
           albumPickerBody.append(el("div", { class: "bar" }, previous, next));
         }
