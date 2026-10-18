@@ -18,9 +18,11 @@ Two rules this layer keeps:
 
 from __future__ import annotations
 
+import calendar
 import datetime as dt
 import json
 import logging
+import math
 import random
 import re
 import threading
@@ -1135,7 +1137,20 @@ class DesignApi:
 
     def trips(self, rescan: bool = False, away_km: float = trips_module.AWAY_KM,
               min_assets: int = trips_module.MIN_ASSETS,
-              min_days: int = trips_module.MIN_DAYS) -> dict:
+              min_days: int = trips_module.MIN_DAYS,
+              max_days: int | None = None, year: int | None = None,
+              month: int | None = None) -> dict:
+        if not math.isfinite(away_km) or away_km <= 0:
+            raise ApiError("minimum distance must be greater than zero")
+        if min_assets < 1 or min_days < 1:
+            raise ApiError("minimum media and days must be at least 1")
+        if max_days is not None and max_days < min_days:
+            raise ApiError("maximum days must be at least minimum days")
+        if year is not None and not 1 <= year <= 9999:
+            raise ApiError("year must be between 1 and 9999")
+        if month is not None and (year is None or not 1 <= month <= 12):
+            raise ApiError("month requires a year and must be between 1 and 12")
+
         points, scanned_at = self._points(rescan=rescan)
         if not points:
             return {"trips": [], "scanned_at": None, "assets": 0}
@@ -1144,6 +1159,14 @@ class DesignApi:
         covered = self._covered_windows(config)
         found = trips_module.detect(points, away_km=away_km,
                                     min_assets=min_assets, min_days=min_days)
+        if max_days is not None:
+            found = [trip for trip in found if trip.days <= max_days]
+        if year is not None:
+            first = dt.date(year, month or 1, 1)
+            last = (dt.date(year, month, calendar.monthrange(year, month)[1])
+                    if month is not None else dt.date(year, 12, 31))
+            found = [trip for trip in found
+                     if trip.start <= last and trip.end >= first]
         taken = {p.id: p.taken_at for p in points}
         albums_error = None
         try:

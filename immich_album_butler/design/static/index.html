@@ -284,7 +284,24 @@
   <div class="toolbar">
     <button id="rescan">Scan the library</button>
     <span class="divider"></span>
-    <label class="field inline"><span>Away</span>
+    <label class="field inline"><span>Year</span>
+      <input id="trip-year" type="number" min="1" max="9999" step="1" placeholder="All"></label>
+    <label class="field inline"><span>Month</span>
+      <select id="trip-month" disabled>
+        <option value="">All</option>
+        <option value="1">January</option><option value="2">February</option>
+        <option value="3">March</option><option value="4">April</option>
+        <option value="5">May</option><option value="6">June</option>
+        <option value="7">July</option><option value="8">August</option>
+        <option value="9">September</option><option value="10">October</option>
+        <option value="11">November</option><option value="12">December</option>
+      </select></label>
+    <span class="divider"></span>
+    <label class="field inline"><span>Min. days</span>
+      <input id="trip-min-days" type="number" value="2" min="1" step="1"></label>
+    <label class="field inline"><span>Max. days</span>
+      <input id="trip-max-days" type="number" min="1" step="1" placeholder="Any"></label>
+    <label class="field inline"><span>Min. distance from home</span>
       <input id="away-km" type="number" value="100" min="1" step="10"><span>km</span></label>
     <label class="field inline"><span>Min. media</span>
       <input id="min-assets" type="number" value="30" min="1"></label>

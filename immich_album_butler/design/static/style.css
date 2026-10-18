@@ -139,6 +139,10 @@ button.link { background: none; border: none; color: var(--accent); padding: 0.2
            padding: 0.6rem 0.75rem; border: 1px solid var(--line);
            border-radius: 8px; background: var(--panel); }
 .toolbar button, .toolbar input[type="number"] { height: 2.2rem; }
+.toolbar #trip-year { width: 5.5rem; }
+.toolbar #trip-min-days, .toolbar #trip-max-days,
+.toolbar #away-km, .toolbar #min-assets { width: 5rem; }
+.toolbar #trip-month { max-width: 9rem; }
 .toolbar .field.inline > span { font-size: 0.88rem; }
 .toolbar .divider { align-self: stretch; width: 1px; background: var(--line); }
 #album-filter, #trip-filter, #dup-filter { margin-left: auto; min-width: 16rem; }

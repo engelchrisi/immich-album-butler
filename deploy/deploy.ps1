@@ -113,6 +113,12 @@ printf 'Verified immich-album-butler %s\\n' "`$version"
     Write-Host "Deployment complete: $expectedVersion verified."
 } finally {
     if (Test-Path -LiteralPath $tempRoot) {
+        $resolvedTemp = [System.IO.Path]::GetFullPath($tempRoot)
+        $resolvedBase = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
+        if (-not $resolvedTemp.StartsWith($resolvedBase, [System.StringComparison]::OrdinalIgnoreCase) -or
+            -not (Split-Path -Leaf $resolvedTemp).StartsWith('iab-deploy-')) {
+            throw "Refusing to remove an unexpected staging directory: $resolvedTemp"
+        }
         Remove-Item -LiteralPath $tempRoot -Recurse -Force
     }
 }

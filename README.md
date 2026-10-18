@@ -427,7 +427,11 @@ python3 -m immich_album_butler passwd alex      # asks twice, prints a block; ne
   the album would next run. The preview is produced by the same code a real run
   uses, so it cannot show you one thing and then do another.
 - **Trips** — scans the library for stretches spent away from home and offers
-  each as a ready-made album, marking those an album already covers.
+  each as a ready-made album, marking those an album already covers. Filter by
+  year and optional month, minimum and maximum duration, distance from home,
+  and media count. Set minimum and maximum duration to 1 day to find day trips;
+  year/month filters keep overlapping trips whole. Changing a filter reuses
+  the scan; **Scan the library** refreshes the photos from Immich.
 - **Analyze** — the near-misses a rule leaves out: assets shot within hours of
   the album, ones inside the date range without GPS, ones inside the range but
   elsewhere. Each says which rule change would include it, or can be added once

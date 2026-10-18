@@ -2158,6 +2158,17 @@ document.addEventListener("keydown", (event) => {
 /* -- trips tab ---------------------------------------------------------- */
 
 $("rescan").onclick = () => loadTrips(true);
+for (const id of ["trip-year", "trip-month", "trip-min-days", "trip-max-days",
+                  "away-km", "min-assets"]) {
+  $(id).onchange = () => {
+    if (id === "trip-year") {
+      $("trip-month").disabled = !$("trip-year").value;
+      if ($("trip-month").disabled) $("trip-month").value = "";
+    }
+    loadTrips(false);
+  };
+}
+$("trip-month").disabled = !$("trip-year").value;
 
 $("trip-filter").oninput = renderTripList;
 restoreSort($("trip-sort"), TRIP_SORT);
@@ -2183,7 +2194,9 @@ function applyOnlyNew() {
 $("only-new").onchange = applyOnlyNew;
 applyOnlyNew();
 
+let tripSearchRequest = 0;
 async function loadTrips(rescan) {
+  const request = ++tripSearchRequest;
   const list = $("trip-list");
   const note = $("scan-note");
   $("trip-gps").replaceChildren();
@@ -2196,10 +2209,18 @@ async function loadTrips(rescan) {
     rescan: rescan ? "1" : "0",
     away_km: $("away-km").value || "100",
     min_assets: $("min-assets").value || "30",
+    min_days: $("trip-min-days").value || "2",
   });
+  if ($("trip-max-days").value) query.set("max_days", $("trip-max-days").value);
+  if ($("trip-year").value) query.set("year", $("trip-year").value);
+  if ($("trip-month").value) query.set("month", $("trip-month").value);
   let data;
   try { data = await api(`/api/trips?${query}`); }
-  catch (error) { note.textContent = ""; return banner(error.message); }
+  catch (error) {
+    if (request === tripSearchRequest) { note.textContent = ""; banner(error.message); }
+    return;
+  }
+  if (request !== tripSearchRequest) return;
 
   const fresh = data.trips.filter((trip) => !trip.in_album).length;
   if (data.scanned_at) {
@@ -2222,7 +2243,7 @@ function renderTripList() {
 
   if (!data.trips.length) {
     list.append(el("div", { class: "muted" }, data.scanned_at
-      ? "No trips found. Try a smaller “away km” or a lower minimum of media."
+      ? "No trips found for these filters. Try fewer days, a smaller distance, or fewer media."
       : "Press “Scan the library” to look for trips."));
     return;
   }

@@ -398,10 +398,18 @@ def _make_handler(api: DesignApi, accounts: Users, idle: Idle,
             if path == "/api/browse/album":
                 return api.browse_album(query.get("id", ""))
             if path == "/api/trips":
-                return api.trips(rescan=query.get("rescan") == "1",
-                                 away_km=float(query.get("away_km") or 100),
-                                 min_assets=int(query.get("min_assets") or 30),
-                                 min_days=int(query.get("min_days") or 2))
+                try:
+                    return api.trips(
+                        rescan=query.get("rescan") == "1",
+                        away_km=float(query.get("away_km") or 100),
+                        min_assets=int(query.get("min_assets") or 30),
+                        min_days=int(query.get("min_days") or 2),
+                        max_days=(int(query["max_days"]) if query.get("max_days") else None),
+                        year=(int(query["year"]) if query.get("year") else None),
+                        month=(int(query["month"]) if query.get("month") else None),
+                    )
+                except ValueError:
+                    raise ApiError("invalid trip search filter") from None
             raise ApiError(f"no route {path}", status=404)
 
         def _post_api(self, path: str, body: dict):

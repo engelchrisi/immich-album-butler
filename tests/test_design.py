@@ -797,6 +797,54 @@ class TripTests(DesignTestCase):
         self.assertEqual(searches, 0)
 
 
+class TripSearchFilterTests(DesignTestCase):
+    assets = (
+        [make_asset(n, when=day(2019, 1, 1, 8 + n % 10),
+                    lat=41.9, lon=12.5, city="Rome", country="Italy")
+         for n in range(40)]
+        + [make_asset(100 + n, when=day(2021, 2, 14, 8 + n),
+                      lat=35.7, lon=139.7, city="Tokyo", country="Japan")
+           for n in range(5)]
+        + [make_asset(110 + n, when=day(2021, 2, 14, 14 + n))
+           for n in range(6)]
+        + [make_asset(200 + n, when=day(2020, 2, 28, 8 + n),
+                      lat=35.7, lon=139.7, city="Tokyo", country="Japan")
+           for n in range(8)]
+        + [make_asset(210 + n, when=day(2020, 3, 1, 8 + n),
+                      lat=35.7, lon=139.7, city="Tokyo", country="Japan")
+           for n in range(8)]
+    )
+
+    def test_one_day_trip_is_found_with_its_unlocated_media(self):
+        found = self.api.trips(rescan=True, min_assets=10, min_days=1,
+                               max_days=1, year=2021, month=2)["trips"]
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]["days"], 1)
+        self.assertEqual(found[0]["total"], 11)
+        self.assertEqual(found[0]["unlocated"], 6)
+        self.assertEqual(self.api.trips(min_assets=10, year=2021)["trips"], [])
+
+    def test_month_filter_keeps_a_whole_trip_across_a_month_boundary(self):
+        self.api.trips(rescan=True)
+        for month in (2, 3):
+            found = self.api.trips(min_assets=10, year=2020,
+                                   month=month)["trips"]
+            self.assertEqual(len(found), 1)
+            self.assertEqual((found[0]["start"], found[0]["end"]),
+                             ("2020-02-28", "2020-03-01"))
+            self.assertEqual(found[0]["total"], 16)
+        self.assertEqual(self.api.trips(min_assets=10, year=2018)["trips"], [])
+        self.assertEqual(self.api.trips(min_assets=10, min_days=1, max_days=1,
+                                        year=2020)["trips"], [])
+
+    def test_invalid_filter_ranges_are_rejected(self):
+        for filters in ({"min_days": 0}, {"min_days": 2, "max_days": 1},
+                        {"month": 2}, {"year": 2020, "month": 13},
+                        {"away_km": float("nan")}):
+            with self.subTest(filters=filters), self.assertRaises(ApiError):
+                self.api.trips(**filters)
+
+
 class GpsFillTests(DesignTestCase):
     def setUp(self):
         self.assets = [

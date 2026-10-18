@@ -1,5 +1,10 @@
 # Changes
 
+## 1.16.0 - 2026-10-18
+- Trips can be filtered by year and month, minimum and maximum duration,
+  distance from home, and media count. One-day trips can now be searched.
+- The PowerShell deploy helper verifies its temporary staging path before cleanup.
+
 ## 1.15.4 - 2026-10-17
 - Fixed malformed arrow characters in the album donor-pager labels.
 

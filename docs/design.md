@@ -36,6 +36,12 @@ mode's preview, so the preview cannot drift from what a run does.
 | `design/auth.py` | scrypt hashes, constant-time compare, sessions |
 | `design/static/` | `index.html`, `login.html`, `app.js`, `style.css`, `icon.svg` |
 
+The Trips page reuses the full library scan when a search field changes. Its
+distance, minimum media and minimum days are passed to trip detection; maximum
+days and the optional year/month overlap are applied to whole detected trips.
+The defaults remain 100 km, 30 media and two days, while a one-day search is
+available by setting both duration bounds to one.
+
 ## 3. Configuration and state
 
 `config.toml` in the config directory (see `examples/config.toml`): global settings, design users,
