@@ -1,5 +1,9 @@
 # Changes
 
+## 1.16.1 - 2026-10-24
+- Fixed design-mode thumbnails and large previews ignoring Immich editor
+  changes such as rotation and crop.
+
 ## 1.16.0 - 2026-10-18
 - Trips can be filtered by year and month, minimum and maximum duration,
   distance from home, and media count. One-day trips can now be searched.

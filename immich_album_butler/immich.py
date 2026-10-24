@@ -393,8 +393,13 @@ class ImmichClient:
         self.request("PUT", f"assets/{asset_id}", {"rating": rating})
 
     def thumbnail(self, asset_id: str, size: str = "thumbnail") -> tuple[bytes, str]:
-        """Fetch a thumbnail server-side, so the browser never sees the key."""
-        url = f"{self.base_url}/api/assets/{asset_id}/thumbnail?size={size}"
+        """Fetch Immich's edited rendition without exposing the key.
+
+        Immich edits are non-destructive.  Its thumbnail endpoint returns the
+        original rotation and crop unless ``edited=true`` is explicit.
+        """
+        url = (f"{self.base_url}/api/assets/{asset_id}/thumbnail"
+               f"?size={size}&edited=true")
         request = urllib.request.Request(url, headers={"x-api-key": self._key})
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:

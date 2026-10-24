@@ -45,6 +45,7 @@ Priority: P1 = needed, P2 = wanted.
 | N16 | Saving the config is the only write to disk besides backups (N37), deleting backups on request (N40) and a requested config restore (N39); every write is atomic | P1 |
 | N17 | Trips are detected from geotagged photos far from home; unlocated photos join by date window | P2 |
 | N47 | **Trip search filters.** Design mode can search a selected year and optional month, inclusive minimum and maximum trip length in calendar days (including one-day trips), minimum distance from home, and minimum media count. A trip that overlaps the selected year/month is shown whole, even across a month or year boundary. Filtering uses the full library scan and does not split trips or change how home is inferred; changing search fields re-evaluates the available scan. Defaults remain two days, 100 km, and 30 media. | P2 |
+| N48 | **Edited thumbnails.** Every design-mode thumbnail and large hover preview uses Immich's edited rendition, so editor actions such as rotation and crop are shown. | P1 |
 | N18 | Analyze suggests near-misses for a rule (adjust the rule or add assets) and never edits by itself | P2 |
 | N19 | A Duplicates tab; removal from an album only on explicit confirmation and never the last copy | P2 |
 | N20 | Login is mandatory: scrypt hashes in `config.toml`, produced by `passwd`; no default account; without a user it binds to loopback only | P1 |

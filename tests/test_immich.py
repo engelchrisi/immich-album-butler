@@ -1,5 +1,6 @@
 import datetime as dt
 import unittest
+from unittest import mock
 
 from immich_album_butler.immich import Asset, ImmichClient, ImmichError
 
@@ -100,6 +101,22 @@ class ClientTests(unittest.TestCase):
     def test_an_empty_key_is_refused_before_any_request(self):
         with self.assertRaises(ImmichError):
             ImmichClient("http://immich.example.lan:2283", "")
+
+    def test_thumbnail_requests_the_edited_immich_rendition(self):
+        # Immich otherwise returns the original orientation and crop.
+        response = mock.MagicMock()
+        response.__enter__.return_value = response
+        response.read.return_value = b"image"
+        response.headers.get.return_value = "image/jpeg"
+        client = ImmichClient("http://immich.example.lan:2283", API_KEY)
+        with mock.patch("urllib.request.urlopen", return_value=response) as open_:
+            found = client.thumbnail("asset-id", size="preview")
+        self.assertEqual(found, (b"image", "image/jpeg"))
+        request = open_.call_args.args[0]
+        self.assertEqual(
+            request.full_url,
+            "http://immich.example.lan:2283/api/assets/asset-id/thumbnail"
+            "?size=preview&edited=true")
 
 
 class PeopleTests(unittest.TestCase):

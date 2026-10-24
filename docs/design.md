@@ -98,9 +98,11 @@ Login in front of everything. Read: `/api/whoami`, `/api/people`, `/api/places`,
 `/api/gps-donors`, `/api/gps-donors/remove`,
 `/api/asset/{id}/favorite`, `/api/asset/{id}/reject`.
 
-The one global hover card handles every image served by `/api/thumb/{id}`, so the favourite and
-reject controls apply in the builder, album browser, trips, duplicates and any later view that uses
-the thumbnail proxy. The card takes pointer events and delays closing between thumbnail and card.
+The one global hover card handles every image served by `/api/thumb/{id}`. The thumbnail proxy
+requests Immich's edited rendition (`edited=true`), so rotations, crops, and other editor actions
+are visible. The favourite and reject controls apply in the builder, album browser, trips,
+duplicates and any later view that uses the thumbnail proxy. The card takes pointer events and
+delays closing between thumbnail and card.
 The two write routes accept booleans, keep the Immich key server-side, and call
 `PUT /api/assets/{id}` with only `isFavorite` or `rating`. Reject is rating `-1`; its prior rating is
 kept in process memory for undo and falls back to JSON `null` (unrated) after a restart. Immich 3
