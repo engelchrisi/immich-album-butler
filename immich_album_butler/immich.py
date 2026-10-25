@@ -390,18 +390,16 @@ class ImmichClient:
                                    or rating not in (-1, 1, 2, 3, 4, 5)):
             raise ValueError(
                 f"rating must be -1, 1..5, or None, not {rating!r}")
-        # PUT is the documented route for the older supported API releases.
-        # Recent v3 servers also expose PATCH.  A few v3 builds acknowledge a
-        # PUT rating update but return the asset with its old rating, making a
-        # reject appear to work until the browser is refreshed.  Use PATCH as
-        # a narrow compatibility retry only when that response proves PUT did
-        # not apply the requested value.
-        result = self.request("PUT", f"assets/{asset_id}", {"rating": rating})
-        exif = result.get("exifInfo") if isinstance(result, dict) else None
-        if isinstance(exif, dict) and exif.get("rating") != rating:
-            result = self.request("PATCH", f"assets/{asset_id}", {"rating": rating})
-            exif = result.get("exifInfo") if isinstance(result, dict) else None
-            if isinstance(exif, dict) and exif.get("rating") != rating:
+        # A writable shared album can acknowledge PUT without changing an
+        # unowned asset, and some v3 servers return no updated record at all.
+        # Read the asset back instead of trusting that acknowledgement. PATCH
+        # is the v3 fallback, but it too must be verified from stored state.
+        self.request("PUT", f"assets/{asset_id}", {"rating": rating})
+        saved = self.asset(asset_id).get("exifInfo") or {}
+        if saved.get("rating") != rating:
+            self.request("PATCH", f"assets/{asset_id}", {"rating": rating})
+            saved = self.asset(asset_id).get("exifInfo") or {}
+            if saved.get("rating") != rating:
                 raise ImmichError("Immich did not save the asset rating")
 
     def thumbnail(self, asset_id: str, size: str = "thumbnail") -> tuple[bytes, str]:
