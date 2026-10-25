@@ -1116,11 +1116,7 @@ class DesignApi:
             info = next((a for a in self.client.albums() if a.id == album_id), None)
             if info is None:
                 raise ApiError("no such album", status=404)
-            # Match the display semantics of PyImmichFrame's pools: a photo
-            # marked "not wanted" leaves the normal view after it is reloaded.
-            # It remains in Immich's album, so undo is still possible there.
-            assets = [asset for asset in self.client.search_metadata(album_ids=[album_id])
-                      if asset.rating != -1]
+            assets = list(self.client.search_metadata(album_ids=[album_id]))
         except ImmichError as exc:
             raise ApiError(str(exc), status=502) from None
         assets.sort(key=lambda a: (a.taken_at is None,
@@ -1134,6 +1130,11 @@ class DesignApi:
                 "folder": (a.original_path.rsplit("/", 1)[0]
                            if "/" in a.original_path else ""),
                 "camera": a.camera, "city": a.city, "country": a.country,
+                # Keep the state on the thumbnail payload.  Browse is a
+                # timeline, like PyImmichFrame's: rejected photos stay
+                # inspectable and carry their persistent status after reload.
+                "favorite": a.is_favorite,
+                "rejected": a.rating == -1,
             } for a in assets],
         }
 

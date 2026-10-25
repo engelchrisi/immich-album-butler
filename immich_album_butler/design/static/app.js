@@ -2079,6 +2079,10 @@ function renderBrowseAlbum() {
       const index = browse.order.push(asset) - 1;
       const cell = el("div", { class: `browse-cell${asset.kind === "VIDEO" ? " video" : ""}` },
         el("img", { src: `/api/thumb/${asset.id}`, loading: "lazy", alt: "" }));
+      const badges = el("div", { class: "photo-badges", "aria-label": "Photo status" });
+      if (asset.rejected) badges.append(el("span", { class: "photo-badge hate", title: "Not shown by the butler" }, "âŠ˜"));
+      if (asset.favorite) badges.append(el("span", { class: "photo-badge love", title: "Favourite" }, "â™¥"));
+      if (badges.childElementCount) cell.append(badges);
       cell.onclick = () => openLightbox(index);
       if (asset.kind !== "VIDEO") {
         const star = el("button", { class: "cover-pick", title: "Set as album cover" }, "★");
@@ -3231,6 +3235,7 @@ function photoActions(id, details) {
       const result = await post(`/api/asset/${id}/reject`, { rejected: !details.rejected });
       details.rejected = result.rejected;
       details.rating = result.rating;
+      updateBrowseAssetState(id, { rejected: details.rejected });
       reject.classList.toggle("active", details.rejected);
       reject.setAttribute("aria-pressed", String(details.rejected));
       reject.title = reject.ariaLabel = details.rejected
@@ -3243,6 +3248,7 @@ function photoActions(id, details) {
     try {
       const result = await post(`/api/asset/${id}/favorite`, { favorite: !details.favorite });
       details.favorite = result.favorite;
+      updateBrowseAssetState(id, { favorite: details.favorite });
       favorite.textContent = details.favorite ? "♥" : "♡";
       favorite.classList.toggle("active", details.favorite);
       favorite.setAttribute("aria-pressed", String(details.favorite));
@@ -3252,6 +3258,15 @@ function photoActions(id, details) {
     finally { favorite.disabled = false; }
   };
   return [reject, favorite];
+}
+
+function updateBrowseAssetState(id, state) {
+  if (!browse.album) return;
+  for (const asset of browse.album.assets) {
+    if (asset.id === id) Object.assign(asset, state);
+  }
+  // The grid is deliberately updated immediately, rather than waiting for F5.
+  renderBrowseAlbum();
 }
 
 function assetDetails(id) {

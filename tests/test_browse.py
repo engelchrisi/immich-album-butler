@@ -93,6 +93,8 @@ class AlbumPageTests(BrowseTestCase):
         self.assertEqual(first["camera"], "Canon EOS R")
         self.assertEqual((first["city"], first["country"]), ("Vienna", "Austria"))
         self.assertTrue(first["taken_at"].startswith("2020-01-04"))
+        self.assertFalse(first["favorite"])
+        self.assertFalse(first["rejected"])
 
     def test_media_come_oldest_first_with_their_kind(self):
         album = self.api.browse_album(self.italy)
@@ -100,11 +102,14 @@ class AlbumPageTests(BrowseTestCase):
         self.assertEqual([a["kind"] for a in album["assets"]],
                          ["IMAGE", "VIDEO", "IMAGE"])
 
-    def test_rejected_media_leave_the_normal_album_browser(self):
+    def test_rejected_media_remain_in_the_browser_with_their_state(self):
         self.fake.assets[1].rating = -1
+        self.fake.assets[2].favorite = True
         album = self.api.browse_album(self.italy)
         self.assertEqual([a["id"] for a in album["assets"]],
-                         [self.ids[0], self.ids[2]])
+                         self.ids[:3])
+        self.assertTrue(album["assets"][1]["rejected"])
+        self.assertTrue(album["assets"][2]["favorite"])
 
     def test_a_bad_id_is_refused_before_asking_immich(self):
         before = len(self.fake.requests)
