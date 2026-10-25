@@ -1116,7 +1116,11 @@ class DesignApi:
             info = next((a for a in self.client.albums() if a.id == album_id), None)
             if info is None:
                 raise ApiError("no such album", status=404)
-            assets = list(self.client.search_metadata(album_ids=[album_id]))
+            # Match the display semantics of PyImmichFrame's pools: a photo
+            # marked "not wanted" leaves the normal view after it is reloaded.
+            # It remains in Immich's album, so undo is still possible there.
+            assets = [asset for asset in self.client.search_metadata(album_ids=[album_id])
+                      if asset.rating != -1]
         except ImmichError as exc:
             raise ApiError(str(exc), status=502) from None
         assets.sort(key=lambda a: (a.taken_at is None,

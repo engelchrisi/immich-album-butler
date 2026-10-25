@@ -100,6 +100,12 @@ class AlbumPageTests(BrowseTestCase):
         self.assertEqual([a["kind"] for a in album["assets"]],
                          ["IMAGE", "VIDEO", "IMAGE"])
 
+    def test_rejected_media_leave_the_normal_album_browser(self):
+        self.fake.assets[1].rating = -1
+        album = self.api.browse_album(self.italy)
+        self.assertEqual([a["id"] for a in album["assets"]],
+                         [self.ids[0], self.ids[2]])
+
     def test_a_bad_id_is_refused_before_asking_immich(self):
         before = len(self.fake.requests)
         with self.assertRaises(ApiError):

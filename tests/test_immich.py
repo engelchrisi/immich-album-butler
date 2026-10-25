@@ -280,6 +280,24 @@ class AlbumWriteTests(unittest.TestCase):
         self.assertEqual(refreshed["exifInfo"]["rating"], -1)
         self.assertIsNone(cleared["exifInfo"]["rating"])
 
+    def test_rating_retries_the_v3_patch_route_when_put_did_not_apply_it(self):
+        client = ImmichClient("http://immich.example", API_KEY)
+        old = {"exifInfo": {"rating": None}}
+        saved = {"exifInfo": {"rating": -1}}
+        with mock.patch.object(client, "request", side_effect=[old, saved]) as request:
+            client.set_asset_rating(fake_id(1), -1)
+        self.assertEqual(request.call_args_list, [
+            mock.call("PUT", f"assets/{fake_id(1)}", {"rating": -1}),
+            mock.call("PATCH", f"assets/{fake_id(1)}", {"rating": -1}),
+        ])
+
+    def test_rating_reports_a_server_that_does_not_persist_it(self):
+        client = ImmichClient("http://immich.example", API_KEY)
+        with mock.patch.object(client, "request",
+                               return_value={"exifInfo": {"rating": None}}):
+            with self.assertRaisesRegex(ImmichError, "did not save"):
+                client.set_asset_rating(fake_id(1), -1)
+
     def test_an_invalid_rating_is_refused_before_calling_immich(self):
         with StubImmich([], page_size=100) as stub:
             client = ImmichClient(stub.url, API_KEY)
