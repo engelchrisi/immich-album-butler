@@ -1,5 +1,10 @@
 # Changes
 
+## Unreleased
+- Rejecting a photo now verifies Immich's stored rating after each write and retries its v3 PATCH
+  route when PUT was acknowledged without saving. This prevents shared writable albums from
+  claiming a rejected state that disappears on reload.
+
 ## 1.16.1 - 2026-10-24
 - Fixed design-mode thumbnails and large previews ignoring Immich editor
   changes such as rotation and crop.

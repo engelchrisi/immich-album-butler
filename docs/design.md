@@ -103,11 +103,15 @@ requests Immich's edited rendition (`edited=true`), so rotations, crops, and oth
 are visible. The favourite and reject controls apply in the builder, album browser, trips,
 duplicates and any later view that uses the thumbnail proxy. The card takes pointer events and
 delays closing between thumbnail and card.
-The two write routes accept booleans, keep the Immich key server-side, and call
-`PUT /api/assets/{id}` with only `isFavorite` or `rating`. Reject is rating `-1`; its prior rating is
-kept in process memory for undo and falls back to JSON `null` (unrated) after a restart. Immich 3
-rejects the older rating `0` representation. The pressed reject button uses a solid warning colour
-and exposes `aria-pressed`, making its current state clear visually and to assistive technology.
+The two write routes accept booleans and keep the Immich key server-side. Reject is rating `-1`;
+its prior rating is kept in process memory for undo and falls back to JSON `null` (unrated) after a
+restart. Immich 3 rejects the older rating `0` representation. Rating writes use `PUT
+/api/assets/{id}`, then read the asset back; when the stored rating differs, they retry the v3
+`PATCH` route and read it back again. This matters for writable shared albums, where Immich can
+acknowledge a write without changing an unowned asset. The API reports failure unless the stored
+rating matches, so a page reload cannot turn a claimed reject back into an ordinary photo. The
+pressed reject button uses a solid warning colour and exposes `aria-pressed`, making its current
+state clear visually and to assistive technology.
 
 Trip GPS backfill (N44) is design-mode-only and explicit. `/api/trips/gps-preview`
 computes candidate coordinates for trip media without GPS from same-day, geotagged

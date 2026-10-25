@@ -531,7 +531,10 @@ browser. Hovering a thumbnail shows the large picture with its details and keeps
 the tooltip open when the pointer moves onto it. Its upper corners can mark the
 asset not wanted (`⊘`, Immich rating `-1`) or favourite/unfavourite it (`♡`/`♥`);
 these controls appear on image tooltips throughout design mode and need
-`asset.update`. Clicking opens it full-screen, and ←/→ step through the album in the order
+`asset.update`. A reject is only shown as saved after Butler reads back rating `-1` (with a v3
+PATCH retry after an ineffective PUT), so shared assets that Immich lets the key view but not
+change report an error instead of losing the state after a reload. Clicking opens it full-screen,
+and ←/→ step through the album in the order
 shown. The album view also offers the cover action: hovering a picture and clicking
 ★ sets it as the album's cover (needs `album.update`, like every other cover
 write) — for any album, whether or not the butler has a rule for it.
