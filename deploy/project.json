@@ -1,0 +1,20 @@
+{
+  "name": "immich-album-butler",
+  "package": "immich_album_butler",
+  "services": [
+    "immich-album-butler",
+    "immich-album-butler-design"
+  ],
+  "primary": "immich-album-butler",
+  "design_service": "immich-album-butler-design",
+  "config": "/etc/immich-album-butler/config.toml",
+  "health": {
+    "immich-album-butler-design": {
+      "section": null,
+      "port_key": "design_port",
+      "default_port": 8081,
+      "path": "/login",
+      "use_host": false
+    }
+  }
+}

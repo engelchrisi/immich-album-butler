@@ -220,15 +220,18 @@ later scheduled and manual runs preserve that chosen cover (N6).
 `deploy/install.sh` copies the package to `/opt/immich-album-butler`, seeds config and env file,
 installs `immich-album-butler.service` (daemon) and `immich-album-butler-design.service`
 (not enabled; `ReadWritePaths` on the config directory because design mode writes it).
-`deploy/deploy.sh USER@HOST` is the local release helper: it archives committed
-`HEAD`, transfers it over SSH, normalises deployment-file line endings for a
-Windows checkout, runs the installer, and restarts both services. Its explicit
-`--working-tree` option is for a deliberate test deployment of local changes;
-`--design-only` limits the restart to the design service.
-`deploy/deploy.ps1` provides the same workflow for Windows: it starts from a
-HEAD snapshot and optionally overlays tracked working-tree changes, so ignored
-state and unrelated untracked files never enter the archive. It verifies both
-service state and the installed package version before reporting success.
+`deploy/deploy.py` is the shared deployment engine used by the shell and
+PowerShell entry points in all three client projects. It packages committed
+`HEAD` by default; `--working-tree` packages tracked local changes, staged
+additions and deletions. A manifest binds every file to its SHA-256 checksum,
+project, commit and version. The remote side validates it before installation,
+serialises deploys with a lock, preserves config and state, and verifies the
+installed version plus stable service readiness. It restores the previous code
+and systemd units on failure.
+
+A normal deploy restarts the runtime and resumes design mode only when it was
+already active. `--design-only` explicitly starts design mode and resumes an
+active runtime after the shared package is replaced.
 
 ## 7. Decisions and risks
 

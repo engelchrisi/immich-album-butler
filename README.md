@@ -89,25 +89,28 @@ refreshes the package and the units.
 
 ### Deploying from a workstation
 
-From a checkout with SSH access to the server, this one command packages the
-committed revision, installs it, and restarts both services:
+From a checkout with Python 3.11+ and SSH access to the server:
 
 ```sh
 sh deploy/deploy.sh root@example-host
 ```
 
-Use `--design-only` when only the design UI needs restarting. A normal deploy
-is deliberately reproducible and uses `HEAD`; use `--working-tree` only when
-you intentionally want to deploy uncommitted local changes.
+The default packages committed `HEAD`, checksums and uploads it, preserves an
+inactive design service, restarts the runtime and any service that was already
+running, then verifies the installed version and service stability. If install
+or verification fails, it restores the previous code and units. Use
+`--design-only` to explicitly start the design UI, or `--working-tree` to
+package tracked local changes, including staged additions and deletions.
 
-On Windows, use the equivalent PowerShell command. It packages the same safe
-snapshot, restarts the services, and verifies the installed version before it
-reports success:
+PowerShell calls the same deployment engine:
 
 ```powershell
 .\deploy\deploy.ps1 root@example-host
 .\deploy\deploy.ps1 root@example-host -WorkingTree
 ```
+
+See [deploy/README.md](deploy/README.md) for archive-only builds, rollback
+behaviour, service-state handling and every option.
 
 ## Configuration
 

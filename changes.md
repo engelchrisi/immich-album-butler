@@ -1,6 +1,11 @@
 # Changes
 
 ## Unreleased
+- Use the same verified deployment engine as PyImmichFrame and
+  immich-dup-butler, with release manifests, readiness checks, preserved
+  optional-service state and automatic rollback of code and systemd units.
+- Remove the obsolete `scripts/deploy.sh` entry point and document the
+  maintained shell and PowerShell commands in `deploy/README.md`.
 - Rejecting a photo now verifies Immich's stored rating after each write and retries its v3 PATCH
   route when PUT was acknowledged without saving. This prevents shared writable albums from
   claiming a rejected state that disappears on reload.

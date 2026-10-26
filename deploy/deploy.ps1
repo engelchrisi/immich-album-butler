@@ -1,124 +1,29 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true, Position = 0)]
-    [ValidatePattern('^[A-Za-z0-9_.@:-]+$')]
+    [Parameter(Position = 0)]
+    [ValidatePattern('^[A-Za-z0-9_][A-Za-z0-9_.@:-]*$')]
     [string]$Target,
     [switch]$WorkingTree,
-    [switch]$DesignOnly
+    [switch]$DesignOnly,
+    [string]$Frontend,
+    [switch]$KeepFrontend,
+    [string]$Output
 )
 
-<#
-.SYNOPSIS
-Deploy immich-album-butler to a Linux systemd host over SSH.
-
-.DESCRIPTION
-Packages committed HEAD by default. -WorkingTree intentionally overlays tracked
-local changes, useful while preparing a release. The script only reports
-success after the selected services are active and the installed package reports
-the expected pyproject.toml version.
-
-.EXAMPLE
-.\deploy\deploy.ps1 root@example-host
-.\deploy\deploy.ps1 root@example-host -WorkingTree
-.\deploy\deploy.ps1 root@example-host -DesignOnly
-#>
-
-Set-StrictMode -Version Latest
+# Identical entry point in PyImmichFrame, immich-album-butler and immich-dup-butler.
 $ErrorActionPreference = 'Stop'
+$python = Get-Command python3, python, py -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+if (-not $python) { throw 'Deployment requires Python 3.11 or newer on PATH.' }
 
-foreach ($command in 'git', 'scp', 'ssh', 'tar') {
-    if (-not (Get-Command $command -ErrorAction SilentlyContinue)) {
-        throw "Deployment requires '$command' on PATH."
-    }
-}
+$deployArgs = @((Join-Path $PSScriptRoot 'deploy.py'))
+if ($python.Name -eq 'py.exe') { $deployArgs = @('-3') + $deployArgs }
+if ($Target) { $deployArgs += $Target }
+if ($WorkingTree) { $deployArgs += '--working-tree' }
+if ($DesignOnly) { $deployArgs += '--design-only' }
+if ($Frontend) { $deployArgs += @('--frontend', $Frontend) }
+if ($KeepFrontend) { $deployArgs += '--keep-frontend' }
+if ($Output) { $deployArgs += @('--output', $Output) }
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
-if (-not (Test-Path -LiteralPath (Join-Path $repoRoot '.git'))) {
-    throw 'Run this script from an immich-album-butler checkout.'
-}
-
-$versionLine = Get-Content -LiteralPath (Join-Path $repoRoot 'pyproject.toml') |
-    Where-Object { $_ -match '^version = "' } | Select-Object -First 1
-if ($versionLine -notmatch '^version = "([^"]+)"') {
-    throw 'Could not read the project version from pyproject.toml.'
-}
-$expectedVersion = $Matches[1]
-$services = if ($DesignOnly) {
-    'immich-album-butler-design'
-} else {
-    'immich-album-butler immich-album-butler-design'
-}
-
-$token = [guid]::NewGuid().ToString('N')
-$tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "iab-deploy-$token"
-$stageRoot = Join-Path $tempRoot 'stage'
-$archive = Join-Path $tempRoot 'immich-album-butler.tar.gz'
-$remoteArchive = "/tmp/immich-album-butler-deploy-$token.tar.gz"
-$remoteRoot = "/tmp/immich-album-butler-deploy-$token"
-
-try {
-    New-Item -ItemType Directory -Path $stageRoot | Out-Null
-    Push-Location $repoRoot
-    try {
-        # Start from HEAD so ignored files, local state, and unrelated
-        # untracked files cannot be packaged by accident.
-        $headArchive = Join-Path $tempRoot 'head.tar'
-        & git archive --format=tar --output $headArchive HEAD -- `
-            immich_album_butler deploy examples pyproject.toml
-        if ($LASTEXITCODE -ne 0) { throw 'git archive failed.' }
-        & tar -xf $headArchive -C $stageRoot
-        if ($LASTEXITCODE -ne 0) { throw 'Could not unpack the HEAD snapshot.' }
-
-        if ($WorkingTree) {
-            # Include only tracked modifications in the deliberate local
-            # overlay; untracked files must be committed before deployment.
-            $changed = & git diff --name-only HEAD -- `
-                immich_album_butler deploy examples pyproject.toml
-            if ($LASTEXITCODE -ne 0) { throw 'Could not read working-tree changes.' }
-            foreach ($relativePath in $changed) {
-                $source = Join-Path $repoRoot $relativePath
-                if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { continue }
-                $destination = Join-Path $stageRoot $relativePath
-                New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
-                Copy-Item -LiteralPath $source -Destination $destination -Force
-            }
-        }
-
-        & tar -C $stageRoot -czf $archive .
-        if ($LASTEXITCODE -ne 0) { throw 'Could not package the deployment archive.' }
-    } finally {
-        Pop-Location
-    }
-
-    $sourceLabel = if ($WorkingTree) { 'tracked working tree' } else { 'HEAD' }
-    Write-Host "Uploading $sourceLabel version $expectedVersion to $Target..."
-    & scp -- $archive "${Target}:$remoteArchive"
-    if ($LASTEXITCODE -ne 0) { throw 'Upload failed.' }
-
-    $remoteCommand = @"
-set -eu
-trap 'rm -rf "$remoteRoot" "$remoteArchive"' EXIT
-mkdir -p "$remoteRoot"
-tar -xzf "$remoteArchive" -C "$remoteRoot"
-find "$remoteRoot/deploy" -type f -exec sed -i 's/\\r$//' {} +
-sh "$remoteRoot/deploy/install.sh"
-systemctl restart $services
-systemctl is-active $services
-version=`$(PYTHONPATH=/opt/immich-album-butler python3 -c 'import immich_album_butler; print(immich_album_butler.__version__)')
-test "`$version" = "$expectedVersion"
-printf 'Verified immich-album-butler %s\\n' "`$version"
-"@
-    & ssh $Target $remoteCommand
-    if ($LASTEXITCODE -ne 0) { throw 'Remote installation or verification failed.' }
-    Write-Host "Deployment complete: $expectedVersion verified."
-} finally {
-    if (Test-Path -LiteralPath $tempRoot) {
-        $resolvedTemp = [System.IO.Path]::GetFullPath($tempRoot)
-        $resolvedBase = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
-        if (-not $resolvedTemp.StartsWith($resolvedBase, [System.StringComparison]::OrdinalIgnoreCase) -or
-            -not (Split-Path -Leaf $resolvedTemp).StartsWith('iab-deploy-')) {
-            throw "Refusing to remove an unexpected staging directory: $resolvedTemp"
-        }
-        Remove-Item -LiteralPath $tempRoot -Recurse -Force
-    }
-}
+& $python.Source @deployArgs
+if ($LASTEXITCODE -ne 0) { throw "Deployment failed with exit code $LASTEXITCODE." }
