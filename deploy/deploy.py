@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Example from the repository root:  python deploy/deploy.py root@example-host
+# Full usage and rollback behaviour: deploy/README.md
 """Shared deployment engine. Keep identical in the three client projects.
 
 The shell and PowerShell entry points only forward arguments to this file.

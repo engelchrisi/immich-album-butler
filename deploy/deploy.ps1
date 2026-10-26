@@ -1,3 +1,5 @@
+# Example from the repository root:  .\deploy\deploy.ps1 root@example-host
+# Full usage and rollback behaviour: deploy/README.md
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
