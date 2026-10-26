@@ -448,7 +448,9 @@ run on every update; the **optional** ones depend on which features you use:
 | Permission | Purpose | Needed for |
 |---|---|---|
 | `asset.read` | **required** | Search and fetch asset metadata and thumbnails |
-| `asset.update` | optional | Favourite/reject buttons in image tooltips; trip and album GPS backfill |
+| `asset.update` | optional | Favourite buttons, undoing legacy rating-based rejects; trip and album GPS backfill |
+| `tag.read` | **required** | Read the shared not-wanted list |
+| `tag.create`, `tag.asset` | optional | Not-wanted buttons; create and add/remove the shared marker |
 | `album.read` | **required** | List your albums |
 | `album.create` | **required** | Create new albums |
 | `albumAsset.create` | **required** | Add assets to albums |
@@ -532,11 +534,10 @@ album's media, grouped by folder (where the original file is stored), day,
 month, year, camera, place or photo/video; the choice is remembered in the
 browser. Hovering a thumbnail shows the large picture with its details and keeps
 the tooltip open when the pointer moves onto it. Its upper corners can mark the
-asset not wanted (`⊘`, Immich rating `-1`) or favourite/unfavourite it (`♡`/`♥`);
-these controls appear on image tooltips throughout design mode and need
-`asset.update`. A reject is only shown as saved after Butler reads back rating `-1` (with a v3
-PATCH retry after an ineffective PUT), so shared assets that Immich lets the key view but not
-change report an error instead of losing the state after a reload. Clicking opens it full-screen,
+asset not wanted (`⊘`, shared tag) or favourite/unfavourite it (`♡`/`♥`).
+Favourite needs `asset.update`; not wanted needs the tag scopes listed above.
+Both controls appear throughout design mode. A rejection is only reported as saved
+after its shared tag membership is verified. Clicking opens it full-screen,
 and ←/→ step through the album in the order
 shown. The album view also offers the cover action: hovering a picture and clicking
 ★ sets it as the album's cover (needs `album.update`, like every other cover
@@ -557,8 +558,9 @@ scripts/install-hooks.sh           # privacy-check git hooks, once per clone
 
 ## Safety
 
-The butler writes **albums only**. It never touches your originals, never
-deletes assets, and never deletes an album. Every album mirrors its rule: an
+The butler writes **albums only**. It never touches your originals or deletes
+assets. Design mode deletes an album only through its separate, explicit
+confirmation; the contained photos stay in the library. Every album mirrors its rule: an
 asset that stops matching — because a face was reassigned, a date window
 moved, or a per-year cap dropped it — is removed from **that album** on the
 next run. Never from the library. The design UI's **Duplicates** tab removes
@@ -568,3 +570,28 @@ it and always keeping one. Nothing ever leaves your library.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+### Shared not-wanted photos
+
+The not-wanted button uses the reserved Immich tag `photo-butler/rejected`.
+Both applications must use API keys belonging to the **same Immich account**.
+Required scopes are `tag.read` (also needed by matching/playback), `tag.create`
+(to create the marker on first use), and `tag.asset` (add/remove it on a photo).
+Neither client needs `tag.update` or `tag.delete`: the marker is never renamed,
+recoloured or deleted.
+The marker is shared through Immich's existing API; no server patch is needed.
+New rejections leave star ratings, favourites and unrelated tags untouched.
+Undo removes only this marker. A legacy rating of `-1` is still recognised;
+undo clears that legacy rating to `null`.
+
+Each client caches the tagged IDs for at most five seconds, reading all search
+pages before replacing its snapshot. Failed reads raise an error rather than
+silently allowing previously excluded photos. Writes verify tag membership,
+including per-asset failures returned with HTTP 200. State survives client
+restarts and Immich metadata refreshes. The frame also removes newly rejected
+photos from its prefetched deck on the next playback poll after cache refresh;
+the currently displayed photo finishes normally. Album Butler excludes them
+when matching its next run; the album browser keeps them visible for undo.
+Existing local `rejected.json` files are left untouched but are no longer an
+authoritative source: re-mark any local-only choices to publish them to the
+shared tag. Previously lost `-1` ratings cannot be reconstructed automatically.

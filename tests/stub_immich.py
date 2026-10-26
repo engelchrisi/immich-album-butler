@@ -79,6 +79,7 @@ class StubImmich:
         self.unnamed_people = [{"id": f"cluster-{n}", "name": ""}
                                for n in range(unnamed_people)]
         self.albums = {a["id"]: a for a in (albums or [])}
+        self.tags = {}
         self.page_size = page_size
         self.missing_permissions = missing_permissions or set()
         self.requests: list[tuple[str, str]] = []
@@ -143,6 +144,8 @@ class StubImmich:
 
     def search(self, body: dict) -> dict:
         items = list(self.assets)
+        if tags := body.get("tagIds"):
+            items = [a for a in items if set(a.get("_tags", [])) & set(tags)]
 
         if album_ids := body.get("albumIds"):
             in_albums = set()
@@ -221,6 +224,11 @@ def _make_handler(stub: StubImmich):
 
             if path == "/api/server/version":
                 return self._send(200, {"major": 3, "minor": 2, "patch": 0})
+
+            if path == "/api/tags":
+                if not self._authorized("tag.read"):
+                    return
+                return self._send(200, list(stub.tags.values()))
 
             if path == "/api/people":
                 if not self._authorized("person.read"):
@@ -351,6 +359,19 @@ def _make_handler(stub: StubImmich):
             path = self.path.partition("?")[0]
             stub.requests.append(("PUT", path))
             body = self._body()
+            if path == "/api/tags":
+                if not self._authorized("tag.create"):
+                    return
+                result = []
+                for value in body["tags"]:
+                    tag = next((t for t in stub.tags.values() if t["value"] == value), None)
+                    if tag is None:
+                        tag = {"id": fake_id(9000 + len(stub.tags)), "value": value}
+                        stub.tags[tag["id"]] = tag
+                    result.append(tag)
+                return self._send(200, result)
+            if path.startswith("/api/tags/") and path.endswith("/assets"):
+                return self._tag_assets(path, body, True)
 
             if path.startswith("/api/assets/") and path.count("/") == 3:
                 if not self._authorized("asset.update"):
@@ -462,10 +483,30 @@ def _make_handler(stub: StubImmich):
 
             self._send(404, {"message": f"no route {path}"})
 
+        def _tag_assets(self, path, body, add):
+            if not self._authorized("tag.asset"):
+                return
+            tag_id = path.split("/")[3]
+            if tag_id not in stub.tags:
+                return self._send(404, {"message": "tag not found"})
+            result = []
+            for asset_id in body["ids"]:
+                asset = next((a for a in stub.assets if a["id"] == asset_id), None)
+                if asset is not None:
+                    tags = asset.setdefault("_tags", [])
+                    if add and tag_id not in tags:
+                        tags.append(tag_id)
+                    if not add and tag_id in tags:
+                        tags.remove(tag_id)
+                result.append({"id": asset_id, "success": asset is not None})
+            return self._send(200, result)
+
         def do_DELETE(self) -> None:                 # noqa: N802
             path = self.path.partition("?")[0]
             stub.requests.append(("DELETE", path))
             body = self._body()
+            if path.startswith("/api/tags/") and path.endswith("/assets"):
+                return self._tag_assets(path, body, False)
 
             if path.startswith("/api/albums/") and path.endswith("/assets"):
                 if not self._authorized("albumAsset.delete"):

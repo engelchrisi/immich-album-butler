@@ -19,6 +19,8 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any, Iterator
 
+from .rejections import Rejections
+
 log = logging.getLogger(__name__)
 
 # Immich rejects very large bodies; adding assets in chunks also means a failure
@@ -177,6 +179,7 @@ class ImmichClient:
         self.base_url = base_url.rstrip("/")
         self._key = api_key
         self.timeout = timeout
+        self.rejections = Rejections(self.request, ImmichError)
 
     # -- plumbing ---------------------------------------------------------
 

@@ -25,7 +25,7 @@ from immich_album_butler.design.api import (PREVIEW_EDGE, PREVIEW_SCROLL,
                                             TRIP_THUMBS, ApiError,
                                             DesignApi, _edges, _sample)
 from immich_album_butler.design.server import _make_handler
-from immich_album_butler.immich import ImmichClient
+from immich_album_butler.immich import ImmichClient, ImmichError
 
 from .stub_immich import API_KEY, StubImmich, day, fake_id, make_asset
 
@@ -148,6 +148,21 @@ class AssetDetailsTests(DesignTestCase):
         restored = self.api.set_asset_rejected(fake_id(1), False)
         self.assertEqual(restored["rating"], 4)
         self.assertEqual(self.api.asset_details(fake_id(1))["rating"], 4)
+
+    def test_shared_tag_survives_rating_reset_and_new_client(self):
+        self.api.set_asset_rejected(fake_id(1), True)
+        self.stub.assets[0]["exifInfo"]["rating"] = None
+        other = ImmichClient(self.stub.url, API_KEY)
+        restarted = DesignApi(other, self.config_dir, self.state_dir)
+        self.assertTrue(restarted.asset_details(fake_id(1))["rejected"])
+        restarted.set_asset_rejected(fake_id(1), False)
+        self.assertFalse(self.api.asset_details(fake_id(1))["rejected"])
+
+    def test_tag_permission_failure_is_not_reported_as_a_local_success(self):
+        self.stub.missing_permissions.add("tag.asset")
+        with self.assertRaises(ImmichError):
+            self.api.set_asset_rejected(fake_id(1), True)
+        self.assertFalse(self.api.asset_details(fake_id(1))["rejected"])
 
     def test_photo_actions_require_booleans_and_asset_ids(self):
         for work in (

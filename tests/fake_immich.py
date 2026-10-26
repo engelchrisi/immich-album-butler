@@ -315,7 +315,31 @@ class FakeImmich:
                          for a in albums]
 
         if path == "/api/tags":
+            if method == "PUT":
+                result = []
+                for value in body["tags"]:
+                    tag = next((t for t in self.tags.values() if t["value"] == value), None)
+                    if tag is None:
+                        tag = {"id": _fake_id("tag", len(self.tags)), "value": value}
+                        self.tags[tag["id"]] = tag
+                    result.append(tag)
+                return 200, result
             return 200, list(self.tags.values())
+
+        if path.startswith("/api/tags/") and path.endswith("/assets"):
+            tag_id = path.split("/")[3]
+            if tag_id not in self.tags:
+                return 404, {"message": "tag not found"}
+            result = []
+            for asset_id in body["ids"]:
+                asset = self._by_id.get(asset_id)
+                if asset:
+                    if method == "PUT" and tag_id not in asset.tags:
+                        asset.tags.append(tag_id)
+                    if method == "DELETE" and tag_id in asset.tags:
+                        asset.tags.remove(tag_id)
+                result.append({"id": asset_id, "success": asset is not None})
+            return 200, result
 
         if path == "/api/search/person":
             wanted = (query.get("name") or [""])[0].casefold()
@@ -520,6 +544,16 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(400, {"message": "not JSON"})
             return
         self._handle("POST", body)
+
+    def do_PUT(self) -> None:                     # noqa: N802 - http.server API
+        length = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(length) if length else b""
+        try:
+            body = json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            self._send(400, {"message": "not JSON"})
+            return
+        self._handle("PUT", body)
 
     def do_DELETE(self) -> None:                     # noqa: N802 - http.server API
         length = int(self.headers.get("Content-Length") or 0)

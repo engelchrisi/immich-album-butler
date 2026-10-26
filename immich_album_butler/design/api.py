@@ -229,8 +229,6 @@ class DesignApi:
         self._album_gps_names: dict[str, str] = {}
         self._gps_donors: list[dict] | None = None
         self._gps_donors_lock = threading.Lock()
-        self._rejected: dict[str, int | None] = {}
-        self._rejected_lock = threading.Lock()
         # Set by design/server.py once the bind-watcher exists, so the UI's
         # "Reload config" button has something to trigger.
         self.reload_trigger: Callable[[], None] | None = None
@@ -265,6 +263,7 @@ class DesignApi:
         data = self.client.asset(asset_id)
         exif = data.get("exifInfo") or {}
         path = str(data.get("originalPath") or "")
+        tagged = asset_id in self.client.rejections.ids(force=True)
         return {
             "id": asset_id,
             "file_name": data.get("originalFileName") or "",
@@ -293,7 +292,7 @@ class DesignApi:
                        if p.get("name")],
             "favorite": bool(data.get("isFavorite")),
             "rating": exif.get("rating"),
-            "rejected": exif.get("rating") == -1,
+            "rejected": tagged or exif.get("rating") == -1,
         }
 
     # -- saved GPS donor photos -------------------------------------------
@@ -313,7 +312,8 @@ class DesignApi:
                 asset = immich_module.Asset.from_api(self.client.asset(donor["asset_id"]))
             except ImmichError:
                 continue
-            if asset.located and not asset.is_video and asset.rating != -1:
+            if (asset.located and not asset.is_video and asset.rating != -1
+                    and asset.id not in self.client.rejections.ids()):
                 active.append(donor)
         return {"donors": sorted(active, key=lambda donor: donor["name"].casefold())}
 
@@ -329,7 +329,8 @@ class DesignApi:
             asset = immich_module.Asset.from_api(self.client.asset(asset_id))
         except ImmichError as exc:
             raise ApiError(str(exc), status=502) from None
-        if asset.is_video or not asset.located or asset.rating == -1:
+        if (asset.is_video or not asset.located or asset.rating == -1
+                or asset_id in self.client.rejections.ids()):
             raise ApiError("choose a non-rejected photo that already has GPS")
         donor = {
             "name": name,
@@ -368,38 +369,18 @@ class DesignApi:
         return {"id": asset_id, "favorite": favorite}
 
     def set_asset_rejected(self, asset_id: str, rejected: bool) -> dict:
-        """Set Immich's rejected rating, remembering the old rating for undo."""
+        """Share not-wanted state with the frame without changing star ratings."""
         self._asset_id(asset_id)
         if not isinstance(rejected, bool):
             raise ApiError("rejected must be true or false")
         current = (self.client.asset(asset_id).get("exifInfo") or {}).get("rating")
-        with self._rejected_lock:
-            if rejected:
-                prior = self._rejected.get(asset_id, current)
-                if prior == -1:
-                    prior = None
-                value = -1
-            else:
-                prior = self._rejected.get(asset_id)
-                # Immich 3 rejects rating 0. JSON null clears it to "unrated".
-                value = prior if isinstance(prior, int) and prior > 0 else None
-        self.client.set_asset_rating(asset_id, value)
-        with self._rejected_lock:
-            if rejected:
-                self._rejected[asset_id] = prior
-            else:
-                self._rejected.pop(asset_id, None)
-        if self._scan is not None:
-            self._scan = [trips_module.Point(
-                id=point.id, taken_at=point.taken_at,
-                latitude=point.latitude, longitude=point.longitude,
-                city=point.city, state=point.state, country=point.country,
-                camera=point.camera, is_video=point.is_video,
-                rating=value if point.id == asset_id else point.rating,
-            ) for point in self._scan]
-            trips_module.save_scan(self.state_dir, self._scan)
+        self.client.rejections.set(asset_id, rejected)
+        # Undo a legacy rating-based rejection too. New rejects never alter stars.
+        if not rejected and current == -1:
+            self.client.set_asset_rating(asset_id, None)
+            current = None
         self._album_gps_cache.clear()
-        return {"id": asset_id, "rejected": rejected, "rating": value}
+        return {"id": asset_id, "rejected": rejected, "rating": current}
 
     @staticmethod
     def _asset_id(asset_id: str) -> str:
@@ -1121,6 +1102,7 @@ class DesignApi:
             raise ApiError(str(exc), status=502) from None
         assets.sort(key=lambda a: (a.taken_at is None,
                                    a.taken_at or dt.datetime.min, a.id))
+        tagged = self.client.rejections.ids(force=True)
         return {
             "album_id": album_id, "name": info.name,
             "assets": [{
@@ -1134,7 +1116,7 @@ class DesignApi:
                 # timeline, like PyImmichFrame's: rejected photos stay
                 # inspectable and carry their persistent status after reload.
                 "favorite": a.is_favorite,
-                "rejected": a.rating == -1,
+                "rejected": a.id in tagged or a.rating == -1,
             } for a in assets],
         }
 
@@ -1251,9 +1233,10 @@ class DesignApi:
         """Read an album once while its GPS overview and days are reviewed."""
         if not ASSET_ID.fullmatch(album_id):
             raise ApiError("bad album id")
+        rejected = self.client.rejections.ids()
         cached = self._album_gps_cache.get(album_id)
         if cached and time.monotonic() - cached[0] < 300:
-            return cached[1]
+            return [point for point in cached[1] if point.id not in rejected]
         try:
             albums = self.client.albums()
             album = next((album for album in albums if album.id == album_id), None)
@@ -1267,7 +1250,7 @@ class DesignApi:
             raise ApiError(str(exc), status=502) from None
         result = [point for point in points if point is not None]
         self._album_gps_cache[album_id] = (time.monotonic(), result)
-        return result
+        return [point for point in result if point.id not in rejected]
 
     def album_gps_summary(self, payload: dict) -> dict:
         """Return small, date-grouped counts without any thumbnail payload."""
@@ -1618,7 +1601,10 @@ class DesignApi:
             trips_module.save_scan(self.state_dir, points)
             self._scan, self._scanned_at = points, dt.datetime.now()
             self._albums = None         # read the albums afresh as well
-        return self._scan, self._scanned_at
+        rejected = self.client.rejections.ids()
+        points = ([point for point in self._scan if point.id not in rejected]
+                  if self._scan is not None else None)
+        return points, self._scanned_at
 
     def _covered_windows(self, config) -> list[tuple[str, dt.date, dt.date]]:
         butler = self._butler(config)

@@ -64,8 +64,10 @@ message; if they already differ, ask before aligning them.
 ## Safety toward Immich
 
 The unattended runtime writes **albums only**. Design mode may also update asset
-metadata through explicit GPS, favourite, and rejected-rating controls. It never
-deletes assets, never modifies originals, and never deletes an album. Every album mirrors its rule: an asset
+metadata through explicit GPS and favourite controls, and add/remove the reserved
+`photo-butler/rejected` tag. It may clear a legacy rejected rating during undo. It never
+deletes assets or modifies originals. It deletes an album only through design mode's
+separate, explicit confirmation; the contained photos stay in the library. Every album mirrors its rule: an asset
 that stops matching is removed from that album on the next run (never from the
 library). The design UI's Duplicates tab removes assets the same way, on an
 explicit, confirmed request, never the last copy of a duplicate group, and

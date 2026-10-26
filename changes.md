@@ -10,6 +10,14 @@
   route when PUT was acknowledged without saving. This prevents shared writable albums from
   claiming a rejected state that disappears on reload.
 
+## 1.16.2 — 2026-10-25
+- Match heart and not-wanted glyphs, badge sizes and button states across both clients.
+- Fix garbled heart and not-wanted symbols on album browser thumbnails.
+- Fix not-wanted buttons losing their state after Immich rereads metadata.
+  Album Butler and PyImmichFrame now share the `photo-butler/rejected` tag,
+  preserve star ratings, and support undo from either client after a restart.
+- API keys need `tag.read`, `tag.create` and `tag.asset` on the same account.
+
 ## 1.16.1 - 2026-10-24
 - Fixed design-mode thumbnails and large previews ignoring Immich editor
   changes such as rotation and crop.

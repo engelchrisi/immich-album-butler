@@ -152,6 +152,62 @@ class DryRunTests(unittest.TestCase):
 class MirrorTests(unittest.TestCase):
     """Every album mirrors its rule: an asset that stops matching leaves it."""
 
+    def test_shared_reject_is_excluded_when_generating_a_new_album(self):
+        with StubImmich(assets(), people=PEOPLE) as stub:
+            other = ImmichClient(stub.url, API_KEY)
+            other.rejections.set(fake_id(1), True)
+            with Fixture({"italy-2019": ITALY}, stub) as fx:
+                config, state = fx.load()
+                reports = run_once(fx.client, config, state)
+                self.assertTrue(reports[0].ok)
+                self.assertTrue(reports[0].created)
+                self.assertEqual({a["id"] for a in
+                                  stub.album_named("Italy 2019")["assets"]},
+                                 {fake_id(2)})
+
+    def test_shared_reject_removes_existing_member_until_undone(self):
+        with StubImmich(assets(), people=PEOPLE) as stub:
+            other = ImmichClient(stub.url, API_KEY)
+            with Fixture({"italy-2019": ITALY}, stub) as fx:
+                config, state = fx.load()
+                run_once(fx.client, config, state)
+                album = stub.album_named("Italy 2019")
+                other.rejections.set(fake_id(1), True)
+                # Reproduce Immich's lost rating independently of the marker.
+                stub.assets[0]["exifInfo"]["rating"] = None
+                removed = run_once(fx.client, config, state)
+                self.assertTrue(removed[0].ok)
+                self.assertEqual(removed[0].removed, 1)
+                self.assertEqual({a["id"] for a in album["assets"]}, {fake_id(2)})
+
+                restarted = ImmichClient(stub.url, API_KEY)
+                config, state = fx.load()
+                again = run_once(restarted, config, state)
+                self.assertTrue(again[0].ok)
+                self.assertEqual(again[0].added, 0)
+                self.assertEqual({a["id"] for a in album["assets"]}, {fake_id(2)})
+
+                other.rejections.set(fake_id(1), False)
+                restored = run_once(restarted, config, state)
+                self.assertTrue(restored[0].ok)
+                self.assertEqual(restored[0].added, 1)
+                self.assertEqual({a["id"] for a in album["assets"]},
+                                 {fake_id(1), fake_id(2)})
+                self.assertEqual({a["id"] for a in stub.assets},
+                                 {fake_id(1), fake_id(2), fake_id(3)})
+
+    def test_failed_rejection_read_leaves_existing_album_untouched(self):
+        with StubImmich(assets(), people=PEOPLE) as stub:
+            with Fixture({"italy-2019": ITALY}, stub) as fx:
+                config, state = fx.load()
+                run_once(fx.client, config, state)
+                stub.missing_permissions.add("tag.read")
+                reports = run_once(fx.client, config, state)
+                self.assertFalse(reports[0].ok)
+                self.assertEqual({a["id"] for a in
+                                  stub.album_named("Italy 2019")["assets"]},
+                                 {fake_id(1), fake_id(2)})
+
     def test_a_manually_added_photo_does_not_survive_a_run(self):
         with StubImmich(assets(), people=PEOPLE, page_size=2) as stub:
             with Fixture({"italy-2019": ITALY}, stub) as fx:

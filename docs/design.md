@@ -20,6 +20,7 @@ mode's preview, so the preview cannot drift from what a run does.
 |---|---|
 | `cli.py` | `run`, `design`, `trips`, `backup`, `backups`, `restore`, `passwd`, `check`; API key read from the environment |
 | `config.py` | Read and write `config.toml` (settings, design users, groups, album rules); people by name |
+| `rejections.py` | Shared tag protocol, verified writes and short-lived membership cache |
 | `immich.py` | Narrow Immich API client: read assets/people/albums, create albums, add assets |
 | `matcher.py` | Album rule → asset set; places OR'd client-side, `people_mode` independent of server semantics; a recurring day (N28) is one windowed query per year |
 | `picker.py` | Pure, HTTP-free: caps a matched set to `pics_per_year` per calendar year and picks which — `all`/`best`/`random`/`rotate` (N29) |
@@ -103,13 +104,8 @@ requests Immich's edited rendition (`edited=true`), so rotations, crops, and oth
 are visible. The favourite and reject controls apply in the builder, album browser, trips,
 duplicates and any later view that uses the thumbnail proxy. The card takes pointer events and
 delays closing between thumbnail and card.
-The two write routes accept booleans and keep the Immich key server-side. Reject is rating `-1`;
-its prior rating is kept in process memory for undo and falls back to JSON `null` (unrated) after a
-restart. Immich 3 rejects the older rating `0` representation. Rating writes use `PUT
-/api/assets/{id}`, then read the asset back; when the stored rating differs, they retry the v3
-`PATCH` route and read it back again. This matters for writable shared albums, where Immich can
-acknowledge a write without changing an unowned asset. The API reports failure unless the stored
-rating matches, so a page reload cannot turn a claimed reject back into an ordinary photo. The
+The two write routes accept booleans and keep the Immich key server-side.
+Reject uses the shared tag protocol described below, independently of star ratings. The
 pressed reject button uses a solid warning colour and exposes `aria-pressed`, making its current
 state clear visually and to assistive technology.
 
@@ -195,11 +191,12 @@ Within a focused day review, Previous day and Next day move among affected
 days in that same calendar year. The overview's compact day list is reused;
 after an apply it refreshes before rebuilding the navigation.
 
-GPS review filters out assets with Immich rating `-1` (the design UI's
-not-wanted action) before producing targets or donors. The scan records the
-rating so Trip reviews retain that filtering from cache; toggling not wanted
-patches the cache and clears album GPS caches immediately. Saved donor entries
-are retained on disk but hidden while their source asset is rejected.
+GPS review filters out assets carrying the shared `photo-butler/rejected` tag,
+as well as legacy Immich rating `-1`, before producing targets or donors. The
+scan retains legacy ratings while the current shared-tag snapshot filters Trip
+and album reviews; toggling not wanted clears album GPS caches immediately.
+Saved donor entries are retained on disk but hidden while their source asset is
+rejected.
 
 `POST /api/albums` saves a rule under its slug, replacing one of the same slug. With `new: true`
 ("Save as…", N41) the slug comes from the new name only, and a name another rule already has
@@ -266,3 +263,35 @@ the package so this file exists at runtime; if missing or unreadable, `__version
 to `"0.0.0+unknown"` rather than crashing. It feeds the design-mode HTTP `Server` header and a
 label next to "Album Butler" on the design UI's main heading. See CLAUDE.md for the bump/branch
 convention.
+
+## Shared not-wanted state
+
+The not-wanted button uses the reserved Immich tag `photo-butler/rejected`.
+Both applications must use API keys belonging to the **same Immich account**.
+Required scopes are `tag.read` (also needed by matching/playback), `tag.create`
+(to create the marker on first use), and `tag.asset` (add/remove it on a photo).
+Neither client needs `tag.update` or `tag.delete`: the marker is never renamed,
+recoloured or deleted.
+The marker is shared through Immich's existing API; no server patch is needed.
+New rejections leave star ratings, favourites and unrelated tags untouched.
+Undo removes only this marker. A legacy rating of `-1` is still recognised;
+undo clears that legacy rating to `null`.
+
+Each client caches the tagged IDs for at most five seconds, reading all search
+pages before replacing its snapshot. Failed reads raise an error rather than
+silently allowing previously excluded photos. Writes verify tag membership,
+including per-asset failures returned with HTTP 200. State survives client
+restarts and Immich metadata refreshes. The frame also removes newly rejected
+photos from its prefetched deck on the next playback poll after cache refresh;
+the currently displayed photo finishes normally. Album Butler excludes them
+when matching its next run; the album browser keeps them visible for undo.
+Existing local `rejected.json` files are left untouched but are no longer an
+authoritative source: re-mark any local-only choices to publish them to the
+shared tag. Previously lost `-1` ratings cannot be reconstructed automatically.
+
+Photo action icons use the same Unicode escapes and symbol font stack in both
+clients, with text presentation for the filled heart. Thumbnail badges are
+24 px high with 14 px glyphs. Photo controls use a 56 px hit area and a 36 px
+neutral disc, a pink favourite heart, and an orange rejected state with a
+white ring. Active rejection stays orange on hover. These styles also apply
+to the frame's admin timeline controls.

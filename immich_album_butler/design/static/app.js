@@ -2080,8 +2080,8 @@ function renderBrowseAlbum() {
       const cell = el("div", { class: `browse-cell${asset.kind === "VIDEO" ? " video" : ""}` },
         el("img", { src: `/api/thumb/${asset.id}`, loading: "lazy", alt: "" }));
       const badges = el("div", { class: "photo-badges", "aria-label": "Photo status" });
-      if (asset.rejected) badges.append(el("span", { class: "photo-badge hate", title: "Not shown by the butler" }, "âŠ˜"));
-      if (asset.favorite) badges.append(el("span", { class: "photo-badge love", title: "Favourite" }, "â™¥"));
+      if (asset.rejected) badges.append(el("span", { class: "photo-badge hate", title: "Not shown by the butler" }, "\u2298"));
+      if (asset.favorite) badges.append(el("span", { class: "photo-badge love", title: "Favourite" }, "\u2665\uFE0E"));
       if (badges.childElementCount) cell.append(badges);
       cell.onclick = () => openLightbox(index);
       if (asset.kind !== "VIDEO") {
@@ -3221,13 +3221,13 @@ function photoActions(id, details) {
     title: details.rejected ? "Show this photo again" : "Do not show this photo again",
     "aria-label": details.rejected ? "Show this photo again" : "Do not show this photo again",
     "aria-pressed": String(details.rejected),
-  }, "⊘");
+  }, "\u2298");
   const favorite = el("button", {
     type: "button", class: `hover-photo-action favorite${details.favorite ? " active" : ""}`,
     title: details.favorite ? "Remove from favourites" : "Add to favourites",
     "aria-label": details.favorite ? "Remove from favourites" : "Add to favourites",
     "aria-pressed": String(details.favorite),
-  }, details.favorite ? "♥" : "♡");
+  }, details.favorite ? "\u2665\uFE0E" : "\u2661");
 
   reject.onclick = async () => {
     reject.disabled = true;
@@ -3249,7 +3249,7 @@ function photoActions(id, details) {
       const result = await post(`/api/asset/${id}/favorite`, { favorite: !details.favorite });
       details.favorite = result.favorite;
       updateBrowseAssetState(id, { favorite: details.favorite });
-      favorite.textContent = details.favorite ? "♥" : "♡";
+      favorite.textContent = details.favorite ? "\u2665\uFE0E" : "\u2661";
       favorite.classList.toggle("active", details.favorite);
       favorite.setAttribute("aria-pressed", String(details.favorite));
       favorite.title = favorite.ariaLabel = details.favorite

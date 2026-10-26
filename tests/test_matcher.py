@@ -156,6 +156,16 @@ class MatchAgainstStubTests(unittest.TestCase):
             found = match(self.client(stub), rule, PEOPLE)
         self.assertNotIn(fake_id(5), found.ids)
 
+    def test_shared_reject_is_excluded_even_when_immich_erases_the_rating(self):
+        with StubImmich(self.assets, page_size=2) as stub:
+            writer = self.client(stub)
+            writer.rejections.set(fake_id(1), True)
+            reader = self.client(stub)
+            rule = MatchRule(from_date=dt.date(2019, 1, 1))
+            self.assertNotIn(fake_id(1), match(reader, rule, PEOPLE).ids)
+            writer.rejections.set(fake_id(1), False)
+            self.assertIn(fake_id(1), match(reader, rule, PEOPLE).ids)
+
     def test_a_person_album_is_just_the_people_criterion(self):
         rule = MatchRule(people=("Alex",))
         with StubImmich(self.assets, page_size=2) as stub:
