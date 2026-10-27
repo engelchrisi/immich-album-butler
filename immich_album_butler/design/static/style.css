@@ -486,7 +486,7 @@ body.login .message {
   color: #fff; background-color: #c2410c; background-clip: padding-box;
   box-shadow: 0 0 0 2px #fff, 0 2px 8px rgba(0, 0, 0, 0.45);
 }
-#hover-card .hover-photo-action.favorite.active { color: #ff5a7a; }
+#hover-card .hover-photo-action.favorite.active { color: #4ade80; }
 #hover-card .hover-photo-action:disabled { cursor: default; opacity: 0.6; }
 @media (hover: hover) {
   #hover-card .hover-photo-action:not(:disabled):hover {
@@ -538,7 +538,7 @@ div.dup-cover { background: var(--thumb-bg); }
                font-size: 14px; line-height: 24px; text-align: center;
                font-family:"Segoe UI Symbol","DejaVu Sans",sans-serif;font-weight:400;font-style:normal;
                text-shadow: none; }
-.photo-badge.love { color: #ff6f91; }
+.photo-badge.love { color: #4ade80; }
 .photo-badge.hate { color: #ff9b6a; }
 .browse-cell.video::after {
   content: "\25B6"; position: absolute; right: 5px; bottom: 2px;

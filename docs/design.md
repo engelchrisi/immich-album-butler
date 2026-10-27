@@ -292,6 +292,6 @@ shared tag. Previously lost `-1` ratings cannot be reconstructed automatically.
 Photo action icons use the same Unicode escapes and symbol font stack in both
 clients, with text presentation for the filled heart. Thumbnail badges are
 24 px high with 14 px glyphs. Photo controls use a 56 px hit area and a 36 px
-neutral disc, a pink favourite heart, and an orange rejected state with a
+neutral disc, a green favourite heart, and an orange-red rejected state with a
 white ring. Active rejection stays orange on hover. These styles also apply
 to the frame's admin timeline controls.

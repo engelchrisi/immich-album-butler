@@ -1292,6 +1292,12 @@ class RoutingTests(ServerTestCase):
             self.assertEqual(response.status, 200)
             self.assertIn(marker, body)
 
+    def test_love_symbols_are_green(self):
+        body, _ = self.fetch("/static/style.css", raw=True)
+        self.assertIn(b".hover-photo-action.favorite.active { color: #4ade80; }", body)
+        self.assertIn(b".photo-badge.love { color: #4ade80; }", body)
+        self.assertNotIn(b"favorite.active { color: #ff5a7a; }", body)
+
     def test_a_path_outside_the_static_dir_is_not_served(self):
         """Sent over a raw socket: urllib would tidy the `..` away first."""
         for attempt in ("/static/../../../etc/passwd",
