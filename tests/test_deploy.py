@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -94,6 +95,28 @@ class ArchiveSafetyTests(unittest.TestCase):
                 tampered = deploy.source_files(extracted)
                 tampered.pop("DEPLOYMENT.json")
                 self.assertNotEqual(manifest["files"], tampered)
+
+    def test_one_ssh_stream_carries_helper_and_archive_and_cleans_up(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive = root / "release.tar.gz"
+            archive.write_bytes(b"verified release bytes")
+            helper = (
+                b"from pathlib import Path\n"
+                b"import sys\n"
+                b"Path(sys.argv[2] + '.seen').write_bytes("
+                b"Path(sys.argv[2]).read_bytes())\n"
+            )
+            payload = io.BytesIO()
+            deploy.write_deploy_payload(payload, helper, archive)
+            remote = root / "remote-release.tar.gz"
+            subprocess.run(
+                [sys.executable, "-c", deploy.REMOTE_BOOTSTRAP,
+                 str(remote), "unused-in-test"],
+                input=payload.getvalue(), check=True)
+            self.assertEqual(
+                Path(str(remote) + ".seen").read_bytes(), archive.read_bytes())
+            self.assertFalse(remote.exists())
 
 
 class RollbackTests(unittest.TestCase):

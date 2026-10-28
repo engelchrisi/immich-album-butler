@@ -19,6 +19,7 @@ import shlex
 import shutil
 import signal
 import subprocess
+import struct
 import sys
 import tarfile
 import tempfile
@@ -31,6 +32,53 @@ import uuid
 
 def run(*args, **kwargs):
     return subprocess.run(args, check=True, **kwargs)
+
+
+# The helper and release archive share one SSH stdin stream. This avoids the
+# old SCP + install SSH + cleanup SSH sequence, which authenticated three
+# times and was particularly slow with confirmation-based key agents.
+REMOTE_BOOTSTRAP = r"""import pathlib, struct, sys
+
+stream = sys.stdin.buffer
+archive = pathlib.Path(sys.argv[1])
+expected_digest = sys.argv[2]
+
+def exact(size):
+    chunks = []
+    while size:
+        chunk = stream.read(min(size, 1024 * 1024))
+        if not chunk:
+            raise EOFError("incomplete deployment stream")
+        chunks.append(chunk)
+        size -= len(chunk)
+    return b"".join(chunks)
+
+try:
+    helper_size, archive_size = struct.unpack("!QQ", exact(16))
+    if helper_size > 1024 * 1024 or archive_size > 4 * 1024 * 1024 * 1024:
+        raise ValueError("deployment stream is unreasonably large")
+    helper = exact(helper_size)
+    with archive.open("wb") as output:
+        while archive_size:
+            chunk = stream.read(min(archive_size, 1024 * 1024))
+            if not chunk:
+                raise EOFError("incomplete release archive")
+            output.write(chunk)
+            archive_size -= len(chunk)
+    sys.argv = ["deploy.py", "--remote", str(archive), expected_digest]
+    exec(compile(helper, "deploy.py", "exec"),
+         {"__name__": "__main__", "__file__": "deploy.py"})
+finally:
+    archive.unlink(missing_ok=True)
+"""
+
+
+def write_deploy_payload(output, helper, archive):
+    """Frame the remote helper and archive for ``REMOTE_BOOTSTRAP``."""
+    output.write(struct.pack("!QQ", len(helper), archive.stat().st_size))
+    output.write(helper)
+    with archive.open("rb") as source:
+        shutil.copyfileobj(source, output, length=1024 * 1024)
 
 
 def digest(path):
@@ -391,7 +439,7 @@ def main(argv=None):
         parser.error("this project has no design service")
     if (args.frontend or args.keep_frontend) and not settings.get("frontend"):
         parser.error("this project has no frontend bundle")
-    commands = ("git",) if args.output else ("git", "ssh", "scp")
+    commands = ("git",) if args.output else ("git", "ssh")
     for command in commands:
         if not shutil.which(command):
             parser.error(f"required command is missing: {command}")
@@ -409,15 +457,21 @@ def main(argv=None):
             return 0
         remote_archive = f"/tmp/{settings['name']}-deploy-{uuid.uuid4().hex}.tar.gz"
         try:
-            run("scp", "--", str(archive), f"{args.target}:{remote_archive}")
-            command = shlex.join(["python3", "-", "--remote", remote_archive, digest(archive)])
-            run("ssh", args.target, command, input=Path(__file__).read_bytes())
-        finally:
-            # Covers interrupted SCP and remote preflight failures. The remote
-            # helper owns its extracted staging directory and rollback lifecycle.
+            helper = Path(__file__).read_bytes()
+            command = shlex.join(
+                ["python3", "-c", REMOTE_BOOTSTRAP, remote_archive, digest(archive)])
+            with tempfile.TemporaryFile() as payload:
+                write_deploy_payload(payload, helper, archive)
+                payload.seek(0)
+                run("ssh", args.target, command, stdin=payload)
+        except BaseException:
+            # The bootstrap and remote helper both remove the upload in their
+            # own finally blocks. This short fallback covers a transport killed
+            # before Python started, and runs only on a failed deployment.
             subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
                             args.target, shlex.join(["rm", "-f", "--", remote_archive])],
                            check=False, timeout=15)
+            raise
     print("Deployment complete.")
     return 0
 

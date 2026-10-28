@@ -6,7 +6,7 @@ container over SSH. The Proxmox host is not involved.
 
 ## Requirements
 
-The workstation needs Python 3.11 or newer, Git, SSH and SCP. The target needs
+The workstation needs Python 3.11 or newer, Git and SSH. The target needs
 Python 3.11 or newer and systemd, and the SSH account must be root because the
 installer writes below `/opt`, `/etc` and `/etc/systemd/system`.
 
@@ -18,6 +18,9 @@ The maintained entry points are:
 
 `deploy/install.sh` is the remote installer called by the engine. It can still
 be run by hand from an unpacked checkout for a first installation.
+
+For preparation, phase diagnosis, configuration changes, verification and
+recovery, follow [RUNBOOK.md](RUNBOOK.md).
 
 ## Normal deployment
 
@@ -37,8 +40,9 @@ This deploys committed `HEAD`. It does not include uncommitted application
 changes, which keeps routine releases tied to a known commit.
 
 The engine builds a release archive, records its commit, version, frontend
-provenance and SHA-256 hash for every file, then uploads it to a unique path in
-`/tmp`. The remote side checks the archive and its paths, takes a per-project
+provenance and SHA-256 hash for every file, then streams its remote helper and
+archive over one SSH connection to a unique path in `/tmp`. The remote side
+checks the archive and its paths, takes a per-project
 deployment lock, saves the currently installed code and units, runs
 `install.sh`, restarts the required services, and verifies the installed
 version and readiness. A failed install or readiness check restores the former
@@ -46,6 +50,10 @@ code and systemd units and returns the services to their previous state.
 
 Configuration, environment files and application state are outside the files
 being replaced, so a deployment keeps them intact.
+
+Using one SSH connection means an SSH key agent signs only once per successful
+deployment. The readiness check still requires the restarted service to remain
+healthy for three seconds before success is reported.
 
 ## Deploying local tracked changes
 
