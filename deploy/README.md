@@ -19,9 +19,6 @@ The maintained entry points are:
 `deploy/install.sh` is the remote installer called by the engine. It can still
 be run by hand from an unpacked checkout for a first installation.
 
-For preparation, phase diagnosis, configuration changes, verification and
-recovery, follow [RUNBOOK.md](RUNBOOK.md).
-
 ## Normal deployment
 
 PowerShell:
